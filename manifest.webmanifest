@@ -1,0 +1,1 @@
+{"name":"Human OS","short_name":"HumanOS","description":"RPG Style Habit Tracker","start_url":"/human-os/","display":"standalone","background_color":"#0f111a","theme_color":"#0f111a","lang":"en","scope":"/human-os/","icons":[{"src":"pwa-192x192.png","sizes":"192x192","type":"image/png"},{"src":"pwa-512x512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}
