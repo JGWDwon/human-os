@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Settings, BarChart2 } from 'lucide-react';
+import { Settings, BarChart2, Cloud, CloudOff, LogOut } from 'lucide-react';
 import PomodoroTracker from './components/PomodoroTracker';
 import MicroQuestList from './components/MicroQuestList';
 import ForestPixelMap from './components/ForestPixelMap';
 import DiaryAndEmotion from './components/DiaryAndEmotion';
 import InsightsDashboard from './components/InsightsDashboard';
 import { storage } from './utils/storage';
+import { auth, loginWithGoogle, logout, syncDataToCloud, fetchCloudData } from './utils/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import adventurerImg from './assets/adventurer.png';
 
 function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [user, setUser] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -29,6 +33,48 @@ function App() {
     window.addEventListener('xp-updated', handleXpUpdate);
     return () => window.removeEventListener('xp-updated', handleXpUpdate);
   }, []);
+
+  // Firebase Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        // 처음 로그인 시 클라우드 데이터 가져오기
+        setIsSyncing(true);
+        const cloudData = await fetchCloudData(currentUser.uid);
+        if (cloudData) {
+          storage.importData(cloudData);
+          triggerRefresh();
+          // Update XP
+          const profile = storage.getUserProfile();
+          setXpInfo(storage.getLevelInfo(profile.totalXP));
+        }
+        setIsSyncing(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync listener
+  useEffect(() => {
+    const handleSync = async () => {
+      if (user) {
+        setIsSyncing(true);
+        await syncDataToCloud(user.uid, storage.getAllData());
+        setIsSyncing(false);
+      }
+    };
+    window.addEventListener('cloud-sync-needed', handleSync);
+    return () => window.removeEventListener('cloud-sync-needed', handleSync);
+  }, [user]);
+
+  const handleLogin = async () => {
+    try {
+      await loginWithGoogle();
+    } catch (e) {
+      alert('로그인에 실패했습니다.');
+    }
+  };
 
   const handleDateSelect = (date) => {
     setSelectedDate(date);
@@ -69,7 +115,23 @@ function App() {
              </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+             {user ? (
+               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(0,0,0,0.3)', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)' }}>
+                 <img src={user.photoURL} alt="profile" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+                 <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{user.displayName}</span>
+                 {isSyncing ? <Cloud size={16} color="var(--accent-primary)" style={{ animation: 'pulse 2s infinite' }} /> : <Cloud size={16} color="var(--accent-secondary)" />}
+                 <button onClick={logout} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', marginLeft: '0.5rem' }}>
+                   <LogOut size={16} />
+                 </button>
+               </div>
+             ) : (
+               <button onClick={handleLogin} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.8rem' }}>
+                 <CloudOff size={16} />
+                 <span className="hide-on-mobile" style={{ fontSize: '0.85rem' }}>클라우드 연동</span>
+               </button>
+             )}
+
             <button 
               onClick={() => { setShowInsights(true); setShowSettings(false); }}
               className="btn btn-secondary" 

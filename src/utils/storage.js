@@ -51,6 +51,10 @@ const INITIAL_QUESTS = [
 ];
 
 export const storage = {
+  _dispatchSync() {
+    window.dispatchEvent(new CustomEvent('cloud-sync-needed'));
+  },
+
   // --- Quests ---
   getCustomQuests() {
     const raw = localStorage.getItem('human-os-custom-quests');
@@ -60,6 +64,7 @@ export const storage = {
 
   saveCustomQuests(quests) {
     localStorage.setItem('human-os-custom-quests', JSON.stringify(quests));
+    this._dispatchSync();
   },
 
   getQuestsByDate(dateStr) {
@@ -99,6 +104,7 @@ export const storage = {
     
     data[dateStr] = quests;
     localStorage.setItem(STORAGE_KEYS.QUESTS, JSON.stringify(data));
+    this._dispatchSync();
   },
   
   // Get history for the Pixel Map
@@ -203,6 +209,7 @@ export const storage = {
       ...entry
     };
     localStorage.setItem(STORAGE_KEYS.DIARY, JSON.stringify([newEntry, ...current]));
+    this._dispatchSync();
     return newEntry;
   },
 
@@ -240,6 +247,7 @@ export const storage = {
     data[dateStr].timestamps.push(new Date().toISOString());
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
+    this._dispatchSync();
     return data[dateStr];
   },
 
@@ -321,7 +329,7 @@ export const storage = {
     if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, jsonData.pomodoro);
     if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, jsonData.diary);
     if (jsonData.theme) localStorage.setItem('dairy_theme', jsonData.theme);
-    
+    this._dispatchSync();
     return true;
   },
 
@@ -437,6 +445,7 @@ export const storage = {
     const profile = this.getUserProfile();
     profile.totalXP += points;
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
+    this._dispatchSync();
     return profile.totalXP;
   },
 
