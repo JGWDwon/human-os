@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, BarChart2, Cloud, CloudOff, LogOut } from 'lucide-react';
+import { Settings, BarChart2, Cloud, CloudOff, LogOut, Target } from 'lucide-react';
 import PomodoroTracker from './components/PomodoroTracker';
 import MicroQuestList from './components/MicroQuestList';
 import ForestPixelMap from './components/ForestPixelMap';
