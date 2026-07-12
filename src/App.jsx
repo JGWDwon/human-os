@@ -218,7 +218,27 @@ function App() {
             </div>
 
             <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-              <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>데이터 관리</h4>
+              <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>데이터 관리 및 복구</h4>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <button 
+                  onClick={() => {
+                    if(window.confirm('과거의 모든 퀘스트 및 뽀모도로 기록을 긁어모아 내 경험치(XP)와 레벨을 정확하게 재계산합니다. 진행하시겠습니까?')) {
+                      storage.recalculateTotalXP();
+                      window.dispatchEvent(new CustomEvent('xp-updated'));
+                      window.dispatchEvent(new CustomEvent('cloud-sync-needed'));
+                      alert('과거 기록을 바탕으로 경험치가 완벽하게 복구되었습니다!');
+                    }
+                  }}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    fontSize: '0.85rem',
+                    flex: 1
+                  }}
+                >
+                  ✨ 잃어버린 경험치(XP) 복구하기
+                </button>
+              </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button 
                   onClick={() => {

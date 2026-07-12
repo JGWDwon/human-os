@@ -247,6 +247,10 @@ export const storage = {
     data[dateStr].timestamps.push(new Date().toISOString());
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
+    
+    // 뽀모도로 완료 시 25 XP 지급
+    this.addXP(25);
+    
     this._dispatchSync();
     return data[dateStr];
   },
@@ -454,12 +458,47 @@ export const storage = {
   // --- RPG Gamification ---
   getUserProfile() {
     const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-    return raw ? JSON.parse(raw) : { totalXP: 0 };
+    if (!raw) {
+       // 최초 진입 시 혹시 과거 기록이 있으면 모두 모아서 계산
+       this.recalculateTotalXP();
+    }
+    const updatedRaw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
+    return updatedRaw ? JSON.parse(updatedRaw) : { totalXP: 0 };
+  },
+
+  recalculateTotalXP() {
+    // 저장된 모든 퀘스트와 뽀모도로를 긁어모아 정확한 XP를 재계산합니다. (오류 복구용)
+    const { totalCompletedQuests, totalPomodoroMins, mainQuestsCompleted, subQuestsCompleted } = this.getAllTimeStats();
+    // 메인=10, 서브=5 지만, stats에서 구분이 어려우면 일괄 재계산
+    
+    const questsRaw = localStorage.getItem(STORAGE_KEYS.QUESTS);
+    const questsData = questsRaw ? JSON.parse(questsRaw) : {};
+    let calculatedXP = 0;
+    
+    Object.values(questsData).forEach(dayQuests => {
+      dayQuests.forEach(q => {
+        if (q.isCompleted) {
+          calculatedXP += (q.type === 'sub' ? 5 : 10);
+        }
+      });
+    });
+
+    const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
+    const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
+    Object.values(pomoData).forEach(day => {
+      // 뽀모도로 1회(25분) 당 25 XP
+      calculatedXP += (day.count * 25);
+    });
+
+    localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify({ totalXP: calculatedXP }));
+    this._dispatchSync();
+    return calculatedXP;
   },
 
   addXP(points) {
     const profile = this.getUserProfile();
     profile.totalXP += points;
+    if (profile.totalXP < 0) profile.totalXP = 0; // 마이너스 방지
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
     this._dispatchSync();
     return profile.totalXP;
