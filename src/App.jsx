@@ -5,6 +5,7 @@ import MicroQuestList from './components/MicroQuestList';
 import ForestPixelMap from './components/ForestPixelMap';
 import DiaryAndEmotion from './components/DiaryAndEmotion';
 import InsightsDashboard from './components/InsightsDashboard';
+import PhaseTwoPreview from './components/PhaseTwoPreview';
 import { storage } from './utils/storage';
 import { auth, loginWithGoogle, logout, syncDataToCloud, fetchCloudData } from './utils/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -13,6 +14,7 @@ import adventurerImg from './assets/adventurer.png';
 function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const [showPhaseTwo, setShowPhaseTwo] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [user, setUser] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -133,7 +135,15 @@ function App() {
              )}
 
             <button 
-              onClick={() => { setShowInsights(true); setShowSettings(false); }}
+              onClick={() => { setShowPhaseTwo(true); setShowInsights(false); setShowSettings(false); }}
+              className="btn btn-secondary" 
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: showPhaseTwo ? 'var(--accent-primary)' : 'transparent', color: showPhaseTwo ? '#fff' : 'var(--text-secondary)', border: showPhaseTwo ? '1px solid var(--accent-primary)' : '1px dashed var(--accent-primary)' }}
+            >
+              <Rocket size={18} />
+              <span className="hide-on-mobile">Phase 2 준비</span>
+            </button>
+            <button 
+              onClick={() => { setShowInsights(true); setShowSettings(false); setShowPhaseTwo(false); }}
               className="btn btn-secondary" 
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: showInsights ? 'var(--accent-secondary)' : 'transparent', color: showInsights ? '#fff' : 'var(--text-secondary)' }}
             >
@@ -141,7 +151,7 @@ function App() {
               <span className="hide-on-mobile">성장 기록</span>
             </button>
             <button 
-              onClick={() => { setShowSettings(!showSettings); setShowInsights(false); }}
+              onClick={() => { setShowSettings(!showSettings); setShowInsights(false); setShowPhaseTwo(false); }}
               className="btn btn-secondary" 
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
@@ -152,7 +162,9 @@ function App() {
         </header>
 
         {/* Content Area */}
-        {showInsights ? (
+        {showPhaseTwo ? (
+          <PhaseTwoPreview onClose={() => setShowPhaseTwo(false)} />
+        ) : showInsights ? (
           <InsightsDashboard onClose={() => setShowInsights(false)} />
         ) : showSettings ? (
           <div className="glass-panel animate-fade-in" style={{ marginBottom: '1rem', background: 'rgba(30, 41, 59, 0.95)', border: '1px solid var(--accent-secondary)' }}>
