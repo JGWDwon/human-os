@@ -202,7 +202,6 @@ function App() {
                     storage.saveCustomQuests(customQuests);
                     
                     const updatedQuests = storage.getQuestsByDate(selectedDate).map(tq => {
-                      if(tq.isCompleted || tq.skippedReason) return tq;
                       const custom = customQuests.find(cq => cq.id === tq.id);
                       return { ...tq, title: custom.title, description: custom.description };
                     });

@@ -330,7 +330,21 @@ export const storage = {
     if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, jsonData.pomodoro);
     if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, jsonData.diary);
     if (jsonData.theme) localStorage.setItem('dairy_theme', jsonData.theme);
-    if (jsonData.profile) localStorage.setItem(STORAGE_KEYS.USER_PROFILE, jsonData.profile);
+    
+    if (jsonData.profile) {
+      const localRaw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
+      const localProfile = localRaw ? JSON.parse(localRaw) : { totalXP: 0 };
+      const cloudProfile = JSON.parse(jsonData.profile);
+      
+      // 경험치가 더 높은 쪽을 유지합니다 (다운그레이드 방지)
+      if (cloudProfile.totalXP >= localProfile.totalXP) {
+        localStorage.setItem(STORAGE_KEYS.USER_PROFILE, jsonData.profile);
+      } else {
+        // 로컬 경험치가 더 높다면 로컬을 유지하고, 클라우드에 로컬 값을 덮어씌웁니다.
+        jsonData.profile = localRaw;
+      }
+    }
+    
     this._dispatchSync();
     return true;
   },
