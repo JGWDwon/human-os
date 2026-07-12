@@ -317,6 +317,7 @@ export const storage = {
       pomodoro: localStorage.getItem(STORAGE_KEYS.POMODORO),
       diary: localStorage.getItem(STORAGE_KEYS.DIARY),
       theme: localStorage.getItem('dairy_theme'),
+      profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
       version: '1.0'
     };
   },
@@ -329,6 +330,7 @@ export const storage = {
     if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, jsonData.pomodoro);
     if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, jsonData.diary);
     if (jsonData.theme) localStorage.setItem('dairy_theme', jsonData.theme);
+    if (jsonData.profile) localStorage.setItem(STORAGE_KEYS.USER_PROFILE, jsonData.profile);
     this._dispatchSync();
     return true;
   },
