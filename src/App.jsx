@@ -222,6 +222,52 @@ function App() {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button 
                   onClick={() => {
+                    if(window.confirm('선택된 날짜의 퀘스트와 뽀모도로 기록을 초기화하시겠습니까? (획득한 경험치도 차감됩니다)')) {
+                      // 1. Get quests for selectedDate
+                      const quests = storage.getQuestsByDate(selectedDate);
+                      let xpToSubtract = 0;
+                      const resetQuests = quests.map(q => {
+                        if (q.isCompleted) {
+                           xpToSubtract += (q.type === 'sub' ? 5 : 10);
+                        }
+                        return { ...q, isCompleted: false, skippedReason: null };
+                      });
+                      storage.saveQuestsByDate(selectedDate, resetQuests);
+                      
+                      // 2. Subtract XP
+                      if (xpToSubtract > 0) {
+                        storage.addXP(-xpToSubtract);
+                        window.dispatchEvent(new CustomEvent('xp-updated'));
+                      }
+                      
+                      // 3. Reset Pomodoro
+                      const rawData = localStorage.getItem('human_os_pomodoro_v1');
+                      if (rawData) {
+                        const data = JSON.parse(rawData);
+                        if (data[selectedDate]) {
+                          delete data[selectedDate];
+                          localStorage.setItem('human_os_pomodoro_v1', JSON.stringify(data));
+                          window.dispatchEvent(new CustomEvent('cloud-sync-needed'));
+                        }
+                      }
+                      
+                      // 4. Refresh
+                      window.dispatchEvent(new CustomEvent('quests-updated'));
+                      setRefreshTrigger(prev => prev + 1);
+                      alert('해당 날짜의 기록이 초기화되었습니다.');
+                    }
+                  }}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    fontSize: '0.85rem',
+                    flex: 1
+                  }}
+                >
+                  오늘 하루 초기화
+                </button>
+                <button 
+                  onClick={() => {
                     if(window.confirm('모든 퀘스트 기록과 다이어리 기록을 완전히 초기화하시겠습니까? (이 작업은 되돌릴 수 없습니다)')) {
                       localStorage.clear();
                       window.location.reload();
@@ -237,7 +283,7 @@ function App() {
                     flex: 1
                   }}
                 >
-                  모든 기록 초기화
+                  모든 데이터 초기화
                 </button>
               </div>
             </div>

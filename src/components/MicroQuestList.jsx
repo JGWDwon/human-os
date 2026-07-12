@@ -81,6 +81,26 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
     if (onQuestUpdate) onQuestUpdate(updated);
   };
 
+  const handleUndo = (id) => {
+    const quest = quests.find(q => q.id === id);
+    if (!quest) return;
+
+    const updated = quests.map(q => 
+      q.id === id ? { ...q, isCompleted: false, skippedReason: null } : q
+    );
+    setQuests(updated);
+    storage.saveQuestsByDate(selectedDate, updated);
+    
+    // Subtract XP only if it was completed
+    if (quest.isCompleted) {
+      const xpReward = quest.type === 'sub' ? 5 : 10;
+      storage.addXP(-xpReward);
+      window.dispatchEvent(new CustomEvent('xp-updated'));
+    }
+    
+    if (onQuestUpdate) onQuestUpdate(updated);
+  };
+
   const handleSkipClick = (id) => {
     setSkipModal({ isOpen: true, questId: id });
     setSkipReason('');
@@ -139,7 +159,7 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
           </h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {quests.filter(q => q.type === 'main' || !q.type).map(q => (
-              <QuestCard key={q.id} q={q} onComplete={handleComplete} onSkip={handleSkipClick} />
+              <QuestCard key={q.id} q={q} onComplete={handleComplete} onSkip={handleSkipClick} onUndo={handleUndo} />
             ))}
           </div>
         </div>
@@ -152,7 +172,7 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
           </h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {quests.filter(q => q.type === 'sub').map(q => (
-              <QuestCard key={q.id} q={q} onComplete={handleComplete} onSkip={handleSkipClick} isSub />
+              <QuestCard key={q.id} q={q} onComplete={handleComplete} onSkip={handleSkipClick} onUndo={handleUndo} isSub />
             ))}
           </div>
         </div>
@@ -212,7 +232,7 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
   );
 }
 
-function QuestCard({ q, onComplete, onSkip, isSub }) {
+function QuestCard({ q, onComplete, onSkip, onUndo, isSub }) {
   const accentColor = isSub ? 'var(--accent-secondary)' : 'var(--accent-primary)';
   const bgCompleted = isSub ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)';
   
@@ -251,9 +271,15 @@ function QuestCard({ q, onComplete, onSkip, isSub }) {
             </div>
           )}
           {q.isCompleted && (
-            <div style={{ color: accentColor, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <Check size={18} /> 완료
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+              <div style={{ color: accentColor, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <Check size={18} /> 완료
+              </div>
+              <button onClick={() => onUndo(q.id)} className="btn btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem', background: 'rgba(0,0,0,0.3)', border: 'none', color: 'var(--text-muted)' }}>취소</button>
             </div>
+          )}
+          {q.skippedReason && (
+            <button onClick={() => onUndo(q.id)} className="btn btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem', background: 'rgba(0,0,0,0.3)', border: 'none', color: 'var(--text-muted)' }}>다시 도전</button>
           )}
         </div>
       </div>
