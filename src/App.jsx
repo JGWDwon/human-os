@@ -5,7 +5,7 @@ import MicroQuestList from './components/MicroQuestList';
 import ForestPixelMap from './components/ForestPixelMap';
 import DiaryAndEmotion from './components/DiaryAndEmotion';
 import InsightsDashboard from './components/InsightsDashboard';
-import PhaseTwoPreview from './components/PhaseTwoPreview';
+import PhaseRoadmap from './components/PhaseRoadmap';
 import { storage } from './utils/storage';
 import { auth, loginWithGoogle, logout, syncDataToCloud, fetchCloudData } from './utils/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -139,8 +139,8 @@ function App() {
               className="btn btn-secondary" 
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: showPhaseTwo ? 'var(--accent-primary)' : 'transparent', color: showPhaseTwo ? '#fff' : 'var(--text-secondary)', border: showPhaseTwo ? '1px solid var(--accent-primary)' : '1px dashed var(--accent-primary)' }}
             >
-              <Rocket size={18} />
-              <span className="hide-on-mobile">Phase 2 준비</span>
+              <Target size={18} />
+              <span className="hide-on-mobile">전체 로드맵</span>
             </button>
             <button 
               onClick={() => { setShowInsights(true); setShowSettings(false); setShowPhaseTwo(false); }}
@@ -163,7 +163,7 @@ function App() {
 
         {/* Content Area */}
         {showPhaseTwo ? (
-          <PhaseTwoPreview onClose={() => setShowPhaseTwo(false)} />
+          <PhaseRoadmap onClose={() => setShowPhaseTwo(false)} />
         ) : showInsights ? (
           <InsightsDashboard onClose={() => setShowInsights(false)} />
         ) : showSettings ? (
