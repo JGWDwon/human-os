@@ -125,11 +125,12 @@ export const storage = {
         continue;
       }
       
-      const total = dayQuests.length;
-      const completed = dayQuests.filter(q => q.isCompleted).length;
-      const skipped = dayQuests.filter(q => q.skippedReason).length;
+      const mainQuests = dayQuests.filter(q => q.type === 'main' || !q.type);
+      const total = mainQuests.length;
+      const completed = mainQuests.filter(q => q.isCompleted).length;
+      const skipped = mainQuests.filter(q => q.skippedReason).length;
       
-      if (completed === total) {
+      if (completed === total && total > 0) {
         history.push({ date: dateStr, status: 'completed' });
       } else if (completed > 0) {
         history.push({ date: dateStr, status: 'partial' });
@@ -163,11 +164,12 @@ export const storage = {
         continue;
       }
       
-      const total = dayQuests.length;
-      const completed = dayQuests.filter(q => q.isCompleted).length;
-      const skipped = dayQuests.filter(q => q.skippedReason).length;
+      const mainQuests = dayQuests.filter(q => q.type === 'main' || !q.type);
+      const total = mainQuests.length;
+      const completed = mainQuests.filter(q => q.isCompleted).length;
+      const skipped = mainQuests.filter(q => q.skippedReason).length;
       
-      if (completed === total) {
+      if (completed === total && total > 0) {
         history.push({ date: dateStr, day, status: 'completed', quests: dayQuests });
       } else if (completed > 0) {
         history.push({ date: dateStr, day, status: 'partial', quests: dayQuests });
