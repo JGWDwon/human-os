@@ -6,6 +6,19 @@ const STORAGE_KEYS = {
   USER_PROFILE: 'human_os_profile_v1'
 };
 
+function safeParse(str, fallback = {}) {
+  try {
+    if (!str) return fallback;
+    if (typeof str === 'object') return str;
+    // 혹시 오염된 데이터가 들어와 있으면 리턴
+    if (str === '[object Object]') return fallback;
+    return JSON.parse(str);
+  } catch (e) {
+    console.error("JSON parse error:", e);
+    return fallback;
+  }
+}
+
 // Initial Quest Template (Phase 1)
 const INITIAL_QUESTS = [
   {
@@ -58,8 +71,7 @@ export const storage = {
   // --- Quests ---
   getCustomQuests() {
     const raw = localStorage.getItem('human-os-custom-quests');
-    if (raw) return JSON.parse(raw);
-    return INITIAL_QUESTS;
+    return safeParse(raw, INITIAL_QUESTS);
   },
 
   saveCustomQuests(quests) {
@@ -69,7 +81,7 @@ export const storage = {
 
   getQuestsByDate(dateStr) {
     const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const data = rawData ? JSON.parse(rawData) : {};
+    const data = safeParse(rawData, {});
     
     // Default to today if not provided
     if (!dateStr) {
@@ -79,7 +91,7 @@ export const storage = {
     
     if (!data[dateStr]) {
       // Clone from Custom Quests instead of INITIAL_QUESTS
-      data[dateStr] = JSON.parse(JSON.stringify(this.getCustomQuests()));
+      data[dateStr] = safeParse(JSON.stringify(this.getCustomQuests()), []);
       localStorage.setItem(STORAGE_KEYS.QUESTS, JSON.stringify(data));
     } else {
       // Legacy Support: Pad if only 3 quests exist
@@ -100,7 +112,7 @@ export const storage = {
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     }
     const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    let data = rawData ? JSON.parse(rawData) : {};
+    let data = safeParse(rawData, {});
     
     data[dateStr] = quests;
     localStorage.setItem(STORAGE_KEYS.QUESTS, JSON.stringify(data));
@@ -111,7 +123,7 @@ export const storage = {
   // Returns { date: 'YYYY-MM-DD', status: 'completed' | 'partial' | 'hibernation' | 'none' }
   getQuestHistory(days = 30) {
     const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const data = rawData ? JSON.parse(rawData) : {};
+    const data = safeParse(rawData, {});
     
     const history = [];
     for (let i = days - 1; i >= 0; i--) {
@@ -146,7 +158,7 @@ export const storage = {
 
   getMonthlyHistory(year, month) {
     const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const data = rawData ? JSON.parse(rawData) : {};
+    const data = safeParse(rawData, {});
     
     // month is 0-indexed (0 = Jan, 11 = Dec)
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -186,7 +198,7 @@ export const storage = {
   // --- Diary ---
   getDiary() {
     const raw = localStorage.getItem(STORAGE_KEYS.DIARY);
-    return raw ? JSON.parse(raw) : [];
+    return safeParse(raw, []);
   },
 
   getDiaryByDate(dateStr) {
@@ -220,7 +232,7 @@ export const storage = {
   // --- Pomodoro ---
   getPomodoroByDate(dateStr) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const data = rawData ? JSON.parse(rawData) : {};
+    const data = safeParse(rawData, {});
     if (!dateStr) {
       const d = new Date();
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -230,7 +242,7 @@ export const storage = {
 
   addPomodoroByDate(dateStr) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const data = rawData ? JSON.parse(rawData) : {};
+    const data = safeParse(rawData, {});
     if (!dateStr) {
       const d = new Date();
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -259,7 +271,7 @@ export const storage = {
 
   getPomodoroTimeDistribution(days = 30) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const data = rawData ? JSON.parse(rawData) : {};
+    const data = safeParse(rawData, {});
     
     // Create buckets for 0-23 hours
     const distribution = Array.from({ length: 24 }, (_, i) => ({
@@ -289,7 +301,7 @@ export const storage = {
 
   getWeeklyPomodoroStats() {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const data = rawData ? JSON.parse(rawData) : {};
+    const data = safeParse(rawData, {});
     
     // Get Monday to Sunday of the current week
     const now = new Date();
@@ -331,20 +343,27 @@ export const storage = {
   importData(jsonData) {
     if (!jsonData || typeof jsonData !== 'object') return false;
     
-    if (jsonData.quests) localStorage.setItem(STORAGE_KEYS.QUESTS, jsonData.quests);
-    if (jsonData.customQuests) localStorage.setItem('human-os-custom-quests', jsonData.customQuests);
-    if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, jsonData.pomodoro);
-    if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, jsonData.diary);
-    if (jsonData.theme) localStorage.setItem('dairy_theme', jsonData.theme);
+    // 파이어베이스에서 객체 형태로 직접 다운로드되었을 경우를 대비하여 stringify 처리
+    const ensureString = (val) => {
+      if (val === null || val === undefined) return null;
+      if (typeof val === 'object') return JSON.stringify(val);
+      return val;
+    };
+
+    if (jsonData.quests) localStorage.setItem(STORAGE_KEYS.QUESTS, ensureString(jsonData.quests));
+    if (jsonData.customQuests) localStorage.setItem('human-os-custom-quests', ensureString(jsonData.customQuests));
+    if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, ensureString(jsonData.pomodoro));
+    if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, ensureString(jsonData.diary));
+    if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
       const localRaw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-      const localProfile = localRaw ? JSON.parse(localRaw) : { totalXP: 0 };
-      const cloudProfile = JSON.parse(jsonData.profile);
+      const localProfile = safeParse(localRaw, { totalXP: 0 });
+      const cloudProfile = safeParse(ensureString(jsonData.profile), { totalXP: 0 });
       
       // 경험치가 더 높은 쪽을 유지합니다 (다운그레이드 방지)
       if (cloudProfile.totalXP >= localProfile.totalXP) {
-        localStorage.setItem(STORAGE_KEYS.USER_PROFILE, jsonData.profile);
+        localStorage.setItem(STORAGE_KEYS.USER_PROFILE, ensureString(jsonData.profile));
       } else {
         // 로컬 경험치가 더 높다면 로컬을 유지하고, 클라우드에 로컬 값을 덮어씌웁니다.
         jsonData.profile = localRaw;
@@ -358,7 +377,7 @@ export const storage = {
   getAllTimeStats() {
     // Total Quests
     const questsRaw = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const questsData = questsRaw ? JSON.parse(questsRaw) : {};
+    const questsData = safeParse(questsRaw, {});
     let totalCompletedQuests = 0;
     
     Object.values(questsData).forEach(dayQuests => {
@@ -367,7 +386,7 @@ export const storage = {
 
     // Total Pomodoro
     const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
+    const pomoData = safeParse(pomoRaw, {});
     let totalPomodoroMins = 0;
     
     Object.values(pomoData).forEach(day => {
@@ -376,7 +395,7 @@ export const storage = {
     
     // Total Diary Entries
     const diaryRaw = localStorage.getItem(STORAGE_KEYS.DIARY);
-    const diaryData = diaryRaw ? JSON.parse(diaryRaw) : [];
+    const diaryData = safeParse(diaryRaw, []);
     const totalDiaryEntries = diaryData.length;
 
     // Active days (days with at least one quest completed or pomodoro or diary)
@@ -396,10 +415,10 @@ export const storage = {
 
   getWeeklyGraphData(weeks = 8) {
     const rawQuests = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const questsData = rawQuests ? JSON.parse(rawQuests) : {};
+    const questsData = safeParse(rawQuests, {});
     
     const rawPomo = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const pomoData = rawPomo ? JSON.parse(rawPomo) : {};
+    const pomoData = safeParse(rawPomo, {});
     
     const now = new Date();
     const result = [];
@@ -460,36 +479,40 @@ export const storage = {
   // --- RPG Gamification ---
   getUserProfile() {
     const raw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-    if (!raw) {
+    if (!raw || raw === '[object Object]') {
        // 최초 진입 시 혹시 과거 기록이 있으면 모두 모아서 계산
        this.recalculateTotalXP();
     }
     const updatedRaw = localStorage.getItem(STORAGE_KEYS.USER_PROFILE);
-    return updatedRaw ? JSON.parse(updatedRaw) : { totalXP: 0 };
+    return safeParse(updatedRaw, { totalXP: 0 });
   },
 
   recalculateTotalXP() {
     // 저장된 모든 퀘스트와 뽀모도로를 긁어모아 정확한 XP를 재계산합니다. (오류 복구용)
-    const { totalCompletedQuests, totalPomodoroMins, mainQuestsCompleted, subQuestsCompleted } = this.getAllTimeStats();
+    const { totalCompletedQuests, totalPomodoroMins } = this.getAllTimeStats();
     // 메인=10, 서브=5 지만, stats에서 구분이 어려우면 일괄 재계산
     
     const questsRaw = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const questsData = questsRaw ? JSON.parse(questsRaw) : {};
+    const questsData = safeParse(questsRaw, {});
     let calculatedXP = 0;
     
     Object.values(questsData).forEach(dayQuests => {
-      dayQuests.forEach(q => {
-        if (q.isCompleted) {
-          calculatedXP += (q.type === 'sub' ? 5 : 10);
-        }
-      });
+      if (Array.isArray(dayQuests)) {
+        dayQuests.forEach(q => {
+          if (q.isCompleted) {
+            calculatedXP += (q.type === 'sub' ? 5 : 10);
+          }
+        });
+      }
     });
 
     const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
+    const pomoData = safeParse(pomoRaw, {});
     Object.values(pomoData).forEach(day => {
       // 뽀모도로 1회(25분) 당 25 XP
-      calculatedXP += (day.count * 25);
+      if (day && typeof day.count === 'number') {
+        calculatedXP += (day.count * 25);
+      }
     });
 
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify({ totalXP: calculatedXP }));
