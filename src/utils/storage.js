@@ -429,7 +429,8 @@ export const storage = {
     const result = [];
     
     for (let w = weeks - 1; w >= 0; w--) {
-      let questsCount = 0;
+      let mainQuestsCount = 0;
+      let subQuestsCount = 0;
       let pomoMins = 0;
       
       const startDay = new Date(currentMonday);
@@ -446,7 +447,8 @@ export const storage = {
          
          if (questsData[dateStr]) {
            if(Array.isArray(questsData[dateStr])) {
-             questsCount += questsData[dateStr].filter(q => q.isCompleted).length;
+             mainQuestsCount += questsData[dateStr].filter(q => q.isCompleted && q.type !== 'sub').length;
+             subQuestsCount += questsData[dateStr].filter(q => q.isCompleted && q.type === 'sub').length;
            }
          }
          if (pomoData[dateStr]) {
@@ -456,7 +458,8 @@ export const storage = {
       
       result.push({
         name: label,
-        quests: questsCount,
+        mainQuests: mainQuestsCount,
+        subQuests: subQuestsCount,
         pomodoroMins: pomoMins
       });
     }
