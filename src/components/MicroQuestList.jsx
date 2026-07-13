@@ -52,7 +52,12 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
 
     // Add XP based on type
     const quest = updated.find(q => q.id === id);
-    const xpReward = quest && quest.type === 'sub' ? 5 : 10;
+    let xpReward = 5;
+    if (quest && quest.type !== 'sub') {
+      const mainQuests = updated.filter(q => q.type === 'main' || !q.type);
+      const idx = mainQuests.findIndex(q => q.id === id);
+      xpReward = (idx + 1) * 10;
+    }
     storage.addXP(xpReward);
     window.dispatchEvent(new CustomEvent('xp-updated'));
 
@@ -93,7 +98,12 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
     
     // Subtract XP only if it was completed
     if (quest.isCompleted) {
-      const xpReward = quest.type === 'sub' ? 5 : 10;
+      let xpReward = 5;
+      if (quest.type !== 'sub') {
+        const mainQuests = updated.filter(q => q.type === 'main' || !q.type);
+        const idx = mainQuests.findIndex(q => q.id === id);
+        xpReward = (idx + 1) * 10;
+      }
       storage.addXP(-xpReward);
       window.dispatchEvent(new CustomEvent('xp-updated'));
     }
@@ -155,11 +165,11 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
         <div>
           <h4 style={{ color: 'var(--accent-primary)', marginBottom: '0.75rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <img src={pigImg} alt="Pig" style={{ width: '24px', height: '24px', borderRadius: '50%', border: '2px solid var(--accent-primary)', objectFit: 'cover' }} /> 
-            메인 퀘스트 (필수)
+            메인 퀘스트 (단계별 난이도)
           </h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {quests.filter(q => q.type === 'main' || !q.type).map(q => (
-              <QuestCard key={q.id} q={q} onComplete={handleComplete} onSkip={handleSkipClick} onUndo={handleUndo} />
+            {quests.filter(q => q.type === 'main' || !q.type).map((q, idx) => (
+              <QuestCard key={q.id} q={q} xpReward={(idx + 1) * 10} onComplete={handleComplete} onSkip={handleSkipClick} onUndo={handleUndo} />
             ))}
           </div>
         </div>
@@ -172,7 +182,7 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
           </h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {quests.filter(q => q.type === 'sub').map(q => (
-              <QuestCard key={q.id} q={q} onComplete={handleComplete} onSkip={handleSkipClick} onUndo={handleUndo} isSub />
+              <QuestCard key={q.id} q={q} xpReward={5} onComplete={handleComplete} onSkip={handleSkipClick} onUndo={handleUndo} isSub />
             ))}
           </div>
         </div>
@@ -232,7 +242,7 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
   );
 }
 
-function QuestCard({ q, onComplete, onSkip, onUndo, isSub }) {
+function QuestCard({ q, xpReward, onComplete, onSkip, onUndo, isSub }) {
   const accentColor = isSub ? 'var(--accent-secondary)' : 'var(--accent-primary)';
   const bgCompleted = isSub ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)';
   
@@ -249,7 +259,7 @@ function QuestCard({ q, onComplete, onSkip, onUndo, isSub }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1, paddingRight: '1rem' }}>
           <h3 style={{ fontSize: '1.05rem', marginBottom: '0.25rem', textDecoration: q.isCompleted ? 'line-through' : 'none', color: 'var(--text-primary)' }}>
-            {q.title} <span style={{ fontSize: '0.75rem', color: accentColor, fontWeight: 'normal', marginLeft: '0.25rem' }}>({isSub ? '+5' : '+10'} XP)</span>
+            {q.title} <span style={{ fontSize: '0.75rem', color: accentColor, fontWeight: 'normal', marginLeft: '0.25rem' }}>(+{xpReward} XP)</span>
           </h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{q.description}</p>
           {q.skippedReason && (

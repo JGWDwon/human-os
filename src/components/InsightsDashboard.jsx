@@ -118,8 +118,7 @@ export default function InsightsDashboard({ onClose }) {
                 itemStyle={{ fontWeight: 'bold' }}
               />
               <Legend wrapperStyle={{ paddingTop: '10px' }} />
-              <Bar yAxisId="left" dataKey="mainQuests" name="메인 퀘스트(회)" stackId="a" fill="var(--accent-primary)" radius={[0, 0, 0, 0]} maxBarSize={40} />
-              <Bar yAxisId="left" dataKey="subQuests" name="서브 퀘스트(회)" stackId="a" fill="var(--accent-secondary)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              <Bar yAxisId="left" dataKey="mainQuests" name="메인퀘스트 완료(회)" fill="var(--accent-primary)" radius={[4, 4, 0, 0]} maxBarSize={40} />
               <Line yAxisId="right" type="monotone" dataKey="pomodoroMins" name="집중 시간(분)" stroke="#ef4444" strokeWidth={3} dot={{ r: 4, fill: '#ef4444', strokeWidth: 2, stroke: '#1e293b' }} activeDot={{ r: 6 }} />
             </ComposedChart>
           </ResponsiveContainer>

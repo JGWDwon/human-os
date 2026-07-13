@@ -448,7 +448,7 @@ export const storage = {
          if (questsData[dateStr]) {
            if(Array.isArray(questsData[dateStr])) {
              mainQuestsCount += questsData[dateStr].filter(q => q.isCompleted && q.type !== 'sub').length;
-             subQuestsCount += questsData[dateStr].filter(q => q.isCompleted && q.type === 'sub').length;
+             // subquests are ignored
            }
          }
          if (pomoData[dateStr]) {
@@ -508,9 +508,15 @@ export const storage = {
     
     Object.values(questsData).forEach(dayQuests => {
       if (Array.isArray(dayQuests)) {
+        const mainQuests = dayQuests.filter(q => q.type === 'main' || !q.type);
         dayQuests.forEach(q => {
           if (q.isCompleted) {
-            calculatedXP += (q.type === 'sub' ? 5 : 10);
+            if (q.type === 'sub') {
+              calculatedXP += 5;
+            } else {
+              const idx = mainQuests.findIndex(mq => mq.id === q.id);
+              calculatedXP += (idx + 1) * 10;
+            }
           }
         });
       }
