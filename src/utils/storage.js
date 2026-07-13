@@ -421,26 +421,33 @@ export const storage = {
     const pomoData = safeParse(rawPomo, {});
     
     const now = new Date();
+    const currentDayOfWeek = now.getDay() || 7; // 1-7 (Mon-Sun)
+    const currentMonday = new Date(now);
+    currentMonday.setDate(now.getDate() - currentDayOfWeek + 1);
+    currentMonday.setHours(0, 0, 0, 0);
+
     const result = [];
     
     for (let w = weeks - 1; w >= 0; w--) {
       let questsCount = 0;
       let pomoMins = 0;
       
-      const endDay = new Date(now);
-      endDay.setDate(now.getDate() - w * 7);
-      const startDay = new Date(now);
-      startDay.setDate(now.getDate() - w * 7 - 6);
+      const startDay = new Date(currentMonday);
+      startDay.setDate(currentMonday.getDate() - w * 7);
+      const endDay = new Date(startDay);
+      endDay.setDate(startDay.getDate() + 6);
       
       const label = `${startDay.getMonth()+1}/${startDay.getDate()}~${endDay.getMonth()+1}/${endDay.getDate()}`;
       
-      for(let i=6; i>=0; i--) {
-         const d = new Date(now);
-         d.setDate(now.getDate() - w * 7 - i);
+      for(let i=0; i<7; i++) {
+         const d = new Date(startDay);
+         d.setDate(startDay.getDate() + i);
          const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
          
          if (questsData[dateStr]) {
-           questsCount += questsData[dateStr].filter(q => q.isCompleted).length;
+           if(Array.isArray(questsData[dateStr])) {
+             questsCount += questsData[dateStr].filter(q => q.isCompleted).length;
+           }
          }
          if (pomoData[dateStr]) {
            pomoMins += pomoData[dateStr].totalMinutes || 0;
