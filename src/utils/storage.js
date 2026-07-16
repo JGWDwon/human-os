@@ -571,10 +571,10 @@ export const storage = {
     }
     
     let title = '🥚 초보자';
-    if (level >= 10 && level < 30) title = '🗡️ 1차 전직: 수련 기사';
-    else if (level >= 30 && level < 70) title = '⚔️ 2차 전직: 정예 기사';
-    else if (level >= 70 && level < 120) title = '🛡️ 3차 전직: 성기사';
-    else if (level >= 120) title = '👑 4차 전직: 전설의 영웅';
+    if (level >= 10 && level < 30) title = '🗡️ 1차 전직: 세린이';
+    else if (level >= 30 && level < 70) title = '⚔️ 2차 전직: 세청년';
+    else if (level >= 70 && level < 120) title = '🛡️ 3차 전직: 회독돌이';
+    else if (level >= 120) title = '👑 4차 전직: 예비 세무사';
 
     const progressPercent = Math.min(100, Math.floor((xpIntoLevel / xpForNextLevel) * 100));
 
