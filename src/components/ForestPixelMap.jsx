@@ -57,8 +57,11 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     
     const mainQuests = dayData.quests ? dayData.quests.filter(q => q.type === 'main' || !q.type) : [];
     const completedCount = mainQuests.filter(q => q.isCompleted).length;
+    const pomoCount = dayData.pomoCount || 0;
+    const pomoLevel = pomoCount >= 5 ? 3 : pomoCount >= 3 ? 2 : pomoCount >= 1 ? 1 : 0;
+    const finalLevel = Math.max(completedCount, pomoLevel);
     
-    return `메인 퀘스트 ${completedCount}개 완료 (${completedCount === 1 ? '새싹 🌱' : completedCount === 2 ? '성장 🌿' : '울창 🌲'})`;
+    return `달성 단계: ${finalLevel}단계 (${finalLevel === 1 ? '새싹 🌱' : finalLevel === 2 ? '성장 🌿' : '울창 🌲'}) (메인퀘 ${completedCount}개, 뽀모도로 ${pomoCount}회)`;
   };
 
   const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
@@ -104,12 +107,15 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           {history.map((day) => {
             const mainQuests = day.quests ? day.quests.filter(q => q.type === 'main' || !q.type) : [];
             const completedCount = mainQuests.filter(q => q.isCompleted).length;
+            const pomoCount = day.pomoCount || 0;
+            const pomoLevel = pomoCount >= 5 ? 3 : pomoCount >= 3 ? 2 : pomoCount >= 1 ? 1 : 0;
+            const finalLevel = Math.max(completedCount, pomoLevel);
             
             let emoji = '';
             if (day.status === 'hibernation') emoji = '💤';
-            else if (completedCount === 1) emoji = '🌱';
-            else if (completedCount === 2) emoji = '🌿';
-            else if (completedCount >= 3) emoji = '🌲';
+            else if (finalLevel === 1) emoji = '🌱';
+            else if (finalLevel === 2) emoji = '🌿';
+            else if (finalLevel >= 3) emoji = '🌲';
 
             return (
               <div 

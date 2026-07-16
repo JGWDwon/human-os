@@ -125,26 +125,27 @@ export const storage = {
     const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
     const data = safeParse(rawData, {});
     
+    const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
+    const pomoData = safeParse(pomoRaw, {});
+    
     const history = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
       
-      const dayQuests = data[dateStr];
-      if (!dayQuests) {
-        history.push({ date: dateStr, status: 'none' });
-        continue;
-      }
-      
+      const dayQuests = data[dateStr] || [];
       const mainQuests = dayQuests.filter(q => q.type === 'main' || !q.type);
-      const total = mainQuests.length;
       const completed = mainQuests.filter(q => q.isCompleted).length;
       const skipped = mainQuests.filter(q => q.skippedReason).length;
       
-      if (completed === total && total > 0) {
+      const pomo = pomoData[dateStr] || { count: 0 };
+      const pomoLevel = pomo.count >= 5 ? 3 : pomo.count >= 3 ? 2 : pomo.count >= 1 ? 1 : 0;
+      const finalLevel = Math.max(completed, pomoLevel);
+      
+      if (finalLevel >= 3) {
         history.push({ date: dateStr, status: 'completed' });
-      } else if (completed > 0) {
+      } else if (finalLevel > 0) {
         history.push({ date: dateStr, status: 'partial' });
       } else if (skipped > 0) {
         history.push({ date: dateStr, status: 'hibernation' });
@@ -160,6 +161,9 @@ export const storage = {
     const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
     const data = safeParse(rawData, {});
     
+    const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
+    const pomoData = safeParse(pomoRaw, {});
+    
     // month is 0-indexed (0 = Jan, 11 = Dec)
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const history = [];
@@ -170,25 +174,23 @@ export const storage = {
       // Adjust for local timezone offset to get correct YYYY-MM-DD
       const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       
-      const dayQuests = data[dateStr];
-      if (!dayQuests) {
-        history.push({ date: dateStr, day, status: 'none' });
-        continue;
-      }
-      
+      const dayQuests = data[dateStr] || [];
       const mainQuests = dayQuests.filter(q => q.type === 'main' || !q.type);
-      const total = mainQuests.length;
       const completed = mainQuests.filter(q => q.isCompleted).length;
       const skipped = mainQuests.filter(q => q.skippedReason).length;
       
-      if (completed === total && total > 0) {
-        history.push({ date: dateStr, day, status: 'completed', quests: dayQuests });
-      } else if (completed > 0) {
-        history.push({ date: dateStr, day, status: 'partial', quests: dayQuests });
+      const pomo = pomoData[dateStr] || { count: 0 };
+      const pomoLevel = pomo.count >= 5 ? 3 : pomo.count >= 3 ? 2 : pomo.count >= 1 ? 1 : 0;
+      const finalLevel = Math.max(completed, pomoLevel);
+      
+      if (finalLevel >= 3) {
+        history.push({ date: dateStr, day, status: 'completed', quests: dayQuests, pomoCount: pomo.count });
+      } else if (finalLevel > 0) {
+        history.push({ date: dateStr, day, status: 'partial', quests: dayQuests, pomoCount: pomo.count });
       } else if (skipped > 0) {
-        history.push({ date: dateStr, day, status: 'hibernation', quests: dayQuests });
+        history.push({ date: dateStr, day, status: 'hibernation', quests: dayQuests, pomoCount: pomo.count });
       } else {
-        history.push({ date: dateStr, day, status: 'none', quests: dayQuests });
+        history.push({ date: dateStr, day, status: 'none', quests: dayQuests, pomoCount: pomo.count });
       }
     }
     
