@@ -549,17 +549,21 @@ export const storage = {
 
   getLevelInfo(totalXP) {
     let level = 1;
-    let xpForNextLevel = 50; 
     let accumulatedXP = 0;
     let xpIntoLevel = totalXP;
+    let xpForNextLevel = 0;
     
     while (true) {
-      // New Curve (Linear): level * 15 + 170
-      // Target: ~127,400 XP to reach Lv 120 (1 year of 5-day quests + daily 12 pomodoros)
-      // Lv 1->2 = 185 XP
-      // Lv 60->61 = 1070 XP
-      // Lv 119->120 = 1955 XP
-      let requiredForNext = (level * 15) + 170;
+      // RPG Curve: Fast early game, slow late game.
+      // Total XP for Level L = 7.5 * L^2.05
+      // Lv 10 (1차 전직) needs ~840 XP (can be reached in 3-4 days)
+      // Lv 30 (2차 전직) needs ~7,950 XP (can be reached in ~3 weeks)
+      // Lv 70 (3차 전직) needs ~45,345 XP (can be reached in ~4.5 months)
+      // Lv 120 (4차 전직) needs ~135,982 XP (can be reached in ~1 year)
+      let currentTotal = Math.floor(7.5 * Math.pow(level, 2.05));
+      let nextTotal = Math.floor(7.5 * Math.pow(level + 1, 2.05));
+      let requiredForNext = nextTotal - currentTotal;
+      
       if (xpIntoLevel >= requiredForNext) {
         xpIntoLevel -= requiredForNext;
         accumulatedXP += requiredForNext;
