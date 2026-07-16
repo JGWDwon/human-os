@@ -554,11 +554,12 @@ export const storage = {
     let xpIntoLevel = totalXP;
     
     while (true) {
-      // New Curve: (level^2)*20 + level*30
-      // Lv 1->2 = 50 XP
-      // Lv 2->3 = 140 XP
-      // Lv 3->4 = 270 XP
-      let requiredForNext = (level * level * 20) + (level * 30);
+      // New Curve (Linear): level * 15 + 170
+      // Target: ~127,400 XP to reach Lv 120 (1 year of 5-day quests + daily 12 pomodoros)
+      // Lv 1->2 = 185 XP
+      // Lv 60->61 = 1070 XP
+      // Lv 119->120 = 1955 XP
+      let requiredForNext = (level * 15) + 170;
       if (xpIntoLevel >= requiredForNext) {
         xpIntoLevel -= requiredForNext;
         accumulatedXP += requiredForNext;
