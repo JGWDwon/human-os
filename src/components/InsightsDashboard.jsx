@@ -116,10 +116,19 @@ export default function InsightsDashboard({ onClose }) {
               <Tooltip 
                 contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
                 itemStyle={{ fontWeight: 'bold' }}
+                formatter={(value, name) => {
+                  if (name === '집중 시간') {
+                    const h = Math.floor(value / 60);
+                    const m = value % 60;
+                    const display = h > 0 ? `${h}시간 ${m > 0 ? m + '분' : ''}` : `${m}분`;
+                    return [display, name];
+                  }
+                  return [value + '회', name];
+                }}
               />
               <Legend wrapperStyle={{ paddingTop: '10px' }} />
-              <Bar yAxisId="left" dataKey="mainQuests" name="메인퀘스트 완료(회)" fill="var(--accent-primary)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-              <Line yAxisId="right" type="monotone" dataKey="pomodoroMins" name="집중 시간(분)" stroke="#ef4444" strokeWidth={3} dot={{ r: 4, fill: '#ef4444', strokeWidth: 2, stroke: '#1e293b' }} activeDot={{ r: 6 }} />
+              <Bar yAxisId="left" dataKey="mainQuests" name="메인퀘스트 완료" fill="var(--accent-primary)" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              <Line yAxisId="right" type="monotone" dataKey="pomodoroMins" name="집중 시간" stroke="#ef4444" strokeWidth={3} dot={{ r: 4, fill: '#ef4444', strokeWidth: 2, stroke: '#1e293b' }} activeDot={{ r: 6 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
