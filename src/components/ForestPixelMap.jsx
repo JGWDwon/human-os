@@ -107,15 +107,13 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           {history.map((day) => {
             const mainQuests = day.quests ? day.quests.filter(q => q.type === 'main' || !q.type) : [];
             const completedCount = mainQuests.filter(q => q.isCompleted).length;
-            const pomoCount = day.pomoCount || 0;
-            const pomoLevel = pomoCount >= 5 ? 3 : pomoCount >= 3 ? 2 : pomoCount >= 1 ? 1 : 0;
-            const finalLevel = Math.max(completedCount, pomoLevel);
             
+            // Emoji is ONLY based on main quest completion count
             let emoji = '';
             if (day.status === 'hibernation') emoji = '💤';
-            else if (finalLevel === 1) emoji = '🌱';
-            else if (finalLevel === 2) emoji = '🌿';
-            else if (finalLevel >= 3) emoji = '🌲';
+            else if (completedCount === 1) emoji = '🌱'; // 새싹
+            else if (completedCount === 2) emoji = '🌿'; // 풍
+            else if (completedCount >= 3) emoji = '🌲'; // 나무
 
             return (
               <div 
