@@ -107,7 +107,12 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           {history.map((day) => {
             const mainQuests = day.quests ? day.quests.filter(q => q.type === 'main' || !q.type) : [];
             const completedCount = mainQuests.filter(q => q.isCompleted).length;
-            
+            const pomoCount = day.pomoCount || 0;
+            const totalMins = pomoCount * 25;
+            const h = Math.floor(totalMins / 60);
+            const m = totalMins % 60;
+            const timeLabel = totalMins === 0 ? '' : h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}m`;
+
             // Emoji is ONLY based on main quest completion count
             let emoji = '';
             if (day.status === 'hibernation') emoji = '💤';
@@ -131,12 +136,13 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '4px 6px',
-                  position: 'relative'
+                  padding: '3px 4px',
+                  position: 'relative',
+                  overflow: 'hidden'
                 }}
                 onClick={() => onDateSelect && onDateSelect(day.date)}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'scale(1.1) translateY(-2px)';
+                  e.currentTarget.style.transform = 'scale(1.15) translateY(-2px)';
                   e.currentTarget.style.zIndex = 10;
                 }}
                 onMouseLeave={(e) => {
@@ -144,27 +150,33 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
                   e.currentTarget.style.zIndex = 1;
                 }}
               >
+                {/* Date number top-left */}
                 <span style={{ 
-                  fontSize: '0.65rem', 
+                  fontSize: '0.6rem', 
                   fontWeight: 600, 
                   alignSelf: 'flex-start',
+                  lineHeight: 1,
                   color: day.status === 'none' ? 'var(--text-muted)' : 'rgba(255,255,255,0.7)',
                   opacity: day.status === 'none' ? 0.4 : 1
                 }}>
                   {day.day}
                 </span>
                 
-                {emoji ? (
-                  <span style={{ 
-                    fontSize: '1rem',
-                    lineHeight: 1,
-                    marginBottom: '2px'
-                  }}>
-                    {emoji}
-                  </span>
-                ) : (
-                  <div style={{ height: '1rem' }} />
-                )}
+                {/* Center emoji */}
+                <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>
+                  {emoji || ' '}
+                </span>
+
+                {/* Study time bottom */}
+                <span style={{
+                  fontSize: '0.55rem',
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  color: day.status === 'none' ? 'transparent' : 'rgba(255,255,255,0.85)',
+                  letterSpacing: '-0.02em'
+                }}>
+                  {timeLabel || ' '}
+                </span>
               </div>
             );
           })}
