@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Timer, Plus, CalendarDays } from 'lucide-react';
+import { Timer, Plus, CalendarDays, Trash2, Clock } from 'lucide-react';
 import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 
 export default function PomodoroTracker({ selectedDate }) {
   const [todayData, setTodayData] = useState({ count: 0, totalMinutes: 0 });
   const [weeklyData, setWeeklyData] = useState({ weeklyCount: 0, weeklyMinutes: 0, weekData: [] });
+  const [customTime, setCustomTime] = useState('');
 
   useEffect(() => {
     refreshData();
@@ -14,6 +15,20 @@ export default function PomodoroTracker({ selectedDate }) {
   const refreshData = () => {
     setTodayData(storage.getPomodoroByDate(selectedDate));
     setWeeklyData(storage.getWeeklyPomodoroStats());
+  };
+
+  const handleDelete = (index) => {
+    storage.removePomodoro(selectedDate, index);
+    refreshData();
+    window.dispatchEvent(new CustomEvent('xp-updated'));
+  };
+
+  const handleAddCustom = () => {
+    if (!customTime) return;
+    storage.addCustomPomodoro(selectedDate, customTime);
+    refreshData();
+    window.dispatchEvent(new CustomEvent('xp-updated'));
+    setCustomTime('');
   };
 
   const handleAddPomodoro = () => {
@@ -122,6 +137,53 @@ export default function PomodoroTracker({ selectedDate }) {
           <Plus size={20} />
           25분 추가하기
         </button>
+
+        {/* Timeline List */}
+        <div style={{ width: '100%', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.2rem' }}>
+            <Clock size={14} /> 오늘의 상세 기록
+          </div>
+          <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingRight: '0.5rem' }}>
+            {todayData.timestamps && todayData.timestamps.length > 0 ? todayData.timestamps.map((ts, idx) => {
+              const dateObj = new Date(ts);
+              const timeString = dateObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+              return (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.5rem 1rem', borderRadius: '4px' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{timeString}</span>
+                  <button 
+                    onClick={() => handleDelete(idx)}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                    title="기록 삭제"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              );
+            }) : (
+              <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', padding: '1rem 0' }}>
+                아직 기록이 없습니다.
+              </div>
+            )}
+          </div>
+          
+          {/* Manual Add UI */}
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+            <input 
+              type="time" 
+              value={customTime}
+              onChange={(e) => setCustomTime(e.target.value)}
+              style={{ flex: 1, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', borderRadius: '4px', padding: '0.5rem' }}
+            />
+            <button 
+              onClick={handleAddCustom}
+              style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '0 1rem', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              추가
+            </button>
+          </div>
+        </div>
       </div>
 
       <div style={{ marginTop: '0.5rem' }}>
