@@ -144,18 +144,26 @@ export default function PomodoroTracker({ selectedDate }) {
     const minutesCompleted = Math.round(timerState.duration / 60);
 
     // Send Browser Notification
-    if (Notification.permission === 'granted') {
-      const title = '집중 완료! 🍅';
-      const body = `${minutesCompleted}분 동안의 모험을 마쳤습니다. 집중 시간이 기록되었습니다!`;
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const title = '성장의 숲 🍅';
+      const body = `🎉 ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`;
+      
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(registration => {
-          registration.showNotification(title, { body, icon: mushroomImg });
-        }).catch(err => {
-          console.error("Service worker notification error:", err);
-          new Notification(title, { body, icon: mushroomImg });
+          registration.showNotification(title, { 
+            body, 
+            icon: mushroomImg,
+            vibrate: [200, 100, 200, 100, 400],
+            requireInteraction: true
+          }).catch(err => {
+            console.error("Service worker notification error:", err);
+            try { new Notification(title, { body, icon: mushroomImg }); } catch(e) {}
+          });
+        }).catch(() => {
+          try { new Notification(title, { body, icon: mushroomImg }); } catch(e) {}
         });
       } else {
-        new Notification(title, { body, icon: mushroomImg });
+        try { new Notification(title, { body, icon: mushroomImg }); } catch(e) {}
       }
     }
 
@@ -177,12 +185,20 @@ export default function PomodoroTracker({ selectedDate }) {
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
-
-    alert(`🎉 ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`);
   };
 
-  const startTimer = () => {
+  const startTimer = async () => {
     playSound('click');
+    
+    if ('Notification' in window && Notification.permission === 'default') {
+      try {
+        const perm = await Notification.requestPermission();
+        setNotifPermission(perm);
+      } catch (e) {
+        console.log('Notification permission request failed:', e);
+      }
+    }
+
     const targetDuration = timerState.timeLeft;
     const endTime = Date.now() + (targetDuration * 1000);
 
