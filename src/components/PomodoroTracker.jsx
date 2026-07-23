@@ -3,7 +3,7 @@ import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check 
 import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 
-export default function PomodoroTracker({ selectedDate }) {
+export default function PomodoroTracker({ selectedDate, onUpdate }) {
   // Manual input states
   const [todayData, setTodayData] = useState({ count: 0, totalMinutes: 0, timestamps: [] });
   const [weeklyData, setWeeklyData] = useState({ weeklyCount: 0, weeklyMinutes: 0, weekData: [] });
@@ -178,6 +178,7 @@ export default function PomodoroTracker({ selectedDate }) {
     storage.addCustomPomodoroWithMinutes(selectedDate, timeStr, minutesCompleted);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
+    if (onUpdate) onUpdate();
 
     // Reset back to selected study time (No breaks)
     const nextDuration = (customDuration ? parseInt(customDuration, 10) : selectedDuration) * 60;
@@ -247,6 +248,7 @@ export default function PomodoroTracker({ selectedDate }) {
     storage.addCustomPomodoroWithMinutes(selectedDate, timeStr, minutesCompleted);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
+    if (onUpdate) onUpdate();
 
     // Reset back to selected study time
     const nextDuration = (customDuration ? parseInt(customDuration, 10) : selectedDuration) * 60;
@@ -296,6 +298,7 @@ export default function PomodoroTracker({ selectedDate }) {
     storage.addCustomPomodoro(selectedDate, customTime, mins);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
+    if (onUpdate) onUpdate();
     setCustomTime('');
     setCustomMinutes('25');
     playSound('click');
@@ -485,6 +488,7 @@ export default function PomodoroTracker({ selectedDate }) {
                       storage.removePomodoro(selectedDate, idx);
                       refreshData();
                       window.dispatchEvent(new CustomEvent('xp-updated'));
+                      if (onUpdate) onUpdate();
                       playSound('click');
                     }}
                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '1px' }}

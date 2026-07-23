@@ -277,6 +277,10 @@ function App() {
                       if (rawData) {
                         const data = JSON.parse(rawData);
                         if (data[selectedDate]) {
+                          const minsToSubtract = data[selectedDate].totalMinutes || 0;
+                          if (minsToSubtract > 0) {
+                            storage.addXP(-minsToSubtract);
+                          }
                           delete data[selectedDate];
                           localStorage.setItem('human_os_pomodoro_v1', JSON.stringify(data));
                           window.dispatchEvent(new CustomEvent('cloud-sync-needed'));
@@ -325,7 +329,7 @@ function App() {
           
           {/* Left Column: Action Board (Timer & Quests) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1 }}>
-            <PomodoroTracker selectedDate={selectedDate} />
+            <PomodoroTracker selectedDate={selectedDate} onUpdate={triggerRefresh} />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <MicroQuestList selectedDate={selectedDate} onQuestUpdate={triggerRefresh} />
             </div>
