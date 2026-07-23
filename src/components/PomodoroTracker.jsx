@@ -1,18 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Timer, Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell } from 'lucide-react';
 import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 
 export default function PomodoroTracker({ selectedDate }) {
-  // Mode tabs: 'timer' or 'manual'
-  const [activeTab, setActiveTab] = useState('timer');
-
-  // Manual input states
+  // States
   const [todayData, setTodayData] = useState({ count: 0, totalMinutes: 0, timestamps: [] });
   const [weeklyData, setWeeklyData] = useState({ weeklyCount: 0, weeklyMinutes: 0, weekData: [] });
   const [customTime, setCustomTime] = useState('');
-
-  // Timer Configuration States
   const [selectedDuration, setSelectedDuration] = useState(25); // minutes
   const [customDuration, setCustomDuration] = useState('');
 
@@ -21,7 +16,6 @@ export default function PomodoroTracker({ selectedDate }) {
     const saved = localStorage.getItem('human_os_timer_state_v1');
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Remove any leftover 'break' mode state to clean up old configs
       if (parsed.mode === 'break') {
         parsed.mode = 'focus';
         parsed.duration = 1500;
@@ -261,196 +255,153 @@ export default function PomodoroTracker({ selectedDate }) {
   const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
 
   return (
-    <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', borderTop: '3px solid #ef4444', padding: '1rem', justifyContent: 'space-between' }}>
+    <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', borderTop: '3px solid #ef4444', padding: '0.85rem', justifyContent: 'space-between' }}>
       
-      {/* Title & Tabs (Sleek minimalist header) */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '1rem', color: 'var(--text-primary)', fontWeight: '700' }}>
-          <img src={mushroomImg} alt="Mushroom" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #ef4444' }} />
-          뽀모도로 공부 사냥터
+      {/* Title & Stats Summary (Sleek minimalist header) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: '700' }}>
+          <img src={mushroomImg} alt="Mushroom" style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #ef4444' }} />
+          공부 사냥터
         </h2>
         
-        {/* Sleek Toggle Tabs */}
-        <div style={{ display: 'flex', background: 'rgba(0,0,0,0.25)', padding: '2px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <button 
-            onClick={() => setActiveTab('timer')}
-            style={{ border: 'none', background: activeTab === 'timer' ? '#ef4444' : 'transparent', color: activeTab === 'timer' ? 'white' : 'var(--text-muted)', fontSize: '0.75rem', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.15s' }}
-          >
-            ⏱️ 타이머
-          </button>
-          <button 
-            onClick={() => setActiveTab('manual')}
-            style={{ border: 'none', background: activeTab === 'manual' ? '#ef4444' : 'transparent', color: activeTab === 'manual' ? 'white' : 'var(--text-muted)', fontSize: '0.75rem', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', transition: 'all 0.15s' }}
-          >
-            ✍️ 수동 기록
-          </button>
-        </div>
-      </div>
-
-      {/* Main Core Display */}
-      {activeTab === 'timer' ? (
-        // --- TIMER INTERFACE ---
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(239, 68, 68, 0.01)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.08)' }}>
-          
-          {/* Background Notification Prompter */}
+        {/* Right Header Controls (Notif Bell + Today Total) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {notifPermission !== 'granted' && (
             <button 
               onClick={requestNotificationPermission}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', width: '100%', padding: '0.35rem', border: '1px dashed rgba(239,68,68,0.4)', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.05)', color: '#ef4444', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }} 
+              title="백그라운드 알림 허용"
             >
-              <Bell size={12} /> 백그라운드 푸시 알림 허용하기
+              <Bell size={15} style={{ animation: 'bounce 2s infinite' }} />
             </button>
           )}
-
-          {/* Simple digital time and pulsing dot indicator */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0.2rem 0' }}>
-            <div style={{ fontSize: '3.6rem', fontWeight: '800', fontFamily: 'monospace', color: 'var(--text-primary)', lineHeight: 1.1, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-              {timerState.isRunning && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />}
-              {formatSecs(timerState.timeLeft)}
-            </div>
-          </div>
-
-          {/* Sleek Duration Presets Row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: (timerState.isRunning || timerState.isPaused) ? 0.3 : 1, transition: 'opacity 0.2s', background: 'rgba(0,0,0,0.15)', padding: '0.35rem 0.6rem', borderRadius: '6px' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>집중 시간:</span>
-            <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-              {[25, 50].map(mins => (
-                <button 
-                  key={mins}
-                  disabled={timerState.isRunning || timerState.isPaused}
-                  onClick={() => { setSelectedDuration(mins); setCustomDuration(''); applyDuration(mins); }}
-                  style={{ border: 'none', background: (selectedDuration === mins && !customDuration) ? '#ef4444' : 'rgba(255,255,255,0.05)', color: 'white', fontSize: '0.7rem', padding: '0.2rem 0.4rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                >
-                  {mins}분
-                </button>
-              ))}
-              <input 
-                type="number"
-                disabled={timerState.isRunning || timerState.isPaused}
-                placeholder="직접"
-                value={customDuration}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  setCustomDuration(e.target.value);
-                  if (val > 0) applyDuration(val);
-                }}
-                style={{ width: '40px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', fontSize: '0.7rem', padding: '0.15rem 0.3rem', borderRadius: '4px', textAlign: 'center' }}
-              />
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
-            {!timerState.isRunning ? (
-              <button 
-                onClick={startTimer}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', background: '#ef4444', border: 'none', color: 'white', padding: '0.5rem 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 2px 8px rgba(239, 68, 68, 0.2)' }}
-              >
-                <Play size={14} /> 시작
-              </button>
-            ) : (
-              <button 
-                onClick={pauseTimer}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', background: '#eab308', border: 'none', color: 'white', padding: '0.5rem 0', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.85rem', cursor: 'pointer' }}
-              >
-                <Pause size={14} /> 일시정지
-              </button>
-            )}
-            <button 
-              onClick={resetTimer}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '42px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', borderRadius: '6px', cursor: 'pointer' }}
-              title="리셋"
-            >
-              <RotateCcw size={14} />
-            </button>
-          </div>
-
+          <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', background: 'rgba(239, 68, 68, 0.1)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+            오늘: {formatTime(todayData.totalMinutes)} (🍅 {todayData.count})
+          </span>
         </div>
-      ) : (
-        // --- MANUAL INTERFACE ---
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', background: 'rgba(239, 68, 68, 0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
-              {selectedDate === new Date().toISOString().split('T')[0] ? '오늘' : '선택일'} 수동 공부 시간
-            </div>
-            <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ef4444', lineHeight: 1.1 }}>
-              {formatTime(todayData.totalMinutes)}
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-              🍅 {todayData.count} 뽀모도로 완료
-            </div>
-          </div>
+      </div>
 
+      {/* Unified Timer Panel */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.15)', padding: '0.75rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
+        
+        {/* Digital Clock Display */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0.1rem 0' }}>
+          <div style={{ fontSize: '3.2rem', fontWeight: '800', fontFamily: 'monospace', color: 'var(--text-primary)', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+            {timerState.isRunning && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />}
+            {formatSecs(timerState.timeLeft)}
+          </div>
+        </div>
+
+        {/* Preset & Custom Setting Row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: (timerState.isRunning || timerState.isPaused) ? 0.3 : 1, transition: 'opacity 0.2s' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>집중 시간:</span>
+          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+            {[25, 50].map(mins => (
+              <button 
+                key={mins}
+                disabled={timerState.isRunning || timerState.isPaused}
+                onClick={() => { setSelectedDuration(mins); setCustomDuration(''); applyDuration(mins); }}
+                style={{ border: 'none', background: (selectedDuration === mins && !customDuration) ? '#ef4444' : 'rgba(255,255,255,0.05)', color: 'white', fontSize: '0.65rem', padding: '0.15rem 0.35rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                {mins}분
+              </button>
+            ))}
+            <input 
+              type="number"
+              disabled={timerState.isRunning || timerState.isPaused}
+              placeholder="직접"
+              value={customDuration}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                setCustomDuration(e.target.value);
+                if (val > 0) applyDuration(val);
+              }}
+              style={{ width: '38px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', fontSize: '0.65rem', padding: '0.1rem 0.2rem', borderRadius: '4px', textAlign: 'center' }}
+            />
+          </div>
+        </div>
+
+        {/* Timer Control Buttons */}
+        <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.2rem' }}>
+          {!timerState.isRunning ? (
+            <button 
+              onClick={startTimer}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: '#ef4444', border: 'none', color: 'white', padding: '0.4rem 0', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}
+            >
+              <Play size={12} /> 시작
+            </button>
+          ) : (
+            <button 
+              onClick={pauseTimer}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: '#eab308', border: 'none', color: 'white', padding: '0.4rem 0', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}
+            >
+              <Pause size={12} /> 일시정지
+            </button>
+          )}
           <button 
-            onClick={handleAddPomodoro}
-            style={{ 
-              backgroundColor: '#ef4444', 
-              color: 'white', 
-              border: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.3rem',
-              padding: '0.5rem 1rem',
-              borderRadius: '1.5rem',
-              fontSize: '0.85rem',
-              fontWeight: 'bold',
-              width: '100%',
-              maxWidth: '150px',
-              cursor: 'pointer'
-            }}
+            onClick={resetTimer}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', borderRadius: '4px', cursor: 'pointer' }}
+            title="리셋"
           >
-            <Plus size={16} />
-            25분 추가하기
+            <RotateCcw size={12} />
           </button>
         </div>
-      )}
+
+      </div>
 
       {/* Bottom Timeline and Statistics */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.6rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
         
         {/* Timeline Log List */}
-        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}>
-            <Clock size={12} /> {selectedDate === new Date().toISOString().split('T')[0] ? '오늘' : '선택일'} 상세 기록 타임라인
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.2rem', fontWeight: 'bold' }}>
+            <Clock size={11} /> {selectedDate === new Date().toISOString().split('T')[0] ? '오늘' : '선택일'} 상세 공부 타임라인
           </div>
           
-          <div style={{ maxHeight: '90px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.2rem' }}>
+          <div style={{ maxHeight: '75px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingRight: '0.15rem' }}>
             {todayData.timestamps && todayData.timestamps.length > 0 ? todayData.timestamps.map((ts, idx) => {
               const dateObj = new Date(ts);
               const timeString = dateObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
               return (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.3rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.02)' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>{timeString} (완료)</span>
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.01)' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-primary)' }}>{timeString} (완료)</span>
                   <button 
                     onClick={() => handleDelete(idx)}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '1px' }}
                     onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
                     onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
                     title="삭제"
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={11} />
                   </button>
                 </div>
               );
             }) : (
-              <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
+              <div style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', padding: '0.4rem 0' }}>
                 기록이 없습니다.
               </div>
             )}
           </div>
           
-          {/* Custom Time Add Form */}
-          <div style={{ display: 'flex', gap: '0.3rem' }}>
+          {/* Unified Compact Manual Add Controls */}
+          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', marginTop: '0.1rem' }}>
+            <button 
+              onClick={handleAddPomodoro}
+              style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '4px', padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer', fontWeight: 'bold' }}
+              title="사후 25분 즉시 추가"
+            >
+              +25분 수동추가
+            </button>
+            <div style={{ flex: 1 }} />
             <input 
               type="time" 
               value={customTime}
               onChange={(e) => setCustomTime(e.target.value)}
-              style={{ flex: 1, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', color: 'white', borderRadius: '4px', padding: '0.3rem', fontSize: '0.75rem' }}
+              style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', color: 'white', borderRadius: '4px', padding: '0.2rem', fontSize: '0.68rem', width: '70px' }}
             />
             <button 
               onClick={handleAddCustom}
-              style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '0 0.6rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }}
+              style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.45rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.68rem' }}
             >
               추가
             </button>
@@ -458,34 +409,34 @@ export default function PomodoroTracker({ selectedDate }) {
         </div>
 
         {/* Weekly Bar Chart */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.4rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
               <CalendarDays size={10} /> 이번 주 주간 통계
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-primary)' }}>
               총 <span style={{ fontWeight: 'bold', color: '#ef4444' }}>{formatTime(weeklyData.weeklyMinutes)}</span>
             </div>
           </div>
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '50px', background: 'rgba(0,0,0,0.2)', padding: '0.35rem', borderRadius: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '42px', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '6px' }}>
             {weeklyData.weekData.map((day, idx) => {
               const maxMinutes = Math.max(...weeklyData.weekData.map(d => d.totalMinutes), 120); 
               const heightPct = Math.min((day.totalMinutes / maxMinutes) * 100, 100);
               
               return (
-                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.15rem', flex: 1 }}>
-                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', height: '10px' }}>{day.count > 0 ? `${day.count}` : ''}</div>
+                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.1rem', flex: 1 }}>
+                  <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', height: '8px' }}>{day.count > 0 ? `${day.count}` : ''}</div>
                   <div style={{ 
                     width: '100%', 
-                    maxWidth: '12px', 
+                    maxWidth: '10px', 
                     height: `${heightPct}%`, 
-                    minHeight: day.totalMinutes > 0 ? '3px' : '0',
-                    background: day.date === new Date().toISOString().split('T')[0] ? '#ef4444' : 'rgba(239, 68, 68, 0.3)',
-                    borderRadius: '1.5px 1.5px 0 0',
+                    minHeight: day.totalMinutes > 0 ? '2px' : '0',
+                    background: day.date === new Date().toISOString().split('T')[0] ? '#ef4444' : 'rgba(239, 68, 68, 0.35)',
+                    borderRadius: '1px 1px 0 0',
                     transition: 'height 0.3s ease'
                   }} />
-                  <div style={{ fontSize: '0.65rem', color: day.date === new Date().toISOString().split('T')[0] ? 'var(--text-primary)' : 'var(--text-muted)', scale: '0.9' }}>
+                  <div style={{ fontSize: '0.62rem', color: day.date === new Date().toISOString().split('T')[0] ? 'var(--text-primary)' : 'var(--text-muted)', scale: '0.85' }}>
                     {dayNames[idx]}
                   </div>
                 </div>
