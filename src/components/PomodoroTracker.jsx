@@ -147,23 +147,24 @@ export default function PomodoroTracker({ selectedDate }) {
     if ('Notification' in window && Notification.permission === 'granted') {
       const title = '성장의 숲 🍅';
       const body = `🎉 ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`;
+      const iconUrl = new URL(mushroomImg, window.location.href).href;
       
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(registration => {
           registration.showNotification(title, { 
             body, 
-            icon: mushroomImg,
+            icon: iconUrl,
             vibrate: [200, 100, 200, 100, 400],
             requireInteraction: true
           }).catch(err => {
             console.error("Service worker notification error:", err);
-            try { new Notification(title, { body, icon: mushroomImg }); } catch(e) {}
+            try { new Notification(title, { body, icon: iconUrl }); } catch(e) {}
           });
         }).catch(() => {
-          try { new Notification(title, { body, icon: mushroomImg }); } catch(e) {}
+          try { new Notification(title, { body, icon: iconUrl }); } catch(e) {}
         });
       } else {
-        try { new Notification(title, { body, icon: mushroomImg }); } catch(e) {}
+        try { new Notification(title, { body, icon: iconUrl }); } catch(e) {}
       }
     }
 
@@ -296,6 +297,35 @@ export default function PomodoroTracker({ selectedDate }) {
     playSound('click');
   };
 
+  const testNotification = () => {
+    playSound('click');
+    if ('Notification' in window && Notification.permission === 'granted') {
+      alert("3초 뒤에 테스트 알림이 울립니다. 앱을 내리고 대기해보세요!");
+      setTimeout(() => {
+        const title = '성장의 숲 🍅';
+        const body = '알림 테스트입니다! 팝업이 성공적으로 내려왔습니다.';
+        const iconUrl = new URL(mushroomImg, window.location.href).href;
+        
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification(title, { 
+              body, 
+              icon: iconUrl,
+              vibrate: [200, 100, 200],
+              requireInteraction: true 
+            }).catch(e => {
+              new Notification(title, { body, icon: iconUrl });
+            });
+          });
+        } else {
+          new Notification(title, { body, icon: iconUrl });
+        }
+      }, 3000);
+    } else {
+      alert("먼저 타이머 시작 버튼을 눌러 알림 권한을 허용해주세요!");
+    }
+  };
+
   const formatSecs = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -319,6 +349,12 @@ export default function PomodoroTracker({ selectedDate }) {
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: '700' }}>
           <img src={mushroomImg} alt="Mushroom" style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #ef4444' }} />
           공부 사냥터
+          <button 
+            onClick={testNotification}
+            style={{ fontSize: '0.6rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '0.15rem 0.3rem', cursor: 'pointer', marginLeft: '0.2rem' }}
+          >
+            테스트
+          </button>
         </h2>
         
         {/* Right Header Controls (Notif Bell + Today Total) */}
