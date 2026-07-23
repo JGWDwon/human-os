@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check } from 'lucide-react';
 import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 
@@ -223,6 +223,39 @@ export default function PomodoroTracker({ selectedDate }) {
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
   };
 
+  const handleEarlyComplete = () => {
+    playSound('click');
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    
+    // Calculate elapsed minutes
+    const elapsedSeconds = timerState.duration - timerState.timeLeft;
+    const minutesCompleted = Math.floor(elapsedSeconds / 60);
+
+    if (minutesCompleted <= 0) {
+      alert("1분 이상 진행된 후 완료할 수 있습니다.");
+      return;
+    }
+
+    // Auto log study record
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
+    storage.addCustomPomodoroWithMinutes(selectedDate, timeStr, minutesCompleted);
+    refreshData();
+    window.dispatchEvent(new CustomEvent('xp-updated'));
+
+    // Reset back to selected study time
+    const nextDuration = (customDuration ? parseInt(customDuration, 10) : selectedDuration) * 60;
+    const nextState = {
+      isRunning: false,
+      isPaused: false,
+      endTime: 0,
+      duration: nextDuration,
+      timeLeft: nextDuration
+    };
+    setTimerState(nextState);
+    localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
+  };
+
   const resetTimer = () => {
     playSound('click');
     const targetMins = customDuration ? parseInt(customDuration, 10) : selectedDuration;
@@ -362,6 +395,17 @@ export default function PomodoroTracker({ selectedDate }) {
               <Pause size={12} /> 일시정지
             </button>
           )}
+
+          {(timerState.duration > timerState.timeLeft) && (
+            <button
+              onClick={handleEarlyComplete}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: '#10b981', border: 'none', color: 'white', padding: '0.4rem 0', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}
+              title="지금까지의 시간 기록"
+            >
+              <Check size={12} /> 완료
+            </button>
+          )}
+
           <button 
             onClick={resetTimer}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', borderRadius: '4px', cursor: 'pointer' }}
