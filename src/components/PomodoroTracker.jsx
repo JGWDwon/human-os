@@ -151,14 +151,18 @@ export default function PomodoroTracker({ selectedDate }) {
       
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready.then(registration => {
-          registration.showNotification(title, { 
-            body, 
-            icon: iconUrl,
-            vibrate: [200, 100, 200, 100, 400],
-            requireInteraction: true
-          }).catch(err => {
-            console.error("Service worker notification error:", err);
-            try { new Notification(title, { body, icon: iconUrl }); } catch(e) {}
+          registration.getNotifications().then(notifications => {
+            notifications.forEach(n => n.close());
+            registration.showNotification(title, { 
+              body, 
+              icon: iconUrl,
+              vibrate: [200, 100, 200, 100, 400],
+              requireInteraction: true,
+              tag: 'pomodoro-' + Date.now()
+            }).catch(err => {
+              console.error("Service worker notification error:", err);
+              try { new Notification(title, { body, icon: iconUrl }); } catch(e) {}
+            });
           });
         }).catch(() => {
           try { new Notification(title, { body, icon: iconUrl }); } catch(e) {}
@@ -308,13 +312,17 @@ export default function PomodoroTracker({ selectedDate }) {
         
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.ready.then(registration => {
-            registration.showNotification(title, { 
-              body, 
-              icon: iconUrl,
-              vibrate: [200, 100, 200],
-              requireInteraction: true 
-            }).catch(e => {
-              new Notification(title, { body, icon: iconUrl });
+            registration.getNotifications().then(notifications => {
+              notifications.forEach(n => n.close());
+              registration.showNotification(title, { 
+                body, 
+                icon: iconUrl,
+                vibrate: [200, 100, 200],
+                requireInteraction: true,
+                tag: 'test-' + Date.now()
+              }).catch(e => {
+                new Notification(title, { body, icon: iconUrl });
+              });
             });
           });
         } else {
