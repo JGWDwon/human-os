@@ -287,7 +287,7 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
     
     // Deduct XP
-    this.addXP(-countToRemove * 25);
+    this.addXP(-minutes);
     
     this._dispatchSync();
     return data[dateStr];
@@ -322,7 +322,7 @@ export const storage = {
     });
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
-    this.addXP(countToAdd * 25);
+    this.addXP(minutes);
     this._dispatchSync();
     
     return data[dateStr];
@@ -589,9 +589,15 @@ export const storage = {
     const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const pomoData = safeParse(pomoRaw, {});
     Object.values(pomoData).forEach(day => {
-      // 뽀모도로 1회(25분) 당 25 XP
-      if (day && typeof day.count === 'number') {
-        calculatedXP += (day.count * 25);
+      if (day) {
+        if (day.timestamps && day.timestamps.length > 0) {
+          day.timestamps.forEach(ts => {
+            const minutes = typeof ts === 'string' ? 25 : (ts.minutes || 25);
+            calculatedXP += minutes;
+          });
+        } else if (typeof day.count === 'number') {
+          calculatedXP += (day.count * 25);
+        }
       }
     });
 

@@ -113,7 +113,7 @@ export default function PomodoroTracker({ selectedDate }) {
         const gainNode = audioCtx.createGain();
         oscillator.type = wave;
         oscillator.frequency.setValueAtTime(freq, time);
-        gainNode.gain.setValueAtTime(0.06, time);
+        gainNode.gain.setValueAtTime(0.15, time); // Louder volume (0.15)
         gainNode.gain.exponentialRampToValueAtTime(0.001, time + duration);
         oscillator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
@@ -122,9 +122,13 @@ export default function PomodoroTracker({ selectedDate }) {
       };
 
       if (type === 'complete') {
-        playBeep(523.25, audioCtx.currentTime, 0.15, 'triangle');
-        playBeep(659.25, audioCtx.currentTime + 0.15, 0.15, 'triangle');
-        playBeep(783.99, audioCtx.currentTime + 0.3, 0.4, 'sine');
+        // Melodic 6-note quest complete jingle (approx 2.4s)
+        playBeep(659.25, audioCtx.currentTime, 0.25, 'triangle');
+        playBeep(783.99, audioCtx.currentTime + 0.25, 0.25, 'triangle');
+        playBeep(659.25, audioCtx.currentTime + 0.5, 0.25, 'triangle');
+        playBeep(523.25, audioCtx.currentTime + 0.75, 0.35, 'sine');
+        playBeep(587.33, audioCtx.currentTime + 1.1, 0.25, 'sine');
+        playBeep(783.99, audioCtx.currentTime + 1.35, 0.8, 'sine');
       } else if (type === 'click') {
         playBeep(900, audioCtx.currentTime, 0.05, 'sine');
       }
