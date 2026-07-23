@@ -4,10 +4,11 @@ import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 
 export default function PomodoroTracker({ selectedDate }) {
-  // States
+  // Manual input states
   const [todayData, setTodayData] = useState({ count: 0, totalMinutes: 0, timestamps: [] });
   const [weeklyData, setWeeklyData] = useState({ weeklyCount: 0, weeklyMinutes: 0, weekData: [] });
   const [customTime, setCustomTime] = useState('');
+  const [customMinutes, setCustomMinutes] = useState('25');
   const [selectedDuration, setSelectedDuration] = useState(25); // minutes
   const [customDuration, setCustomDuration] = useState('');
 
@@ -88,10 +89,18 @@ export default function PomodoroTracker({ selectedDate }) {
       const permission = await Notification.requestPermission();
       setNotifPermission(permission);
       if (permission === 'granted') {
-        new Notification('알림 활성화 완료! 🍅', {
-          body: '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.',
-          icon: mushroomImg
-        });
+        const title = '알림 활성화 완료! 🍅';
+        const body = '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.';
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification(title, { body, icon: mushroomImg });
+          }).catch(err => {
+            console.error("Service worker notification error:", err);
+            new Notification(title, { body, icon: mushroomImg });
+          });
+        } else {
+          new Notification(title, { body, icon: mushroomImg });
+        }
       }
     }
   };
@@ -132,10 +141,18 @@ export default function PomodoroTracker({ selectedDate }) {
 
     // Send Browser Notification
     if (Notification.permission === 'granted') {
-      new Notification('집중 완료! 🍅', {
-        body: `${minutesCompleted}분 동안의 모험을 마쳤습니다. 집중 시간이 기록되었습니다!`,
-        icon: mushroomImg
-      });
+      const title = '집중 완료! 🍅';
+      const body = `${minutesCompleted}분 동안의 모험을 마쳤습니다. 집중 시간이 기록되었습니다!`;
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.showNotification(title, { body, icon: mushroomImg });
+        }).catch(err => {
+          console.error("Service worker notification error:", err);
+          new Notification(title, { body, icon: mushroomImg });
+        });
+      } else {
+        new Notification(title, { body, icon: mushroomImg });
+      }
     }
 
     // Auto log study record
@@ -215,27 +232,14 @@ export default function PomodoroTracker({ selectedDate }) {
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
   };
 
-  // Manual Handlers
-  const handleAddPomodoro = () => {
-    storage.addPomodoroByDate(selectedDate);
-    refreshData();
-    window.dispatchEvent(new CustomEvent('xp-updated'));
-    playSound('click');
-  };
-
-  const handleDelete = (index) => {
-    storage.removePomodoro(selectedDate, index);
-    refreshData();
-    window.dispatchEvent(new CustomEvent('xp-updated'));
-    playSound('click');
-  };
-
   const handleAddCustom = () => {
     if (!customTime) return;
-    storage.addCustomPomodoro(selectedDate, customTime);
+    const mins = parseInt(customMinutes, 10) || 25;
+    storage.addCustomPomodoro(selectedDate, customTime, mins);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     setCustomTime('');
+    setCustomMinutes('25');
     playSound('click');
   };
 
@@ -358,15 +362,23 @@ export default function PomodoroTracker({ selectedDate }) {
             <Clock size={11} /> {selectedDate === new Date().toISOString().split('T')[0] ? '오늘' : '선택일'} 상세 공부 타임라인
           </div>
           
-          <div style={{ maxHeight: '75px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingRight: '0.15rem' }}>
+          <div style={{ maxHeight: '75px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.15rem' }}>
             {todayData.timestamps && todayData.timestamps.length > 0 ? todayData.timestamps.map((ts, idx) => {
-              const dateObj = new Date(ts);
+              const target = ts;
+              const timeVal = typeof target === 'string' ? target : (target.time || new Date().toISOString());
+              const minutesVal = typeof target === 'string' ? 25 : (target.minutes || 25);
+              const dateObj = new Date(timeVal);
               const timeString = dateObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
               return (
                 <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.01)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-primary)' }}>{timeString} (완료)</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-primary)' }}>{timeString} ({minutesVal}분 완료)</span>
                   <button 
-                    onClick={() => handleDelete(idx)}
+                    onClick={() => {
+                      storage.removePomodoro(selectedDate, idx);
+                      refreshData();
+                      window.dispatchEvent(new CustomEvent('xp-updated'));
+                      playSound('click');
+                    }}
                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '1px' }}
                     onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
                     onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
@@ -385,23 +397,24 @@ export default function PomodoroTracker({ selectedDate }) {
           
           {/* Unified Compact Manual Add Controls */}
           <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', marginTop: '0.1rem' }}>
-            <button 
-              onClick={handleAddPomodoro}
-              style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '4px', padding: '0.2rem 0.45rem', fontSize: '0.68rem', cursor: 'pointer', fontWeight: 'bold' }}
-              title="사후 25분 즉시 추가"
-            >
-              +25분 수동추가
-            </button>
-            <div style={{ flex: 1 }} />
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>누락 추가:</span>
             <input 
               type="time" 
               value={customTime}
               onChange={(e) => setCustomTime(e.target.value)}
               style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', color: 'white', borderRadius: '4px', padding: '0.2rem', fontSize: '0.68rem', width: '70px' }}
             />
+            <input 
+              type="number"
+              value={customMinutes}
+              onChange={(e) => setCustomMinutes(e.target.value)}
+              placeholder="분"
+              style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', color: 'white', borderRadius: '4px', padding: '0.2rem', fontSize: '0.68rem', width: '45px', textAlign: 'center' }}
+            />
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>분</span>
             <button 
               onClick={handleAddCustom}
-              style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.45rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.68rem' }}
+              style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.68rem' }}
             >
               추가
             </button>

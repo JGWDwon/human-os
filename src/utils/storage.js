@@ -260,7 +260,7 @@ export const storage = {
     
     data[dateStr].count += 1;
     data[dateStr].totalMinutes += 25; // 1 Pomodoro = 25 mins
-    data[dateStr].timestamps.push(new Date().toISOString());
+    data[dateStr].timestamps.push({ time: new Date().toISOString(), minutes: 25 });
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
     
@@ -276,20 +276,24 @@ export const storage = {
     const data = safeParse(rawData, {});
     if (!data[dateStr] || !data[dateStr].timestamps || data[dateStr].timestamps.length <= timestampIndex) return false;
     
+    const target = data[dateStr].timestamps[timestampIndex];
+    const minutes = typeof target === 'string' ? 25 : (target.minutes || 25);
+    const countToRemove = Math.max(1, Math.round(minutes / 25));
+
     data[dateStr].timestamps.splice(timestampIndex, 1);
-    data[dateStr].count = Math.max(0, data[dateStr].count - 1);
-    data[dateStr].totalMinutes = Math.max(0, data[dateStr].totalMinutes - 25);
+    data[dateStr].count = Math.max(0, data[dateStr].count - countToRemove);
+    data[dateStr].totalMinutes = Math.max(0, data[dateStr].totalMinutes - minutes);
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
     
     // Deduct XP
-    this.addXP(-25);
+    this.addXP(-countToRemove * 25);
     
     this._dispatchSync();
     return data[dateStr];
   },
 
-  addCustomPomodoro(dateStr, timeStr) {
+  addCustomPomodoro(dateStr, timeStr, minutes = 25) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
     
@@ -301,35 +305,6 @@ export const storage = {
     }
     
     // Create Date object assuming local time
-    const [hours, minutes] = timeStr.split(':');
-    const d = new Date(dateStr);
-    d.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-    
-    data[dateStr].count += 1;
-    data[dateStr].totalMinutes += 25;
-    data[dateStr].timestamps.push(d.toISOString());
-    
-    // Sort timestamps chronologically
-    data[dateStr].timestamps.sort((a, b) => new Date(a) - new Date(b));
-    
-    localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
-    this.addXP(25);
-    this._dispatchSync();
-    
-    return data[dateStr];
-  },
-
-  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes) {
-    const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
-    const data = safeParse(rawData, {});
-    
-    if (!data[dateStr]) {
-      data[dateStr] = { count: 0, totalMinutes: 0, timestamps: [] };
-    }
-    if (!data[dateStr].timestamps) {
-      data[dateStr].timestamps = [];
-    }
-    
     const [hours, minutesVal] = timeStr.split(':');
     const d = new Date(dateStr);
     d.setHours(parseInt(hours, 10), parseInt(minutesVal, 10), 0, 0);
@@ -337,16 +312,24 @@ export const storage = {
     const countToAdd = Math.max(1, Math.round(minutes / 25));
     data[dateStr].count += countToAdd;
     data[dateStr].totalMinutes += minutes;
-    data[dateStr].timestamps.push(d.toISOString());
+    data[dateStr].timestamps.push({ time: d.toISOString(), minutes: minutes });
     
-    data[dateStr].timestamps.sort((a, b) => new Date(a) - new Date(b));
+    // Sort timestamps chronologically
+    data[dateStr].timestamps.sort((a, b) => {
+      const timeA = typeof a === 'string' ? a : (a.time || '');
+      const timeB = typeof b === 'string' ? b : (b.time || '');
+      return new Date(timeA) - new Date(timeB);
+    });
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
-    
     this.addXP(countToAdd * 25);
     this._dispatchSync();
     
     return data[dateStr];
+  },
+
+  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes) {
+    return this.addCustomPomodoro(dateStr, timeStr, minutes);
   },
 
   getPomodoroTimeDistribution(days = 30) {
@@ -368,7 +351,8 @@ export const storage = {
        
        if (diffDays <= days && data[dateStr].timestamps) {
          data[dateStr].timestamps.forEach(ts => {
-           const hour = new Date(ts).getHours();
+           const timeStr = typeof ts === 'string' ? ts : (ts.time || new Date().toISOString());
+           const hour = new Date(timeStr).getHours();
            if (hour >= 0 && hour < 24) {
              distribution[hour].count += 1;
            }
