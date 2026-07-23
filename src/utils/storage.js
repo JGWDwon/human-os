@@ -3,7 +3,8 @@ const STORAGE_KEYS = {
   DIARY: 'human_os_diary_v1',
   SETTINGS: 'human_os_settings',
   POMODORO: 'human_os_pomodoro_v1',
-  USER_PROFILE: 'human_os_profile_v1'
+  USER_PROFILE: 'human_os_profile_v1',
+  LECTURES: 'human_os_lectures_v1'
 };
 
 function safeParse(str, fallback = {}) {
@@ -406,6 +407,7 @@ export const storage = {
       customQuests: localStorage.getItem('human-os-custom-quests'),
       pomodoro: localStorage.getItem(STORAGE_KEYS.POMODORO),
       diary: localStorage.getItem(STORAGE_KEYS.DIARY),
+      lectures: localStorage.getItem(STORAGE_KEYS.LECTURES),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
       version: '1.0'
@@ -426,6 +428,7 @@ export const storage = {
     if (jsonData.customQuests) localStorage.setItem('human-os-custom-quests', ensureString(jsonData.customQuests));
     if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, ensureString(jsonData.pomodoro));
     if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, ensureString(jsonData.diary));
+    if (jsonData.lectures) localStorage.setItem(STORAGE_KEYS.LECTURES, ensureString(jsonData.lectures));
     if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
@@ -666,5 +669,137 @@ export const storage = {
       xpNeededForLevel: xpForNextLevel,
       progressPercent
     };
+  },
+
+  // --- Phase 2: Ebbinghaus Lectures ---
+  getLectures() {
+    const raw = localStorage.getItem(STORAGE_KEYS.LECTURES);
+    return safeParse(raw, []);
+  },
+
+  addLecture(subject, title, dateStr) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    
+    const lectures = this.getLectures();
+    
+    // Ebbinghaus intervals: 1, 4, 7, 14, 30 days
+    const intervals = [1, 4, 7, 14, 30];
+    const baseDate = new Date(dateStr);
+    
+    const reviews = intervals.map(offset => {
+      const targetDate = new Date(baseDate);
+      targetDate.setDate(baseDate.getDate() + offset);
+      return {
+        id: `rev_${Date.now()}_${offset}`,
+        dayOffset: offset,
+        targetDate: new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0],
+        isCompleted: false,
+        completedAt: null
+      };
+    });
+
+    const newLecture = {
+      id: `lec_${Date.now()}`,
+      dateAdded: dateStr,
+      subject: subject || '기타',
+      title: title,
+      reviews: reviews
+    };
+
+    lectures.push(newLecture);
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    this._dispatchSync();
+    return newLecture;
+  },
+
+  deleteLecture(lectureId) {
+    let lectures = this.getLectures();
+    // Revert XP for any completed reviews
+    const target = lectures.find(l => l.id === lectureId);
+    if (target) {
+      let xpToRevert = 0;
+      target.reviews.forEach(r => {
+        if (r.isCompleted) xpToRevert += 15; // 15 XP per review
+      });
+      if (xpToRevert > 0) this.addXP(-xpToRevert);
+    }
+    lectures = lectures.filter(l => l.id !== lectureId);
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    this._dispatchSync();
+  },
+
+  completeReview(lectureId, reviewId) {
+    const lectures = this.getLectures();
+    let found = false;
+    
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId && !rev.isCompleted) {
+            rev.isCompleted = true;
+            rev.completedAt = new Date().toISOString();
+            found = true;
+          }
+        });
+      }
+    });
+
+    if (found) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this.addXP(15); // Reward 15 XP for a review
+      this._dispatchSync();
+    }
+    return lectures;
+  },
+
+  undoReview(lectureId, reviewId) {
+    const lectures = this.getLectures();
+    let found = false;
+    
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId && rev.isCompleted) {
+            rev.isCompleted = false;
+            rev.completedAt = null;
+            found = true;
+          }
+        });
+      }
+    });
+
+    if (found) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this.addXP(-15);
+      this._dispatchSync();
+    }
+    return lectures;
+  },
+
+  getReviewsForDate(dateStr) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const lectures = this.getLectures();
+    const todaysReviews = [];
+    
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (rev.targetDate === dateStr) {
+          todaysReviews.push({
+            lectureId: lec.id,
+            subject: lec.subject,
+            title: lec.title,
+            ...rev
+          });
+        }
+      });
+    });
+    
+    return todaysReviews;
   }
 };

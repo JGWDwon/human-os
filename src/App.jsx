@@ -6,6 +6,7 @@ import ForestPixelMap from './components/ForestPixelMap';
 import DiaryAndEmotion from './components/DiaryAndEmotion';
 import InsightsDashboard from './components/InsightsDashboard';
 import PhaseRoadmap from './components/PhaseRoadmap';
+import EbbinghausPlanner from './components/EbbinghausPlanner';
 import { storage } from './utils/storage';
 import { auth, loginWithGoogle, logout, syncDataToCloud, fetchCloudData } from './utils/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -14,7 +15,8 @@ import adventurerImg from './assets/adventurer.png';
 function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
-  const [showPhaseTwo, setShowPhaseTwo] = useState(false);
+  const [showRoadmap, setShowRoadmap] = useState(false);
+  const [currentPhase, setCurrentPhase] = useState(1);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [user, setUser] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -96,7 +98,7 @@ function App() {
               Human-OS <span style={{ color: 'var(--accent-primary)' }}>v1.0</span>
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-              Phase 1: 무기력증 탈출 모드
+              나의 성장 일지
             </p>
             <p style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', marginTop: '0.5rem', fontWeight: 600 }}>
               {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
@@ -135,15 +137,15 @@ function App() {
              )}
 
             <button 
-              onClick={() => { setShowPhaseTwo(true); setShowInsights(false); setShowSettings(false); }}
+              onClick={() => { setShowRoadmap(true); setShowInsights(false); setShowSettings(false); }}
               className="btn btn-secondary" 
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: showPhaseTwo ? 'var(--accent-primary)' : 'transparent', color: showPhaseTwo ? '#fff' : 'var(--text-secondary)', border: showPhaseTwo ? '1px solid var(--accent-primary)' : '1px dashed var(--accent-primary)' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: showRoadmap ? 'var(--accent-primary)' : 'transparent', color: showRoadmap ? '#fff' : 'var(--text-secondary)', border: showRoadmap ? '1px solid var(--accent-primary)' : '1px dashed var(--accent-primary)' }}
             >
               <Target size={18} />
               <span className="hide-on-mobile">전체 로드맵</span>
             </button>
             <button 
-              onClick={() => { setShowInsights(true); setShowSettings(false); setShowPhaseTwo(false); }}
+              onClick={() => { setShowInsights(true); setShowSettings(false); setShowRoadmap(false); }}
               className="btn btn-secondary" 
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: showInsights ? 'var(--accent-secondary)' : 'transparent', color: showInsights ? '#fff' : 'var(--text-secondary)' }}
             >
@@ -151,7 +153,7 @@ function App() {
               <span className="hide-on-mobile">성장 기록</span>
             </button>
             <button 
-              onClick={() => { setShowSettings(!showSettings); setShowInsights(false); setShowPhaseTwo(false); }}
+              onClick={() => { setShowSettings(!showSettings); setShowInsights(false); setShowRoadmap(false); }}
               className="btn btn-secondary" 
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
@@ -161,9 +163,29 @@ function App() {
           </div>
         </header>
 
+        {/* Phase Tabs */}
+        {!showRoadmap && !showInsights && !showSettings && (
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem' }}>
+            <button 
+              onClick={() => setCurrentPhase(1)}
+              className="btn btn-secondary"
+              style={{ flex: 1, padding: '0.75rem', background: currentPhase === 1 ? 'var(--accent-primary)' : 'rgba(0,0,0,0.3)', color: currentPhase === 1 ? '#fff' : 'var(--text-muted)', border: currentPhase === 1 ? 'none' : '1px solid var(--panel-border)' }}
+            >
+              Phase 1. 생존 모드 (타이머/일상)
+            </button>
+            <button 
+              onClick={() => setCurrentPhase(2)}
+              className="btn btn-secondary"
+              style={{ flex: 1, padding: '0.75rem', background: currentPhase === 2 ? '#8b5cf6' : 'rgba(0,0,0,0.3)', color: currentPhase === 2 ? '#fff' : 'var(--text-muted)', border: currentPhase === 2 ? 'none' : '1px solid var(--panel-border)' }}
+            >
+              Phase 2. 지식 축적 (에빙하우스)
+            </button>
+          </div>
+        )}
+
         {/* Content Area */}
-        {showPhaseTwo ? (
-          <PhaseRoadmap onClose={() => setShowPhaseTwo(false)} />
+        {showRoadmap ? (
+          <PhaseRoadmap onClose={() => setShowRoadmap(false)} />
         ) : showInsights ? (
           <InsightsDashboard onClose={() => setShowInsights(false)} />
         ) : showSettings ? (
@@ -324,6 +346,8 @@ function App() {
               </div>
             </div>
           </div>
+        ) : currentPhase === 2 ? (
+          <EbbinghausPlanner />
         ) : (
         <div className="hud-bottom-split">
           
