@@ -17,9 +17,8 @@ export default function EbbinghausPlanner() {
   const [newSubject, setNewSubject] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [selectedDateFilter, setSelectedDateFilter] = useState(
-    new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]
-  );
+  const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+  const [selectedDateFilter, setSelectedDateFilter] = useState(todayStr);
 
   const refreshData = () => {
     setLectures(storage.getLectures());
@@ -240,7 +239,7 @@ export default function EbbinghausPlanner() {
                       borderRadius: '6px',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
-                      opacity: (new Date(day.dateStr) < new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0] && !rev.isCompleted) ? 0.7 : 1
+                      opacity: (day.dateStr < todayStr && !rev.isCompleted) ? 0.7 : 1
                     }}
                     onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted)}
                   >
@@ -256,7 +255,7 @@ export default function EbbinghausPlanner() {
                         {rev.dayOffset}일차
                       </span>
                       {rev.isCompleted && <Check size={14} color="#10b981" />}
-                      {!rev.isCompleted && (new Date(day.dateStr) < new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0]) && (
+                      {!rev.isCompleted && (day.dateStr < todayStr) && (
                         <span style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>지연됨</span>
                       )}
                     </div>

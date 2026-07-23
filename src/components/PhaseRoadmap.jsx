@@ -1,21 +1,21 @@
-import { Target, Lock, X, ChevronRight, Star, Shield, Zap } from 'lucide-react';
+import { Target, Lock, X, ChevronRight, Star, Shield, Zap, CheckCircle } from 'lucide-react';
 
 export default function PhaseRoadmap({ onClose }) {
   const phases = [
     {
       level: 1,
       title: "무기력증 탈출",
-      status: "진행 중 (현재)",
+      status: "완료",
       desc: "완벽주의를 버리고 '최소 5번의 뽀모도로(약 2시간)'만 완성해도 승리하는 단계. 공부의 시동을 거는 것이 유일한 목표입니다.",
-      icon: <Star size={24} color="#10b981" />,
+      icon: <CheckCircle size={24} color="#10b981" />,
       color: "#10b981"
     },
     {
       level: 2,
-      title: "습관 정착과 1문제의 기적",
-      status: "잠금",
-      desc: "시동이 꺼지지 않게 유지하며, 하루 단 1문제라도 확실하게 '질적(오답노트/백지)'으로 소화하는 습관을 붙이는 단계입니다.",
-      icon: <Lock size={24} color="var(--text-muted)" />,
+      title: "습관 정착과 지식 축적 (에빙하우스)",
+      status: "진행 중 (현재)",
+      desc: "시동이 꺼지지 않게 유지하며, 에빙하우스 주간 플래너를 활용하여 오늘 배운 내용을 장기기억으로 굳히는 단계입니다.",
+      icon: <Star size={24} color="#3b82f6" />,
       color: "#3b82f6"
     },
     {
@@ -74,12 +74,12 @@ export default function PhaseRoadmap({ onClose }) {
           <div key={idx} style={{ 
             display: 'flex', gap: '1.5rem', alignItems: 'flex-start',
             background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: 'var(--radius-sm)',
-            borderLeft: `4px solid ${phase.level === 1 ? phase.color : 'rgba(255,255,255,0.1)'}`,
-            opacity: phase.level === 1 ? 1 : 0.6
+            borderLeft: `4px solid ${phase.level <= 2 ? phase.color : 'rgba(255,255,255,0.1)'}`,
+            opacity: phase.level <= 2 ? 1 : 0.6
           }}>
             <div style={{ 
               width: '48px', height: '48px', borderRadius: '50%', 
-              background: phase.level === 1 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)',
+              background: phase.level <= 2 ? `${phase.color}33` : 'rgba(255,255,255,0.05)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
             }}>
               {phase.icon}
@@ -87,10 +87,10 @@ export default function PhaseRoadmap({ onClose }) {
             
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', color: phase.level === 1 ? phase.color : 'var(--text-primary)' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', color: phase.level <= 2 ? phase.color : 'var(--text-primary)' }}>
                   Phase {phase.level}: {phase.title}
                 </h3>
-                <span style={{ fontSize: '0.8rem', padding: '0.2rem 0.6rem', background: phase.level === 1 ? phase.color : 'rgba(255,255,255,0.1)', color: phase.level === 1 ? '#fff' : 'var(--text-muted)', borderRadius: '12px', fontWeight: 'bold' }}>
+                <span style={{ fontSize: '0.8rem', padding: '0.2rem 0.6rem', background: phase.level <= 2 ? phase.color : 'rgba(255,255,255,0.1)', color: phase.level <= 2 ? '#fff' : 'var(--text-muted)', borderRadius: '12px', fontWeight: 'bold' }}>
                   {phase.status}
                 </span>
               </div>
@@ -104,7 +104,7 @@ export default function PhaseRoadmap({ onClose }) {
 
       <div style={{ marginTop: '2rem', textAlign: 'center' }}>
         <p style={{ color: 'var(--accent-primary)', fontSize: '0.95rem', fontWeight: 'bold' }}>
-          "현재는 오직 Phase 1, 무기력증을 깨는 것에만 100% 집중하세요!"
+          "드디어 Phase 2에 진입했습니다! 매일의 지식을 장기기억으로 축적하세요."
         </p>
       </div>
     </div>
