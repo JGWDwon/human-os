@@ -319,6 +319,36 @@ export const storage = {
     return data[dateStr];
   },
 
+  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes) {
+    const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
+    const data = safeParse(rawData, {});
+    
+    if (!data[dateStr]) {
+      data[dateStr] = { count: 0, totalMinutes: 0, timestamps: [] };
+    }
+    if (!data[dateStr].timestamps) {
+      data[dateStr].timestamps = [];
+    }
+    
+    const [hours, minutesVal] = timeStr.split(':');
+    const d = new Date(dateStr);
+    d.setHours(parseInt(hours, 10), parseInt(minutesVal, 10), 0, 0);
+    
+    const countToAdd = Math.max(1, Math.round(minutes / 25));
+    data[dateStr].count += countToAdd;
+    data[dateStr].totalMinutes += minutes;
+    data[dateStr].timestamps.push(d.toISOString());
+    
+    data[dateStr].timestamps.sort((a, b) => new Date(a) - new Date(b));
+    
+    localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
+    
+    this.addXP(countToAdd * 25);
+    this._dispatchSync();
+    
+    return data[dateStr];
+  },
+
   getPomodoroTimeDistribution(days = 30) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
