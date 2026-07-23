@@ -179,18 +179,26 @@ export const storage = {
       const completed = mainQuests.filter(q => q.isCompleted).length;
       const skipped = mainQuests.filter(q => q.skippedReason).length;
       
-      const pomo = pomoData[dateStr] || { count: 0 };
+      const pomo = pomoData[dateStr] || { count: 0, totalMinutes: 0 };
       const pomoLevel = pomo.count >= 5 ? 3 : pomo.count >= 3 ? 2 : pomo.count >= 1 ? 1 : 0;
       const finalLevel = Math.max(completed, pomoLevel);
       
+      const dayResult = {
+        date: dateStr, 
+        day, 
+        quests: dayQuests, 
+        pomoCount: pomo.count, 
+        totalMinutes: pomo.totalMinutes || 0
+      };
+
       if (finalLevel >= 3) {
-        history.push({ date: dateStr, day, status: 'completed', quests: dayQuests, pomoCount: pomo.count });
+        history.push({ ...dayResult, status: 'completed' });
       } else if (finalLevel > 0) {
-        history.push({ date: dateStr, day, status: 'partial', quests: dayQuests, pomoCount: pomo.count });
+        history.push({ ...dayResult, status: 'partial' });
       } else if (skipped > 0) {
-        history.push({ date: dateStr, day, status: 'hibernation', quests: dayQuests, pomoCount: pomo.count });
+        history.push({ ...dayResult, status: 'hibernation' });
       } else {
-        history.push({ date: dateStr, day, status: 'none', quests: dayQuests, pomoCount: pomo.count });
+        history.push({ ...dayResult, status: 'none' });
       }
     }
     

@@ -108,7 +108,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
             const mainQuests = day.quests ? day.quests.filter(q => q.type === 'main' || !q.type) : [];
             const completedCount = mainQuests.filter(q => q.isCompleted).length;
             const pomoCount = day.pomoCount || 0;
-            const totalMins = pomoCount * 25;
+            const totalMins = day.totalMinutes || 0;
             const h = Math.floor(totalMins / 60);
             const m = totalMins % 60;
             const timeLabel = totalMins === 0 ? '' : h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}m`;
