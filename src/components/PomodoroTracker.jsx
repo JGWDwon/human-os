@@ -82,6 +82,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && timerState.isRunning) {
         requestWakeLock();
+        
+        // Instant catch-up if timer expired while suspended in background
+        const remaining = Math.max(0, Math.round((timerState.endTime - Date.now()) / 1000));
+        if (remaining <= 0) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          handleTimerComplete();
+        }
       }
     };
     
