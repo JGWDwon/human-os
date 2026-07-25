@@ -287,7 +287,10 @@ export const storage = {
     
     const target = data[dateStr].timestamps[timestampIndex];
     const minutes = typeof target === 'string' ? 25 : (target.minutes || 25);
-    const countToRemove = Math.max(1, Math.round(minutes / 25));
+    let countToRemove = 0;
+    if (minutes >= 15) {
+      countToRemove = Math.max(1, Math.round(minutes / 25));
+    }
 
     data[dateStr].timestamps.splice(timestampIndex, 1);
     data[dateStr].count = Math.max(0, data[dateStr].count - countToRemove);
@@ -318,7 +321,10 @@ export const storage = {
     const d = new Date(dateStr);
     d.setHours(parseInt(hours, 10), parseInt(minutesVal, 10), 0, 0);
     
-    const countToAdd = Math.max(1, Math.round(minutes / 25));
+    let countToAdd = 0;
+    if (minutes >= 15) {
+      countToAdd = Math.max(1, Math.round(minutes / 25));
+    }
     data[dateStr].count += countToAdd;
     data[dateStr].totalMinutes += minutes;
     data[dateStr].timestamps.push({ time: d.toISOString(), minutes: minutes });

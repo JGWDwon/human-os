@@ -113,7 +113,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         const gainNode = audioCtx.createGain();
         oscillator.type = wave;
         oscillator.frequency.setValueAtTime(freq, time);
-        gainNode.gain.setValueAtTime(0.15, time); // Louder volume (0.15)
+        gainNode.gain.setValueAtTime(0.30, time); // 2x Louder volume
         gainNode.gain.exponentialRampToValueAtTime(0.001, time + duration);
         oscillator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
