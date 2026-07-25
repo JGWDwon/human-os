@@ -48,6 +48,61 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   );
 
   const intervalRef = useRef(null);
+  const wakeLockRef = useRef(null);
+  const bgAudioRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      bgAudioRef.current = new Audio(SILENT_WAV);
+      bgAudioRef.current.loop = true;
+    }
+  }, []);
+
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+      }
+    } catch (err) {
+      console.log('Wake Lock request failed', err);
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().then(() => {
+        wakeLockRef.current = null;
+      }).catch(() => {});
+    }
+  };
+
+  // Keep alive when running
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && timerState.isRunning) {
+        requestWakeLock();
+      }
+    };
+    
+    if (timerState.isRunning) {
+      requestWakeLock();
+      if (bgAudioRef.current) {
+        bgAudioRef.current.play().catch(() => {});
+      }
+    } else {
+      releaseWakeLock();
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause();
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [timerState.isRunning]);
 
   // Sync data on date change
   useEffect(() => {
