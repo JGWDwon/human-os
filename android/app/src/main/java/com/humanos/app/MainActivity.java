@@ -26,14 +26,15 @@ public class MainActivity extends BridgeActivity {
       NotificationManager notificationManager =
         (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
       if (notificationManager != null) {
-        // 기존 채널 삭제하여 안드로이드 설정 갱신 강제
+        // 기존 채널 삭제하여 새로 설정 적용
         try {
           notificationManager.deleteNotificationChannel("pomodoro-alerts");
+          notificationManager.deleteNotificationChannel("pomodoro-alarm-v2");
         } catch (Exception e) {}
 
-        String channelId = "pomodoro-alarm-v2";
-        CharSequence channelName = "Pomodoro Alarm (강제 알람)";
-        String channelDesc = "알람 완료 시 무음/방해금지 모드에서도 강제로 소리가 울리는 알림";
+        String channelId = "pomodoro-alarm-v3";
+        CharSequence channelName = "Pomodoro Alarm (무음 뚫는 강제 알람)";
+        String channelDesc = "알람 완료 시 무음/방해금지 모드에서도 강제로 슬라이드 팝업과 소리가 울리는 채널";
         int importance = NotificationManager.IMPORTANCE_HIGH;
 
         NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
@@ -42,14 +43,16 @@ public class MainActivity extends BridgeActivity {
         channel.setVibrationPattern(new long[]{0, 200, 100, 200, 100, 400});
         channel.setShowBadge(true);
         channel.setBypassDnd(true); // 방해금지 모드 우회
+        channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
 
-        // USAGE_ALARM 속성으로 무음 모드 강제 뚫기
+        // USAGE_ALARM + AUDIBILITY_ENFORCED 속성으로 무음 모드 강제 뚫기
         Uri soundUri = Uri.parse(
           "android.resource://" + getPackageName() + "/raw/bell2"
         );
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
           .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
           .setUsage(AudioAttributes.USAGE_ALARM)
+          .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
           .build();
         channel.setSound(soundUri, audioAttributes);
 
