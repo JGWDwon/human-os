@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check } from 'lucide-react';
 import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
+import bell2Sound from '../assets/bell2.mp3';
 
 let globalAudioCtx = null;
 
@@ -176,6 +177,18 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   };
 
   const playSound = (type = 'complete') => {
+    if (type === 'complete') {
+      try {
+        const audio = new Audio(bell2Sound);
+        audio.volume = 1.0;
+        audio.play().catch(e => console.log('Bell audio play failed:', e));
+      } catch (e) {
+        console.log('Bell audio unavailable:', e);
+      }
+      return;
+    }
+
+    // Click sound via Web Audio API
     try {
       if (!globalAudioCtx && typeof window !== 'undefined') {
         globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -191,7 +204,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         const gainNode = audioCtx.createGain();
         oscillator.type = wave;
         oscillator.frequency.setValueAtTime(freq, time);
-        gainNode.gain.setValueAtTime(0.30, time); // 2x Louder volume
+        gainNode.gain.setValueAtTime(0.30, time);
         gainNode.gain.exponentialRampToValueAtTime(0.001, time + duration);
         oscillator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
@@ -199,15 +212,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         oscillator.stop(time + duration);
       };
 
-      if (type === 'complete') {
-        // Melodic 6-note quest complete jingle (approx 2.4s)
-        playBeep(659.25, audioCtx.currentTime, 0.25, 'triangle');
-        playBeep(783.99, audioCtx.currentTime + 0.25, 0.25, 'triangle');
-        playBeep(659.25, audioCtx.currentTime + 0.5, 0.25, 'triangle');
-        playBeep(523.25, audioCtx.currentTime + 0.75, 0.35, 'sine');
-        playBeep(587.33, audioCtx.currentTime + 1.1, 0.25, 'sine');
-        playBeep(783.99, audioCtx.currentTime + 1.35, 0.8, 'sine');
-      } else if (type === 'click') {
+      if (type === 'click') {
         playBeep(900, audioCtx.currentTime, 0.05, 'sine');
       }
     } catch (e) {
