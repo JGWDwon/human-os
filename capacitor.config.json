@@ -4,5 +4,19 @@
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "SocialLogin": {
+      "google": {
+        "android": {
+          "serverClientId": "799105733830-0hdt6n4qgfb3gpdtqdf0tf5sngjjath5.apps.googleusercontent.com"
+        }
+      }
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon_config_sample",
+      "iconColor": "#CE0B7C",
+      "sound": "bell2.mp3"
+    }
   }
 }
