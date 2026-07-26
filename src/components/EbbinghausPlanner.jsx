@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BookOpen, Plus, Check, ChevronLeft, ChevronRight, Trash2, Calendar, BrainCircuit } from 'lucide-react';
+import { BookOpen, Plus, Check, ChevronLeft, ChevronRight, Trash2, Calendar, BrainCircuit, RotateCcw, Palmtree, ArrowRight } from 'lucide-react';
 import { storage } from '../utils/storage';
 import confetti from 'canvas-confetti';
 
@@ -68,7 +68,6 @@ export default function EbbinghausPlanner() {
       storage.undoReview(lectureId, reviewId);
     } else {
       storage.completeReview(lectureId, reviewId);
-      // Play satisfying ding (optional, skipping audio for now to keep it simple, just confetti)
       confetti({
         particleCount: 30,
         spread: 40,
@@ -80,6 +79,35 @@ export default function EbbinghausPlanner() {
     refreshData();
   };
 
+  const handlePostponeReview = (e, lectureId, reviewId) => {
+    e.stopPropagation(); // Prevent toggling completion status
+    storage.postponeReview(lectureId, reviewId, 1);
+    refreshData();
+  };
+
+  const handleMoveOverdueToToday = () => {
+    const count = storage.moveAllOverdueToToday();
+    if (count > 0) {
+      alert(`지연되었던 복습 ${count}개를 오늘 날짜로 모두 이동했습니다! 💪`);
+      refreshData();
+    } else {
+      alert("밀린 복습이 없습니다! 아주 훌륭합니다 🎉");
+    }
+  };
+
+  const handleVacationMode = () => {
+    const input = window.prompt("여행/휴가 기간을 며칠로 설정하시겠습니까?\n(예: 4일 동안 여행을 가신다면 4 입력)", "4");
+    if (!input) return;
+    const days = parseInt(input, 10);
+    if (isNaN(days) || days <= 0) {
+      alert("올바른 날짜(일수)를 입력해주세요.");
+      return;
+    }
+    const count = storage.shiftAllUpcomingReviews(days);
+    alert(`🌴 여행 모드 적용 완료!\n향후 남아있는 복습 일정 ${count}개가 ${days}일 뒤로 연기되었습니다. 즐거운 여행 되세요!`);
+    refreshData();
+  };
+
   const handleDeleteLecture = (lectureId) => {
     if (window.confirm("이 강의와 모든 복습 일정을 삭제하시겠습니까? (완료된 복습으로 얻은 XP도 회수됩니다)")) {
       storage.deleteLecture(lectureId);
@@ -87,6 +115,9 @@ export default function EbbinghausPlanner() {
       window.dispatchEvent(new CustomEvent('xp-updated'));
     }
   };
+
+  // Calculate overdue review count
+  const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && r.targetDate < todayStr).length;
 
   // Generate the 7 days of the current week
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
@@ -123,23 +154,47 @@ export default function EbbinghausPlanner() {
     <div className="glass-panel animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh', borderTop: '3px solid #8b5cf6' }}>
       
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
             <BrainCircuit size={24} color="#8b5cf6" />
             에빙하우스 망각곡선 플래너
           </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.4rem' }}>
             오늘 배운 지식을 1일, 4일, 7일, 14일, 30일차에 복습하여 장기기억으로 만드세요.
           </p>
         </div>
-        <button 
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="btn btn-primary"
-          style={{ background: '#8b5cf6', borderColor: '#7c3aed' }}
-        >
-          {showAddForm ? '취소' : <><Plus size={18} /> 오늘 수강한 강의 추가</>}
-        </button>
+
+        {/* Action Controls */}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {overdueCount > 0 && (
+            <button 
+              onClick={handleMoveOverdueToToday}
+              className="btn btn-secondary"
+              style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#f87171', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+              title="밀린 복습들을 오늘 일정으로 일괄 이동"
+            >
+              <RotateCcw size={14} /> 밀린 복습 오늘로 가져오기 ({overdueCount})
+            </button>
+          )}
+
+          <button 
+            onClick={handleVacationMode}
+            className="btn btn-secondary"
+            style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+            title="휴가/여행 기간 동안 모든 복습 일정 N일 연기"
+          >
+            <Palmtree size={14} /> 여행/휴가 모드 (일정 연기)
+          </button>
+
+          <button 
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="btn btn-primary"
+            style={{ background: '#8b5cf6', borderColor: '#7c3aed', fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}
+          >
+            {showAddForm ? '취소' : <><Plus size={16} /> 오늘 강의 추가</>}
+          </button>
+        </div>
       </div>
 
       {/* Add Form */}
@@ -254,10 +309,29 @@ export default function EbbinghausPlanner() {
                       }}>
                         {rev.dayOffset}일차
                       </span>
-                      {rev.isCompleted && <Check size={14} color="#10b981" />}
-                      {!rev.isCompleted && (day.dateStr < todayStr) && (
-                        <span style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>지연됨</span>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                        {!rev.isCompleted && (
+                          <button
+                            onClick={(e) => handlePostponeReview(e, rev.lectureId, rev.id)}
+                            style={{
+                              background: 'rgba(255,255,255,0.08)',
+                              border: '1px solid rgba(255,255,255,0.15)',
+                              color: '#cbd5e1',
+                              fontSize: '0.65rem',
+                              padding: '0.05rem 0.3rem',
+                              borderRadius: '3px',
+                              cursor: 'pointer'
+                            }}
+                            title="이 복습 1일 뒤로 미루기"
+                          >
+                            +1일
+                          </button>
+                        )}
+                        {rev.isCompleted && <Check size={14} color="#10b981" />}
+                        {!rev.isCompleted && (day.dateStr < todayStr) && (
+                          <span style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 'bold' }}>지연됨</span>
+                        )}
+                      </div>
                     </div>
                     
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.1rem' }}>

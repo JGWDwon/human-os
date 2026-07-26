@@ -810,5 +810,63 @@ export const storage = {
     });
     
     return todaysReviews;
+  },
+
+  postponeReview(lectureId, reviewId, days = 1) {
+    const lectures = this.getLectures();
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId) {
+            const current = new Date(rev.targetDate);
+            current.setDate(current.getDate() + days);
+            rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+          }
+        });
+      }
+    });
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    this._dispatchSync();
+  },
+
+  moveAllOverdueToToday() {
+    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const lectures = this.getLectures();
+    let count = 0;
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted && rev.targetDate < todayStr) {
+          rev.targetDate = todayStr;
+          count++;
+        }
+      });
+    });
+    if (count > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return count;
+  },
+
+  shiftAllUpcomingReviews(days) {
+    if (!days || days <= 0) return 0;
+    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const lectures = this.getLectures();
+    let count = 0;
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted && rev.targetDate >= todayStr) {
+          const current = new Date(rev.targetDate);
+          current.setDate(current.getDate() + days);
+          rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+          count++;
+        }
+      });
+    });
+    if (count > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return count;
   }
 };
