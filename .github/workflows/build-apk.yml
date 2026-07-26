@@ -33,11 +33,11 @@ jobs:
           mkdir -p android/app/src/main/res/raw
           cp src/assets/bell2.mp3 android/app/src/main/res/raw/bell2.mp3
 
-      - name: Setup Java 17
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
       - name: Fix gradlew permissions and line endings
         run: |
