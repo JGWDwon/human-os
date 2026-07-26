@@ -60,9 +60,22 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     };
   });
 
-  const [notifPermission, setNotifPermission] = useState(
-    (typeof window !== 'undefined' && 'Notification' in window) ? window.Notification.permission : 'default'
-  );
+  const [notifPermission, setNotifPermission] = useState('default');
+
+  // 플랫폼별 실제 알림 권한 상태 확인 (마운트 시)
+  useEffect(() => {
+    const checkNotifPermission = async () => {
+      try {
+        if (Capacitor.isNativePlatform()) {
+          const result = await LocalNotifications.checkPermissions();
+          setNotifPermission(result.display === 'granted' ? 'granted' : 'default');
+        } else if (typeof window !== 'undefined' && 'Notification' in window) {
+          setNotifPermission(window.Notification.permission);
+        }
+      } catch (e) {}
+    };
+    checkNotifPermission();
+  }, []);
 
   const intervalRef = useRef(null);
   const wakeLockRef = useRef(null);
@@ -177,23 +190,39 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   };
 
   const requestNotificationPermission = async () => {
-    if ('Notification' in window) {
-      const permission = await Notification.requestPermission();
-      setNotifPermission(permission);
-      if (permission === 'granted') {
-        const title = '알림 활성화 완료! 🍅';
-        const body = '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.';
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.ready.then(registration => {
-            registration.showNotification(title, { body, icon: mushroomImg });
-          }).catch(err => {
-            console.error("Service worker notification error:", err);
-            new Notification(title, { body, icon: mushroomImg });
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // 네이티브 앱: Capacitor LocalNotifications 권한 요청
+        const result = await LocalNotifications.requestPermissions();
+        const granted = result.display === 'granted';
+        setNotifPermission(granted ? 'granted' : 'denied');
+        if (granted) {
+          await LocalNotifications.schedule({
+            notifications: [{
+              id: 9999,
+              title: '알림 활성화 완료! 🍅',
+              body: '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.',
+              schedule: { at: new Date(Date.now() + 500) },
+              channelId: 'pomodoro-alerts'
+            }]
           });
         } else {
-          new Notification(title, { body, icon: mushroomImg });
+          alert('알림을 허용하려면:\n설정 > Human OS > 알림 에서 직접 활성화해주세요.');
+        }
+      } else if ('Notification' in window) {
+        // 웹 브라우저: 기존 Web Notification API
+        const permission = await Notification.requestPermission();
+        setNotifPermission(permission);
+        if (permission === 'granted') {
+          const title = '알림 활성화 완료! 🍅';
+          const body = '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.';
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(reg => reg.showNotification(title, { body })).catch(() => {});
+          }
         }
       }
+    } catch (e) {
+      console.error('Notification permission error:', e);
     }
   };
 
@@ -501,31 +530,57 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
 
 
-  const trigger5sTest = () => {
+  const trigger5sTest = async () => {
     playSound('click');
-    if ('Notification' in window && Notification.permission === 'granted') {
-      alert("확인 버튼을 누르고 5초 안에 화면을 잠그거나 홈 화면으로 나가보세요!");
-      
-      // Pre-load audio to be safe
+    
+    // 플랫폼별 권한 확인
+    let isGranted = false;
+    if (Capacitor.isNativePlatform()) {
       try {
-        if (!globalAudioCtx && typeof window !== 'undefined') {
-          globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
-          globalAudioCtx.resume();
-        }
-        loadBellSound(globalAudioCtx);
-      } catch(e) {}
+        const result = await LocalNotifications.checkPermissions();
+        isGranted = result.display === 'granted';
+      } catch (e) {}
+    } else {
+      isGranted = ('Notification' in window && Notification.permission === 'granted');
+    }
 
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'testNotification',
-          title: '성장의 숲 🍅',
-          body: '🎉 5초 백그라운드 테스트 알림이 정상 작동합니다!'
+    if (isGranted) {
+      if (Capacitor.isNativePlatform()) {
+        // 네이티브: 5초 후 LocalNotification 예약
+        alert('확인 버튼 누르고 5초 안에 화면을 잠그거나 홈으로 나가보세요!');
+        await LocalNotifications.schedule({
+          notifications: [{
+            id: 8888,
+            title: '성장의 숲 🍅',
+            body: '🎉 5초 백그라운드 테스트 알림이 정상 작동합니다!',
+            schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
+            channelId: 'pomodoro-alerts',
+            sound: 'bell2.mp3'
+          }]
         });
+      } else {
+        // 웹: Service Worker 메시지
+        alert('확인 버튼을 누르고 5초 안에 화면을 잠그거나 홈 화면으로 나가보세요!');
+        try {
+          if (!globalAudioCtx && typeof window !== 'undefined') {
+            globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (globalAudioCtx && globalAudioCtx.state === 'suspended') globalAudioCtx.resume();
+          loadBellSound(globalAudioCtx);
+        } catch(e) {}
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'testNotification',
+            title: '성장의 숲 🍅',
+            body: '🎉 5초 백그라운드 테스트 알림이 정상 작동합니다!'
+          });
+        }
       }
     } else {
-      alert("알림 권한을 먼저 허용해주세요!");
+      const msg = Capacitor.isNativePlatform()
+        ? '알림 권한이 없습니다.\n설정 > Human OS > 알림 에서 활성화해주세요!'
+        : '알림 권한을 먼저 허용해주세요!';
+      alert(msg);
     }
   };
 
