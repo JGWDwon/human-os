@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Download, Upload, Trophy, CheckCircle, Timer, BookOpen, AlertCircle, TrendingUp } from 'lucide-react';
 import { ComposedChart, BarChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { storage } from '../utils/storage';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 export default function InsightsDashboard({ onClose }) {
   const [stats, setStats] = useState(null);
@@ -33,21 +36,56 @@ export default function InsightsDashboard({ onClose }) {
     setHistoryTimeline(merged);
   }, []);
 
-  const handleExport = () => {
-    storage.triggerBackupDownload();
+  const handleExport = async () => {
+    const data = storage.getAllData();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const filename = `human-os-backup-${new Date().toISOString().split('T')[0]}.json`;
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        // 앱 캐시 디렉토리에 파일 저장 후 공유 시트로 내보내기
+        await Filesystem.writeFile({
+          path: filename,
+          data: jsonStr,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8
+        });
+        const { uri } = await Filesystem.getUri({
+          path: filename,
+          directory: Directory.Cache
+        });
+        await Share.share({
+          title: 'Human OS 백업 파일',
+          text: '내 Human OS 데이터 백업 파일입니다.',
+          url: uri,
+          dialogTitle: '백업 파일 저장 위치 선택'
+        });
+      } catch (e) {
+        alert('저장 실패: ' + e.message);
+      }
+    } else {
+      // 웹 브라우저 fallback
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   };
 
-  const handleImport = (e) => {
+  const handleImport = async (e) => {
+    // 웹: FileReader 방식 (input[type=file])
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target.result);
         if (json.version) {
           storage.importData(json);
-          alert('데이터 복구가 완료되었습니다! 페이지를 새로고침합니다.');
+          alert('데이터 복구가 완료되었습니다! 앱을 재시작합니다.');
           window.location.reload();
         } else {
           alert('유효하지 않은 백업 파일입니다.');
@@ -200,8 +238,8 @@ export default function InsightsDashboard({ onClose }) {
               <AlertCircle size={18} /> 안전한 데이터 백업
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-              모든 기록은 브라우저에만 저장됩니다. 
-              기록을 잃어버리지 않도록 가끔씩 파일로 저장해두세요.
+              모든 기록은 앱 내부에 자동 저장됩니다.<br/>
+              앱을 삭제하거나 기기를 바꿀 때를 대비해 가끔씩 파일로 백업해두세요.
             </p>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
