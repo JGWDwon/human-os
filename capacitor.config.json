@@ -1,0 +1,8 @@
+{
+  "appId": "com.humanos.app",
+  "appName": "Human OS",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

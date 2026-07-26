@@ -3,6 +3,8 @@ import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check 
 import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 let globalAudioCtx = null;
 let decodedBellBuffer = null;
@@ -255,6 +257,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const handleTimerComplete = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
+    
+    // Cancel native local notification
+    if (Capacitor.isNativePlatform()) {
+      try {
+        LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
+      } catch (e) {}
+    }
+
     playSound('complete');
 
     const minutesCompleted = Math.round(timerState.duration / 60);
@@ -336,6 +346,32 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
  
     const targetDuration = timerState.timeLeft;
     const endTime = Date.now() + (targetDuration * 1000);
+    const minutesLeft = Math.round(targetDuration / 60);
+
+    // Schedule native local notification
+    if (Capacitor.isNativePlatform()) {
+      try {
+        LocalNotifications.requestPermissions().then(result => {
+          if (result.display === 'granted') {
+            LocalNotifications.schedule({
+              notifications: [
+                {
+                  id: 1001,
+                  title: '성장의 숲 🍅',
+                  body: `🎉 ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+                  schedule: { at: new Date(endTime) },
+                  sound: 'bell2', // Falls back to system default if res/raw/bell2 is missing
+                  vibration: [200, 100, 200, 100, 400],
+                  actionTypeId: 'OPEN_APP'
+                }
+              ]
+            });
+          }
+        });
+      } catch (e) {
+        console.error('Failed to schedule native local notification:', e);
+      }
+    }
 
     const nextState = {
       ...timerState,
@@ -349,6 +385,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const pauseTimer = () => {
     playSound('click');
+    
+    // Cancel native local notification
+    if (Capacitor.isNativePlatform()) {
+      try {
+        LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
+      } catch (e) {}
+    }
+
     const nextState = {
       ...timerState,
       isRunning: false,
@@ -361,6 +405,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const handleEarlyComplete = () => {
     playSound('click');
     if (intervalRef.current) clearInterval(intervalRef.current);
+    
+    // Cancel native local notification
+    if (Capacitor.isNativePlatform()) {
+      try {
+        LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
+      } catch (e) {}
+    }
     
     // Calculate elapsed minutes
     const elapsedSeconds = timerState.duration - timerState.timeLeft;
