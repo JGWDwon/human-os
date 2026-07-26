@@ -61,7 +61,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   });
 
   const [notifPermission, setNotifPermission] = useState(
-    typeof window !== 'undefined' ? Notification.permission : 'default'
+    (typeof window !== 'undefined' && 'Notification' in window) ? window.Notification.permission : 'default'
   );
 
   const intervalRef = useRef(null);
