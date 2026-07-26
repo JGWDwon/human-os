@@ -190,7 +190,7 @@ export const storage = {
         date: dateStr, 
         day, 
         quests: dayQuests, 
-        pomoCount: pomo.count, 
+        pomoCount: validPomoCount2,
         totalMinutes: pomo.totalMinutes || 0
       };
 
@@ -399,10 +399,11 @@ export const storage = {
       d.setDate(monday.getDate() + i);
       const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       
-      const dayData = data[dateStr] || { count: 0, totalMinutes: 0 };
-      weeklyCount += dayData.count;
+      const dayData = data[dateStr] || { count: 0, totalMinutes: 0, timestamps: [] };
+      const validCount = (dayData.timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length;
+      weeklyCount += validCount;
       weeklyMinutes += dayData.totalMinutes;
-      weekData.push({ date: dateStr, ...dayData });
+      weekData.push({ date: dateStr, ...dayData, count: validCount });
     }
     
     return { weeklyCount, weeklyMinutes, weekData };
@@ -484,7 +485,7 @@ export const storage = {
     // Active days (days with at least one quest completed or pomodoro or diary)
     const activeDaysSet = new Set([
       ...Object.keys(questsData).filter(d => questsData[d].some(q => q.isCompleted || q.skippedReason)),
-      ...Object.keys(pomoData).filter(d => pomoData[d].count > 0),
+      ...Object.keys(pomoData).filter(d => (pomoData[d].timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length > 0),
       ...diaryData.map(e => e.dateStr)
     ]);
 

@@ -5,6 +5,9 @@ import { storage } from '../utils/storage';
 import pigImg from '../assets/pig.png';
 import slimeImg from '../assets/slime.png';
 
+let questAudioCtx = null;
+
+
 export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
   const [quests, setQuests] = useState([]);
   const [skipModal, setSkipModal] = useState({ isOpen: false, questId: null });
@@ -30,7 +33,9 @@ export default function MicroQuestList({ selectedDate, onQuestUpdate }) {
     
     // Play a satisfying subtle 'ding' sound
     try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!questAudioCtx) questAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (questAudioCtx.state === 'suspended') questAudioCtx.resume();
+      const audioCtx = questAudioCtx;
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
       
