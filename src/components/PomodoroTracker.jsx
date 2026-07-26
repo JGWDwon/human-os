@@ -415,7 +415,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
             </button>
           )}
           <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', background: 'rgba(239, 68, 68, 0.1)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-            오늘: {formatTime(todayData.totalMinutes)} (🍅 {todayData.count})
+            오늘: {formatTime(todayData.totalMinutes)} (🍅 {(todayData.timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length})
           </span>
         </div>
       </div>

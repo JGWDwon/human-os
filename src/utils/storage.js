@@ -140,8 +140,9 @@ export const storage = {
       const completed = mainQuests.filter(q => q.isCompleted).length;
       const skipped = mainQuests.filter(q => q.skippedReason).length;
       
-      const pomo = pomoData[dateStr] || { count: 0 };
-      const pomoLevel = pomo.count >= 5 ? 3 : pomo.count >= 3 ? 2 : pomo.count >= 1 ? 1 : 0;
+      const pomo = pomoData[dateStr] || { count: 0, timestamps: [] };
+      const validPomoCount = (pomo.timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length;
+      const pomoLevel = validPomoCount >= 5 ? 3 : validPomoCount >= 3 ? 2 : validPomoCount >= 1 ? 1 : 0;
       const finalLevel = Math.max(completed, pomoLevel);
       
       if (finalLevel >= 3) {
@@ -180,8 +181,9 @@ export const storage = {
       const completed = mainQuests.filter(q => q.isCompleted).length;
       const skipped = mainQuests.filter(q => q.skippedReason).length;
       
-      const pomo = pomoData[dateStr] || { count: 0, totalMinutes: 0 };
-      const pomoLevel = pomo.count >= 5 ? 3 : pomo.count >= 3 ? 2 : pomo.count >= 1 ? 1 : 0;
+      const pomo = pomoData[dateStr] || { count: 0, totalMinutes: 0, timestamps: [] };
+      const validPomoCount2 = (pomo.timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length;
+      const pomoLevel = validPomoCount2 >= 5 ? 3 : validPomoCount2 >= 3 ? 2 : validPomoCount2 >= 1 ? 1 : 0;
       const finalLevel = Math.max(completed, pomoLevel);
       
       const dayResult = {
