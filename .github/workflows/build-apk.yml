@@ -34,18 +34,24 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync
 
-      - name: Generate Debug Keystore (Persistent)
+      - name: Generate Debug Keystore (Fresh on CI)
         run: |
-          if [ ! -f "android/app/debug.keystore" ] || [ $(wc -c < android/app/debug.keystore) -lt 100 ]; then
-            keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
-          fi
+          keytool -genkey -v \
+            -keystore android/app/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "C=US, O=Android, CN=Android Debug"
 
       - name: Print Android SHA-1 Hash (for Firebase Console)
         run: |
           dos2unix android/gradlew 2>/dev/null || true
           chmod +x android/gradlew
           cd android
-          ./gradlew signingReport 2>&1 | grep -A5 'Variant: debug'
+          ./gradlew signingReport 2>&1 | grep -A8 'Variant: debug'
 
       - name: Copy Alarm Sound to Android Resources
         run: |
