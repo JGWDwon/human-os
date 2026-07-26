@@ -73,6 +73,19 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
       bgAudioRef.current = new Audio(SILENT_WAV);
       bgAudioRef.current.loop = true;
+      
+      // 안드로이드 8.0 이상을 위한 알림 채널 생성 (Heads-up + Sound)
+      if (Capacitor.isNativePlatform()) {
+        LocalNotifications.createChannel({
+          id: 'pomodoro-alerts',
+          name: 'Pomodoro Alerts',
+          description: '알람 완료 시 화면 상단에 뜨는 헤드업 알림',
+          importance: 5, // MAX importance for heads-up
+          visibility: 1, // PUBLIC
+          sound: 'bell2.mp3',
+          vibration: true
+        }).catch(err => console.log('Channel creation failed', err));
+      }
     }
   }, []);
 
@@ -359,10 +372,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   id: 1001,
                   title: '성장의 숲 🍅',
                   body: `🎉 ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-                  schedule: { at: new Date(endTime) },
-                  sound: 'bell2', // Falls back to system default if res/raw/bell2 is missing
-                  vibration: [200, 100, 200, 100, 400],
-                  actionTypeId: 'OPEN_APP'
+                  schedule: { at: new Date(endTime), allowWhileIdle: true },
+                  channelId: 'pomodoro-alerts', // ← 채널 연결 (Android 8+ 핵심)
+                  sound: 'bell2.mp3',
+                  vibrationPattern: [200, 100, 200, 100, 400],
+                  actionTypeId: 'OPEN_APP',
+                  extra: { route: '/' }
                 }
               ]
             });
