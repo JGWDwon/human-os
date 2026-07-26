@@ -167,16 +167,23 @@ export default function EbbinghausPlanner() {
 
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {overdueCount > 0 && (
-            <button 
-              onClick={handleMoveOverdueToToday}
-              className="btn btn-secondary"
-              style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#f87171', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-              title="밀린 복습들을 오늘 일정으로 일괄 이동"
-            >
-              <RotateCcw size={14} /> 밀린 복습 오늘로 가져오기 ({overdueCount})
-            </button>
-          )}
+          <button 
+            onClick={handleMoveOverdueToToday}
+            className="btn btn-secondary"
+            style={{ 
+              background: overdueCount > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)', 
+              border: `1px solid ${overdueCount > 0 ? '#ef4444' : 'rgba(255,255,255,0.1)'}`, 
+              color: overdueCount > 0 ? '#f87171' : 'var(--text-secondary)', 
+              fontSize: '0.8rem', 
+              padding: '0.4rem 0.75rem', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.3rem' 
+            }}
+            title="밀린 복습들을 오늘 일정으로 일괄 이동"
+          >
+            <RotateCcw size={14} /> 밀린 복습 오늘로 당겨오기 {overdueCount > 0 ? `(${overdueCount}개)` : ''}
+          </button>
 
           <button 
             onClick={handleVacationMode}
