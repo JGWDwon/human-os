@@ -30,9 +30,10 @@ public class MainActivity extends BridgeActivity {
         try {
           notificationManager.deleteNotificationChannel("pomodoro-alerts");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v2");
+          notificationManager.deleteNotificationChannel("pomodoro-alarm-v3");
         } catch (Exception e) {}
 
-        String channelId = "pomodoro-alarm-v3";
+        String channelId = "pomodoro-alarm-v4";
         CharSequence channelName = "Pomodoro Alarm (무음 뚫는 강제 알람)";
         String channelDesc = "알람 완료 시 무음/방해금지 모드에서도 강제로 슬라이드 팝업과 소리가 울리는 채널";
         int importance = NotificationManager.IMPORTANCE_HIGH;
