@@ -607,12 +607,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: '700' }}>
           <img src={mushroomImg} alt="Mushroom" style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #ef4444' }} />
           공부 사냥터
-          <button 
-            onClick={trigger5sTest}
-            style={{ fontSize: '0.65rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '0.15rem 0.4rem', cursor: 'pointer', marginLeft: '0.4rem' }}
-          >
-            백그라운드 테스트 (5초)
-          </button>
         </h2>
         
         {/* Right Header Controls (Notif Bell + Today Total) */}
