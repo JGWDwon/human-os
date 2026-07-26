@@ -23,30 +23,36 @@ public class MainActivity extends BridgeActivity {
    */
   private void createAlarmNotificationChannel() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      String channelId = "pomodoro-alerts";
-      CharSequence channelName = "Pomodoro Alerts";
-      String channelDesc = "알람 완료 시 무음 모드에서도 강제로 울리는 헤드업 알림";
-      int importance = NotificationManager.IMPORTANCE_HIGH;
-
-      NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
-      channel.setDescription(channelDesc);
-      channel.enableVibration(true);
-      channel.setVibrationPattern(new long[]{0, 200, 100, 200, 100, 400});
-      channel.setShowBadge(true);
-
-      // 🔑 핵심: USAGE_ALARM → 무음/방해금지 모드에서도 강제로 소리 재생
-      Uri soundUri = Uri.parse(
-        "android.resource://" + getPackageName() + "/raw/bell2"
-      );
-      AudioAttributes audioAttributes = new AudioAttributes.Builder()
-        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-        .setUsage(AudioAttributes.USAGE_ALARM)
-        .build();
-      channel.setSound(soundUri, audioAttributes);
-
       NotificationManager notificationManager =
         (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
       if (notificationManager != null) {
+        // 기존 채널 삭제하여 안드로이드 설정 갱신 강제
+        try {
+          notificationManager.deleteNotificationChannel("pomodoro-alerts");
+        } catch (Exception e) {}
+
+        String channelId = "pomodoro-alarm-v2";
+        CharSequence channelName = "Pomodoro Alarm (강제 알람)";
+        String channelDesc = "알람 완료 시 무음/방해금지 모드에서도 강제로 소리가 울리는 알림";
+        int importance = NotificationManager.IMPORTANCE_HIGH;
+
+        NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
+        channel.setDescription(channelDesc);
+        channel.enableVibration(true);
+        channel.setVibrationPattern(new long[]{0, 200, 100, 200, 100, 400});
+        channel.setShowBadge(true);
+        channel.setBypassDnd(true); // 방해금지 모드 우회
+
+        // USAGE_ALARM 속성으로 무음 모드 강제 뚫기
+        Uri soundUri = Uri.parse(
+          "android.resource://" + getPackageName() + "/raw/bell2"
+        );
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .setUsage(AudioAttributes.USAGE_ALARM)
+          .build();
+        channel.setSound(soundUri, audioAttributes);
+
         notificationManager.createNotificationChannel(channel);
       }
     }

@@ -90,7 +90,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       // 안드로이드 8.0 이상을 위한 알림 채널 생성 (Heads-up + Sound)
       if (Capacitor.isNativePlatform()) {
         LocalNotifications.createChannel({
-          id: 'pomodoro-alerts',
+          id: 'pomodoro-alarm-v2',
           name: 'Pomodoro Alerts',
           description: '알람 완료 시 화면 상단에 뜨는 헤드업 알림',
           importance: 5, // MAX importance for heads-up
@@ -203,7 +203,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               title: '알림 활성화 완료! 🍅',
               body: '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.',
               schedule: { at: new Date(Date.now() + 500) },
-              channelId: 'pomodoro-alerts'
+              channelId: 'pomodoro-alarm-v2'
             }]
           });
         } else {
@@ -402,7 +402,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   title: '성장의 숲 🍅',
                   body: `🎉 ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
                   schedule: { at: new Date(endTime), allowWhileIdle: true },
-                  channelId: 'pomodoro-alerts', // ← 채널 연결 (Android 8+ 핵심)
+                  channelId: 'pomodoro-alarm-v2', // ← USAGE_ALARM 강제 알람 채널 연결
                   sound: 'bell2.mp3',
                   vibrationPattern: [200, 100, 200, 100, 400],
                   actionTypeId: 'OPEN_APP',
@@ -554,7 +554,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
             title: '성장의 숲 🍅',
             body: '🎉 5초 백그라운드 테스트 알림이 정상 작동합니다!',
             schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
-            channelId: 'pomodoro-alerts',
+            channelId: 'pomodoro-alarm-v2',
             sound: 'bell2.mp3'
           }]
         });
