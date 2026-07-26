@@ -169,6 +169,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     }
   };
 
+  const sendSwTimerMessage = (type, extraData = {}) => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ type, ...extraData });
+    }
+  };
+
   const playSound = (type = 'complete') => {
     try {
       if (!globalAudioCtx && typeof window !== 'undefined') {
@@ -211,6 +217,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const handleTimerComplete = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
+    // Cancel any SW-scheduled notification (we're handling it here now)
+    sendSwTimerMessage('cancelNotification');
     playSound('complete');
 
     const minutesCompleted = Math.round(timerState.duration / 60);
@@ -279,6 +287,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
     const targetDuration = timerState.timeLeft;
     const endTime = Date.now() + (targetDuration * 1000);
+    const minutesLeft = Math.round(targetDuration / 60);
+
+    // Schedule notification in Service Worker (independent of main thread)
+    sendSwTimerMessage('scheduleNotification', {
+      endTime,
+      title: '성장의 숲 🍅',
+      body: `🎉 ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+    });
 
     const nextState = {
       ...timerState,
@@ -292,6 +308,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const pauseTimer = () => {
     playSound('click');
+    sendSwTimerMessage('cancelNotification');
     const nextState = {
       ...timerState,
       isRunning: false,
@@ -304,6 +321,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const handleEarlyComplete = () => {
     playSound('click');
     if (intervalRef.current) clearInterval(intervalRef.current);
+    sendSwTimerMessage('cancelNotification');
     
     // Calculate elapsed minutes
     const elapsedSeconds = timerState.duration - timerState.timeLeft;
