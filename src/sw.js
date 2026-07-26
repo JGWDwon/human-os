@@ -23,8 +23,8 @@ self.addEventListener('message', (event) => {
       try {
         await self.registration.showNotification(title || '성장의 숲 🍅', {
           body: body || '🎉 5초 백그라운드 테스트 알림이 울립니다!',
-          icon: icon || '/human-os/pwa-192x192.png',
-          badge: '/human-os/pwa-192x192.png',
+          icon: icon || './pwa-192x192.png',
+          badge: './pwa-192x192.png',
           vibrate: [200, 100, 200],
           requireInteraction: true,
           tag: 'pomodoro-test',
@@ -44,12 +44,12 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url.includes('/human-os/') && 'focus' in client) {
+        if (client.url.includes(self.registration.scope) && 'focus' in client) {
           return client.focus();
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('/human-os/');
+        return clients.openWindow(self.registration.scope);
       }
     })
   );

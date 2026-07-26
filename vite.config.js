@@ -34,5 +34,5 @@ export default defineConfig({
       }
     })
   ],
-  base: '/human-os/',
+  base: './',
 })
