@@ -117,7 +117,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         const remaining = Math.max(0, Math.round((timerState.endTime - Date.now()) / 1000));
         if (remaining <= 0) {
           if (intervalRef.current) clearInterval(intervalRef.current);
-          handleTimerComplete();
+          handleTimerComplete(true); // Pass true: background notification already sounded
         }
       }
     };
@@ -285,10 +285,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     }
   };
 
-  const handleTimerComplete = () => {
+  const handleTimerComplete = (isFromCatchUp = false) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
-    playSound('complete');
+    // 네이티브 앱에서 백그라운드 완료 후 앱에 복귀(catch-up)한 경우에는
+    // 이미 안드로이드 OS 알림이 소리를 울렸으므로 앱 내부 소리 중복 재생을 방지합니다.
+    if (!Capacitor.isNativePlatform() || !isFromCatchUp) {
+      playSound('complete');
+    }
 
     const minutesCompleted = Math.round(timerState.duration / 60);
 
