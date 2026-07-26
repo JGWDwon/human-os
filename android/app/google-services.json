@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "799105733830",
+    "project_id": "wonn-a4255",
+    "storage_bucket": "wonn-a4255.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:799105733830:android:2d4d7ad086242ee2c1f3c7",
+        "android_client_info": {
+          "package_name": "com.humanos.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "799105733830-0hdt6n4qgfb3gpdtqdf0tf5sngjjath5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoWKm5W-puSYANKv4bDajsCZOvI-HXfEw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "799105733830-0hdt6n4qgfb3gpdtqdf0tf5sngjjath5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

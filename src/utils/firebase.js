@@ -33,7 +33,7 @@ export const loginWithGoogle = async () => {
       // 플러그인 초기화 (Web Client ID = Firebase 콘솔 → 프로젝트 설정 → 웹 클라이언트 ID)
       await SocialLogin.initialize({
         google: {
-          webClientId: '799105733830-web-client-id.apps.googleusercontent.com', // TODO: 사용자 교체 필요
+          webClientId: '799105733830-0hdt6n4qgfb3gpdtqdf0tf5sngjjath5.apps.googleusercontent.com',
         }
       });
 
