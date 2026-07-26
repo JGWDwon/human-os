@@ -5,6 +5,18 @@ import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
 
 let globalAudioCtx = null;
+let decodedBellBuffer = null;
+
+const loadBellSound = async (audioCtx) => {
+  if (decodedBellBuffer) return;
+  try {
+    const response = await fetch(bell2Sound);
+    const arrayBuffer = await response.arrayBuffer();
+    decodedBellBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } catch (e) {
+    console.error('Failed to load/decode bell2.mp3:', e);
+  }
+};
 
 export default function PomodoroTracker({ selectedDate, onUpdate }) {
   // Manual input states
@@ -176,12 +188,33 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     }
   };
 
-  const playSound = (type = 'complete') => {
+  const playSound = async (type = 'complete') => {
     if (type === 'complete') {
       try {
-        const audio = new Audio(bell2Sound);
-        audio.volume = 1.0;
-        audio.play().catch(e => console.log('Bell audio play failed:', e));
+        if (!globalAudioCtx && typeof window !== 'undefined') {
+          globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
+          await globalAudioCtx.resume();
+        }
+        const audioCtx = globalAudioCtx;
+        if (!audioCtx) return;
+
+        if (!decodedBellBuffer) {
+          await loadBellSound(audioCtx);
+        }
+
+        if (decodedBellBuffer) {
+          const source = audioCtx.createBufferSource();
+          source.buffer = decodedBellBuffer;
+          source.connect(audioCtx.destination);
+          source.start(0);
+        } else {
+          // Fallback to HTML5 audio if decoding failed
+          const audio = new Audio(bell2Sound);
+          audio.volume = 1.0;
+          audio.play().catch(e => console.log('Bell audio play failed:', e));
+        }
       } catch (e) {
         console.log('Bell audio unavailable:', e);
       }
@@ -222,8 +255,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const handleTimerComplete = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    // Cancel any SW-scheduled notification (we're handling it here now)
-    sendSwTimerMessage('cancelNotification');
     playSound('complete');
 
     const minutesCompleted = Math.round(timerState.duration / 60);
@@ -281,6 +312,19 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const startTimer = async () => {
     playSound('click');
     
+    // Pre-create AudioContext and preload bell sound on user interaction
+    try {
+      if (!globalAudioCtx && typeof window !== 'undefined') {
+        globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (globalAudioCtx) {
+        if (globalAudioCtx.state === 'suspended') {
+          globalAudioCtx.resume();
+        }
+        loadBellSound(globalAudioCtx);
+      }
+    } catch(e) {}
+    
     if ('Notification' in window && Notification.permission === 'default') {
       try {
         const perm = await Notification.requestPermission();
@@ -289,17 +333,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         console.log('Notification permission request failed:', e);
       }
     }
-
+ 
     const targetDuration = timerState.timeLeft;
     const endTime = Date.now() + (targetDuration * 1000);
-    const minutesLeft = Math.round(targetDuration / 60);
-
-    // Schedule notification in Service Worker (independent of main thread)
-    sendSwTimerMessage('scheduleNotification', {
-      endTime,
-      title: '성장의 숲 🍅',
-      body: `🎉 ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-    });
 
     const nextState = {
       ...timerState,
@@ -313,7 +349,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const pauseTimer = () => {
     playSound('click');
-    sendSwTimerMessage('cancelNotification');
     const nextState = {
       ...timerState,
       isRunning: false,
@@ -326,7 +361,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const handleEarlyComplete = () => {
     playSound('click');
     if (intervalRef.current) clearInterval(intervalRef.current);
-    sendSwTimerMessage('cancelNotification');
     
     // Calculate elapsed minutes
     const elapsedSeconds = timerState.duration - timerState.timeLeft;
@@ -401,6 +435,34 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
 
 
+  const trigger5sTest = () => {
+    playSound('click');
+    if ('Notification' in window && Notification.permission === 'granted') {
+      alert("확인 버튼을 누르고 5초 안에 화면을 잠그거나 홈 화면으로 나가보세요!");
+      
+      // Pre-load audio to be safe
+      try {
+        if (!globalAudioCtx && typeof window !== 'undefined') {
+          globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
+          globalAudioCtx.resume();
+        }
+        loadBellSound(globalAudioCtx);
+      } catch(e) {}
+
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'testNotification',
+          title: '성장의 숲 🍅',
+          body: '🎉 5초 백그라운드 테스트 알림이 정상 작동합니다!'
+        });
+      }
+    } else {
+      alert("알림 권한을 먼저 허용해주세요!");
+    }
+  };
+
   const formatSecs = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -424,6 +486,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: '700' }}>
           <img src={mushroomImg} alt="Mushroom" style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #ef4444' }} />
           공부 사냥터
+          <button 
+            onClick={trigger5sTest}
+            style={{ fontSize: '0.65rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', padding: '0.15rem 0.4rem', cursor: 'pointer', marginLeft: '0.4rem' }}
+          >
+            백그라운드 테스트 (5초)
+          </button>
         </h2>
         
         {/* Right Header Controls (Notif Bell + Today Total) */}
