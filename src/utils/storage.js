@@ -356,7 +356,7 @@ export const storage = {
     // Create buckets for 0-23 hours
     const distribution = Array.from({ length: 24 }, (_, i) => ({
       hour: `${i}시`,
-      count: 0
+      minutes: 0
     }));
 
     const now = new Date();
@@ -369,15 +369,52 @@ export const storage = {
        if (diffDays <= days && data[dateStr].timestamps) {
          data[dateStr].timestamps.forEach(ts => {
            const timeStr = typeof ts === 'string' ? ts : (ts.time || new Date().toISOString());
+           const mins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
            const hour = new Date(timeStr).getHours();
            if (hour >= 0 && hour < 24) {
-             distribution[hour].count += 1;
+             distribution[hour].minutes += mins;
            }
          });
        }
     });
 
     return distribution;
+  },
+
+  getTimeSlotSummary(days = 30) {
+    const distribution = this.getPomodoroTimeDistribution(days);
+    
+    // 3시간 간격 8개 시간대
+    const slotDefs = [
+      { id: 'midnight',    label: '심야 (00~03시)',   icon: '🌌', start: 0,  end: 3 },
+      { id: 'dawn',        label: '새벽 (03~06시)',   icon: '🌠', start: 3,  end: 6 },
+      { id: 'earlyMorn',   label: '아침 (06~09시)',   icon: '🌅', start: 6,  end: 9 },
+      { id: 'morning',     label: '오전 (09~12시)',   icon: '☀️', start: 9,  end: 12 },
+      { id: 'earlyAftn',   label: '이른오후 (12~15시)', icon: '🍽️', start: 12, end: 15 },
+      { id: 'afternoon',   label: '오후 (15~18시)',   icon: '📚', start: 15, end: 18 },
+      { id: 'evening',     label: '저녁 (18~21시)',   icon: '🌙', start: 18, end: 21 },
+      { id: 'night',       label: '밤 (21~24시)',     icon: '🌃', start: 21, end: 24 },
+    ];
+
+    let total = 0;
+    const slots = slotDefs.map(def => {
+      let mins = 0;
+      for (let h = def.start; h < def.end; h++) {
+        mins += distribution[h].minutes;
+      }
+      total += mins;
+      return { ...def, minutes: mins };
+    });
+
+    // Calculate percentages after total is known
+    slots.forEach(slot => {
+      slot.percent = total > 0 ? Math.round((slot.minutes / total) * 100) : 0;
+    });
+
+    // Find golden time (highest minutes)
+    const topSlot = [...slots].sort((a, b) => b.minutes - a.minutes)[0];
+
+    return { totalMinutes: total, slots, topSlot };
   },
 
   getWeeklyPomodoroStats() {

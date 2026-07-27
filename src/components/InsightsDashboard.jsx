@@ -10,7 +10,7 @@ export default function InsightsDashboard({ onClose }) {
   const [stats, setStats] = useState(null);
   const [historyTimeline, setHistoryTimeline] = useState([]);
   const [weeklyData, setWeeklyData] = useState([]);
-  const [timeDistribution, setTimeDistribution] = useState([]);
+  const [slotSummary, setSlotSummary] = useState(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -18,6 +18,7 @@ export default function InsightsDashboard({ onClose }) {
     setStats(storage.getAllTimeStats());
     setWeeklyData(storage.getWeeklyGraphData(8));
     setTimeDistribution(storage.getPomodoroTimeDistribution(30));
+    setSlotSummary(storage.getTimeSlotSummary(30));
 
     // Build timeline from last 30 days
     const recentQuests = storage.getQuestHistory(30).reverse(); // oldest first natively, we want newest first, so reverse
@@ -174,12 +175,54 @@ export default function InsightsDashboard({ onClose }) {
 
       {/* Hourly Time Distribution Chart */}
       <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 style={{ fontSize: '1.1rem', marginBottom: '1.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Timer size={18} color="#ef4444" /> 나의 집중 시간대 분포 (최근 30일)
+        <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Timer size={18} color="#ef4444" /> 나의 집중 시간대 분석 (최근 30일)
         </h3>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          하루 중 언제 가장 뽀모도로(집중)를 많이 완료했는지 확인해보세요. (나의 피크타임 찾기)
+          하루 중 어느 시간대에 가장 많이 몰입하고 공부했는지 실제 시간(분) 기준으로 파악하세요.
         </p>
+
+        {/* Golden Time Banner */}
+        {slotSummary && slotSummary.totalMinutes > 0 && slotSummary.topSlot && (
+          <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.85rem 1.25rem', borderRadius: '8px', fontSize: '0.9rem', color: '#34d399', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontSize: '1.2rem' }}>💡</span>
+            <span>
+              사용자님은 주로 <strong>{slotSummary.topSlot.icon} {slotSummary.topSlot.label}</strong>에 집중력이 가장 뛰어납니다! ({formatTime(slotSummary.topSlot.minutes)}, 전체의 {slotSummary.topSlot.percent}%)
+            </span>
+          </div>
+        )}
+
+        {/* 8 Time Slots Summary Cards */}
+        {slotSummary && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.6rem', marginBottom: '1.5rem' }}>
+            {slotSummary.slots.map(slot => {
+              const isTop = slotSummary.topSlot && slot.id === slotSummary.topSlot.id && slot.minutes > 0;
+              return (
+                <div key={slot.id} style={{
+                  background: isTop ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.03)',
+                  border: isTop ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '6px', padding: '0.6rem 0.5rem', textAlign: 'center',
+                  position: 'relative', overflow: 'hidden'
+                }}>
+                  {isTop && <div style={{ position: 'absolute', top: '2px', right: '4px', fontSize: '0.6rem', color: '#34d399', fontWeight: 'bold' }}>🏆 BEST</div>}
+                  <div style={{ fontSize: '1.1rem', marginBottom: '0.15rem' }}>{slot.icon}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.2 }}>{slot.label}</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: isTop ? '#34d399' : 'var(--text-primary)', margin: '0.2rem 0 0.15rem' }}>
+                    {formatTime(slot.minutes)}
+                  </div>
+                  {/* Mini progress bar */}
+                  <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ width: `${slot.percent}%`, height: '100%', background: isTop ? '#34d399' : '#ef4444', borderRadius: '2px', transition: 'width 0.5s ease' }} />
+                  </div>
+                  <div style={{ fontSize: '0.65rem', color: isTop ? '#34d399' : '#ef4444', fontWeight: 'bold', marginTop: '0.15rem' }}>
+                    {slot.percent}%
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div style={{ height: '200px', width: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={timeDistribution} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
@@ -189,9 +232,9 @@ export default function InsightsDashboard({ onClose }) {
               <Tooltip 
                 contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
                 itemStyle={{ fontWeight: 'bold', color: '#ef4444' }}
-                formatter={(value) => [`${value}회`, '집중 완료']}
+                formatter={(value) => [`${formatTime(value)}`, '누적 집중 시간']}
               />
-              <Bar dataKey="count" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={30} />
+              <Bar dataKey="minutes" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={30} />
             </BarChart>
           </ResponsiveContainer>
         </div>
