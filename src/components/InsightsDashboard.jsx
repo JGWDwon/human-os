@@ -10,6 +10,7 @@ export default function InsightsDashboard({ onClose }) {
   const [stats, setStats] = useState(null);
   const [historyTimeline, setHistoryTimeline] = useState([]);
   const [weeklyData, setWeeklyData] = useState([]);
+  const [timeDistribution, setTimeDistribution] = useState([]);
   const [slotSummary, setSlotSummary] = useState(null);
   const fileInputRef = useRef(null);
 
