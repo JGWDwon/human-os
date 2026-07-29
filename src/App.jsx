@@ -9,6 +9,18 @@ import PhaseRoadmap from './components/PhaseRoadmap';
 import EbbinghausPlanner from './components/EbbinghausPlanner';
 import { storage } from './utils/storage';
 import adventurerImg from './assets/adventurer.png';
+import slimeImg from './assets/slime.png';
+import mushroomImg from './assets/mushroom.png';
+import pigImg from './assets/pig.png';
+import heroImg from './assets/hero.png';
+
+const getAvatarImage = (level) => {
+  if (level >= 120) return adventurerImg; // 4차 전직
+  if (level >= 70) return heroImg;         // 3차 전직
+  if (level >= 30) return pigImg;          // 2차 전직
+  if (level >= 10) return mushroomImg;     // 1차 전직
+  return slimeImg;                         // 초보자
+};
 
 function App() {
   const [showSettings, setShowSettings] = useState(false);
@@ -61,7 +73,7 @@ function App() {
           
           {/* XP Bar */}
           <div style={{ display: 'flex', alignItems: 'center', flex: '1 1 300px', minWidth: '300px', maxWidth: '600px', margin: '0 auto', background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '2px solid rgba(16, 185, 129, 0.2)', gap: '1rem' }}>
-             <img src={adventurerImg} alt="Adventurer Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid var(--accent-primary)', objectFit: 'cover' }} />
+             <img src={getAvatarImage(xpInfo.level)} alt="Character Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid var(--accent-primary)', objectFit: 'cover' }} />
              <div style={{ flex: 1 }}>
                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                  <span style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>Lv.{xpInfo.level} {xpInfo.title}</span>
