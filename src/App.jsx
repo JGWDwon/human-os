@@ -9,17 +9,17 @@ import PhaseRoadmap from './components/PhaseRoadmap';
 import EbbinghausPlanner from './components/EbbinghausPlanner';
 import { storage } from './utils/storage';
 import adventurerImg from './assets/adventurer.png';
-import slimeImg from './assets/slime.png';
-import mushroomImg from './assets/mushroom.png';
-import pigImg from './assets/pig.png';
-import heroImg from './assets/hero.png';
+import rank1Img from './assets/rank1.jpg';
+import rank2Img from './assets/rank2.jpg';
+import rank3Img from './assets/rank3.jpg';
+import rank4Img from './assets/rank4.jpg';
 
 const getAvatarImage = (level) => {
-  if (level >= 120) return adventurerImg; // 4차 전직
-  if (level >= 70) return heroImg;         // 3차 전직
-  if (level >= 30) return pigImg;          // 2차 전직
-  if (level >= 10) return mushroomImg;     // 1차 전직
-  return slimeImg;                         // 초보자
+  if (level >= 120) return rank4Img;     // 4차 전직 (왕관 & 붉은 망토 그랜드마스터)
+  if (level >= 70) return rank3Img;      // 3차 전직 (골드 장식 커맨더 기사)
+  if (level >= 30) return rank2Img;      // 2차 전직 (실버 갑옷 정예 기사)
+  if (level >= 10) return rank1Img;      // 1차 전직 (가죽 갑옷 초급 전사)
+  return adventurerImg;                  // 0차 초보자 (목검 모험가)
 };
 
 function App() {
