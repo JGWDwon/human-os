@@ -4,7 +4,8 @@ const STORAGE_KEYS = {
   SETTINGS: 'human_os_settings',
   POMODORO: 'human_os_pomodoro_v1',
   USER_PROFILE: 'human_os_profile_v1',
-  LECTURES: 'human_os_lectures_v1'
+  LECTURES: 'human_os_lectures_v1',
+  VACATIONS: 'human_os_vacations_v1'
 };
 
 function safeParse(str, fallback = {}) {
@@ -905,5 +906,91 @@ export const storage = {
       this._dispatchSync();
     }
     return count;
+  },
+
+  getVacations() {
+    const raw = localStorage.getItem(STORAGE_KEYS.VACATIONS);
+    return safeParse(raw, []);
+  },
+
+  addVacation(startDate, endDate) {
+    if (!startDate || !endDate) return { days: 0, count: 0 };
+    
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T00:00:00');
+    if (end < start) return { days: 0, count: 0 };
+
+    const diffTime = end.getTime() - start.getTime();
+    const days = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+
+    const lectures = this.getLectures();
+    let count = 0;
+
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted && rev.targetDate >= startDate) {
+          const current = new Date(rev.targetDate + 'T00:00:00');
+          current.setDate(current.getDate() + days);
+          rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+          count++;
+        }
+      });
+    });
+
+    if (count > 0 || days > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      
+      const vacations = this.getVacations();
+      const newVacation = {
+        id: 'vac_' + Date.now(),
+        startDate,
+        endDate,
+        days,
+        count,
+        appliedAt: new Date().toISOString()
+      };
+      vacations.unshift(newVacation);
+      localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
+      
+      this._dispatchSync();
+      return { days, count };
+    }
+
+    return { days, count: 0 };
+  },
+
+  revertVacation(vacationId) {
+    const vacations = this.getVacations();
+    const vacIndex = vacations.findIndex(v => v.id === vacationId);
+    if (vacIndex === -1) return { days: 0, count: 0 };
+
+    const vac = vacations[vacIndex];
+    const { startDate, days } = vac;
+
+    const lectures = this.getLectures();
+    let count = 0;
+
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted) {
+          const current = new Date(rev.targetDate + 'T00:00:00');
+          current.setDate(current.getDate() - days);
+          const newTarget = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+          
+          // Only shift back if it won't go earlier than the original target before vacation
+          rev.targetDate = newTarget;
+          count++;
+        }
+      });
+    });
+
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    
+    // Remove from vacation list
+    vacations.splice(vacIndex, 1);
+    localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
+
+    this._dispatchSync();
+    return { days, count };
   }
 };

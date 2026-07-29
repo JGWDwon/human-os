@@ -20,8 +20,19 @@ export default function EbbinghausPlanner() {
   const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const [selectedDateFilter, setSelectedDateFilter] = useState(todayStr);
 
+  // Vacation Modal states
+  const [showVacationModal, setShowVacationModal] = useState(false);
+  const [vacStartDate, setVacStartDate] = useState(todayStr);
+  const [vacEndDate, setVacEndDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+  });
+  const [vacations, setVacations] = useState([]);
+
   const refreshData = () => {
     setLectures(storage.getLectures());
+    setVacations(storage.getVacations());
   };
 
   useEffect(() => {
@@ -95,17 +106,27 @@ export default function EbbinghausPlanner() {
     }
   };
 
-  const handleVacationMode = () => {
-    const input = window.prompt("여행/휴가 기간을 며칠로 설정하시겠습니까?\n(예: 4일 동안 여행을 가신다면 4 입력)", "4");
-    if (!input) return;
-    const days = parseInt(input, 10);
-    if (isNaN(days) || days <= 0) {
-      alert("올바른 날짜(일수)를 입력해주세요.");
+  const handleApplyVacation = (e) => {
+    e.preventDefault();
+    if (!vacStartDate || !vacEndDate) {
+      alert("시작일과 종료일을 모두 입력해주세요.");
       return;
     }
-    const count = storage.shiftAllUpcomingReviews(days);
-    alert(`🌴 여행 모드 적용 완료!\n향후 남아있는 복습 일정 ${count}개가 ${days}일 뒤로 연기되었습니다. 즐거운 여행 되세요!`);
+    if (vacEndDate < vacStartDate) {
+      alert("종료일은 시작일보다 빠를 수 없습니다.");
+      return;
+    }
+    const result = storage.addVacation(vacStartDate, vacEndDate);
+    alert(`🌴 여행/휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n남아있는 복습 일정 ${result.count}개가 ${result.days}일 뒤로 연기되었습니다. 즐거운 여행 되세요!`);
     refreshData();
+  };
+
+  const handleRevertVacation = (vacationId) => {
+    if (window.confirm("이 여행 일정을 취소하고 연기되었던 복습 일정을 원복하시겠습니까?")) {
+      const result = storage.revertVacation(vacationId);
+      alert(`↩️ 여행 취소 완료!\n연기되었던 복습 일정이 ${result.days}일 앞으로 원복 되었습니다.`);
+      refreshData();
+    }
   };
 
   const handleDeleteLecture = (lectureId) => {
@@ -186,12 +207,12 @@ export default function EbbinghausPlanner() {
           </button>
 
           <button 
-            onClick={handleVacationMode}
+            onClick={() => setShowVacationModal(true)}
             className="btn btn-secondary"
             style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-            title="휴가/여행 기간 동안 모든 복습 일정 N일 연기"
+            title="휴가/여행 기간 동안 모든 복습 일정 연기 및 취소 관리"
           >
-            <Palmtree size={14} /> 여행/휴가 모드 (일정 연기)
+            <Palmtree size={14} /> 여행/휴가 모드 (날짜 지정 & 취소)
           </button>
 
           <button 
@@ -398,6 +419,101 @@ export default function EbbinghausPlanner() {
           </div>
         )}
       </div>
+
+      {/* Vacation Mode Modal */}
+      {showVacationModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem'
+        }}>
+          <div className="glass-panel animate-fade-in" style={{
+            maxWidth: '520px', width: '100%', background: '#0f172a', border: '1px solid #10b981',
+            borderRadius: '16px', padding: '1.5rem', boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+            maxHeight: '90vh', overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Palmtree size={22} /> 여행/휴가 모드 (기간 지정 & 취소)
+              </h3>
+              <button onClick={() => setShowVacationModal(false)} className="btn btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>닫기</button>
+            </div>
+
+            <form onSubmit={handleApplyVacation} style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', color: '#fff' }}>🗓️ 여행/휴가 기간 지정 연기</h4>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.4 }}>
+                여행 시작일부터 종료일까지의 총 일수를 계산하여, 해당 시점 이후의 모든 복습 일정을 자동으로 연기합니다.
+              </p>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '130px' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>여행 시작일</label>
+                  <input 
+                    type="date" 
+                    value={vacStartDate} 
+                    onChange={(e) => setVacStartDate(e.target.value)} 
+                    required 
+                    style={{ width: '100%', padding: '0.5rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.85rem' }} 
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: '130px' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>여행 종료일</label>
+                  <input 
+                    type="date" 
+                    value={vacEndDate} 
+                    onChange={(e) => setVacEndDate(e.target.value)} 
+                    required 
+                    style={{ width: '100%', padding: '0.5rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.85rem' }} 
+                  />
+                </div>
+              </div>
+
+              {vacStartDate && vacEndDate && vacEndDate >= vacStartDate && (
+                <div style={{ fontSize: '0.85rem', color: '#34d399', fontWeight: 'bold', marginBottom: '1rem', background: 'rgba(0,0,0,0.3)', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px border rgba(16, 185, 129, 0.3)' }}>
+                  🏝️ {vacStartDate} ~ {vacEndDate} (총 {Math.round((new Date(vacEndDate + 'T00:00:00') - new Date(vacStartDate + 'T00:00:00')) / (1000 * 60 * 60 * 24)) + 1}일간 복습 일정 연기)
+                </div>
+              )}
+
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', background: '#10b981', borderColor: '#059669', padding: '0.65rem', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                🌴 휴가 일정 연기 적용하기
+              </button>
+            </form>
+
+            {/* Applied Vacations & Revert Option */}
+            <div>
+              <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <RotateCcw size={16} color="#f87171" /> 적용된 여행 목록 (여행 취소 & 복원)
+              </h4>
+
+              {vacations.length === 0 ? (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>현재 적용된 여행/휴가 일정이 없습니다.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '200px', overflowY: 'auto' }}>
+                  {vacations.map(vac => (
+                    <div key={vac.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                      <div>
+                        <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#fff' }}>
+                          🏖️ {vac.startDate} ~ {vac.endDate} ({vac.days}일간 연기됨)
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                          영향받은 복습 일정: {vac.count}개
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleRevertVacation(vac.id)} 
+                        className="btn btn-secondary" 
+                        style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid #ef4444', color: '#f87171', fontSize: '0.78rem', padding: '0.35rem 0.7rem', flexShrink: 0 }}
+                      >
+                        ↩️ 여행 취소 (원복)
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
