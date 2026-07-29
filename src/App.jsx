@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Settings, BarChart2, Target } from 'lucide-react';
+import { Settings, BarChart2, Target, Zap } from 'lucide-react';
 import PomodoroTracker from './components/PomodoroTracker';
 import MicroQuestList from './components/MicroQuestList';
 import ForestPixelMap from './components/ForestPixelMap';
-import DiaryAndEmotion from './components/DiaryAndEmotion';
 import InsightsDashboard from './components/InsightsDashboard';
 import PhaseRoadmap from './components/PhaseRoadmap';
 import EbbinghausPlanner from './components/EbbinghausPlanner';
@@ -71,16 +70,57 @@ function App() {
             </p>
           </div>
           
-          {/* XP Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', flex: '1 1 300px', minWidth: '300px', maxWidth: '600px', margin: '0 auto', background: 'rgba(0,0,0,0.3)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '2px solid rgba(16, 185, 129, 0.2)', gap: '1rem' }}>
-             <img src={getAvatarImage(xpInfo.level)} alt="Character Avatar" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid var(--accent-primary)', objectFit: 'cover' }} />
-             <div style={{ flex: 1 }}>
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                 <span style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>Lv.{xpInfo.level} {xpInfo.title}</span>
-                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{xpInfo.xpIntoLevel} / {xpInfo.xpNeededForLevel} XP</span>
+          {/* XP Bar (Prominent RPG Character Card) */}
+          <div style={{
+            display: 'flex', alignItems: 'center', flex: '1 1 360px', minWidth: '320px', maxWidth: '640px', margin: '0 auto',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.9))',
+            padding: '1rem 1.25rem', borderRadius: '12px',
+            border: '2px solid rgba(16, 185, 129, 0.35)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)', gap: '1.25rem'
+          }}>
+             <div style={{ position: 'relative', flexShrink: 0 }}>
+               <img 
+                 src={getAvatarImage(xpInfo.level)} 
+                 alt="Character Avatar" 
+                 style={{
+                   width: '76px', height: '76px', borderRadius: '50%',
+                   border: '3px solid var(--accent-primary)',
+                   boxShadow: '0 0 16px rgba(16, 185, 129, 0.5)',
+                   objectFit: 'cover', background: '#0f172a'
+                 }} 
+               />
+               <span style={{
+                 position: 'absolute', bottom: '-4px', right: '-4px',
+                 background: 'var(--accent-primary)', color: '#000',
+                 fontWeight: 800, fontSize: '0.75rem', padding: '0.1rem 0.4rem',
+                 borderRadius: '10px', border: '2px solid #0f172a'
+               }}>
+                 Lv.{xpInfo.level}
+               </span>
+             </div>
+
+             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                 <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#34d399', letterSpacing: '-0.02em' }}>
+                   {xpInfo.title}
+                 </span>
+                 <span style={{ fontSize: '0.78rem', color: 'var(--accent-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                   <Zap size={13} /> 누적 {xpInfo.totalXP.toLocaleString()} XP
+                 </span>
                </div>
-               <div style={{ width: '100%', height: '12px', background: 'rgba(0,0,0,0.5)', borderRadius: '6px', overflow: 'hidden' }}>
-                 <div style={{ width: `${Math.min(xpInfo.progressPercent, 100)}%`, height: '100%', background: 'linear-gradient(90deg, #10b981, #34d399)', transition: 'width 0.5s ease-out' }} />
+
+               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                 <span>성장 진척도</span>
+                 <span style={{ color: '#fff' }}>{xpInfo.xpIntoLevel} / {xpInfo.xpNeededForLevel} XP ({xpInfo.progressPercent}%)</span>
+               </div>
+
+               <div style={{ width: '100%', height: '16px', background: 'rgba(0,0,0,0.6)', borderRadius: '8px', overflow: 'hidden', padding: '2px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                 <div style={{
+                   width: `${Math.min(xpInfo.progressPercent, 100)}%`, height: '100%',
+                   background: 'linear-gradient(90deg, #10b981, #34d399, #6EE7B7)',
+                   borderRadius: '6px', transition: 'width 0.5s ease-out',
+                   boxShadow: '0 0 10px rgba(52, 211, 153, 0.6)'
+                 }} />
                </div>
              </div>
           </div>
@@ -309,12 +349,9 @@ function App() {
             </div>
           </div>
           
-          {/* Right Column: Calendar Forest & Diary */}
+          {/* Right Column: Calendar Forest */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1 }}>
             <ForestPixelMap refreshTrigger={refreshTrigger} selectedDate={selectedDate} onDateSelect={handleDateSelect} />
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <DiaryAndEmotion selectedDate={selectedDate} />
-            </div>
           </div>
           
         </div>

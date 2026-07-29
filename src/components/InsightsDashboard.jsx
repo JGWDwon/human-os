@@ -22,20 +22,9 @@ export default function InsightsDashboard({ onClose }) {
     setSlotSummary(storage.getTimeSlotSummary(30));
 
     // Build timeline from last 30 days
-    const recentQuests = storage.getQuestHistory(30).reverse(); // oldest first natively, we want newest first, so reverse
-    const diaryEntries = storage.getDiary();
-    
-    // Merge them by date
-    const merged = recentQuests.map(day => {
-      const dayDiary = diaryEntries.filter(e => e.dateStr === day.date);
-      return {
-        date: day.date,
-        questStatus: day.status,
-        diary: dayDiary
-      };
-    }).filter(day => day.questStatus !== 'none' || day.diary.length > 0); // only show active days
-
-    setHistoryTimeline(merged);
+    const recentQuests = storage.getQuestHistory(30).reverse(); // oldest first
+    const activeTimeline = recentQuests.filter(day => day.status !== 'none');
+    setHistoryTimeline(activeTimeline);
   }, []);
 
   const handleExport = async () => {
@@ -254,21 +243,18 @@ export default function InsightsDashboard({ onClose }) {
               historyTimeline.map((day, idx) => (
                 <div key={idx} style={{ position: 'relative', paddingLeft: '1.5rem', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
                   <div style={{ 
-                    position: 'absolute', left: '-6px', top: '0', width: '10px', height: '10px', borderRadius: '50%',
-                    background: day.questStatus === 'completed' ? 'var(--accent-primary)' : day.questStatus === 'partial' ? 'rgba(16, 185, 129, 0.5)' : day.questStatus === 'hibernation' ? 'var(--accent-hibernation)' : 'var(--text-muted)'
+                    position: 'absolute', left: '-6px', top: '2px', width: '10px', height: '10px', borderRadius: '50%',
+                    background: day.status === 'completed' ? 'var(--accent-primary)' : day.status === 'partial' ? 'rgba(16, 185, 129, 0.5)' : day.status === 'hibernation' ? 'var(--accent-hibernation)' : 'var(--text-muted)'
                   }} />
-                  <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
                     {day.date}
                   </div>
                   
-                  {day.diary.map(entry => (
-                    <div key={entry.id} style={{ background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', marginBottom: '0.5rem' }}>
-                      <p style={{ color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.5 }}>"{entry.content}"</p>
-                    </div>
-                  ))}
-                  {day.diary.length === 0 && day.questStatus !== 'none' && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>일기 기록 없음 (퀘스트 활동만 존재)</div>
-                  )}
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                    {day.status === 'completed' && <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>🎯 메인 퀘스트 전량 완수!</span>}
+                    {day.status === 'partial' && <span style={{ color: '#34d399' }}>✨ 일일 퀘스트 수행 완료</span>}
+                    {day.status === 'hibernation' && <span style={{ color: 'var(--accent-hibernation)' }}>🌴 휴가/일정 연기 모드</span>}
+                  </div>
                 </div>
               ))
             )}
