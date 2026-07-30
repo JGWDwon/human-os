@@ -924,18 +924,24 @@ export const storage = {
     const days = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
 
     const lectures = this.getLectures();
-    let count = 0;
+    const shiftedReviews = [];
 
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
         if (!rev.isCompleted && rev.targetDate >= startDate) {
+          shiftedReviews.push({
+            lectureId: lec.id,
+            reviewId: rev.id,
+            originalTargetDate: rev.targetDate
+          });
           const current = new Date(rev.targetDate + 'T00:00:00');
           current.setDate(current.getDate() + days);
           rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-          count++;
         }
       });
     });
+
+    const count = shiftedReviews.length;
 
     if (count > 0 || days > 0) {
       localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
@@ -947,6 +953,7 @@ export const storage = {
         endDate,
         days,
         count,
+        shiftedReviews,
         appliedAt: new Date().toISOString()
       };
       vacations.unshift(newVacation);
@@ -965,24 +972,44 @@ export const storage = {
     if (vacIndex === -1) return { days: 0, count: 0 };
 
     const vac = vacations[vacIndex];
-    const { startDate, days } = vac;
+    const { startDate, days, shiftedReviews } = vac;
 
     const lectures = this.getLectures();
     let count = 0;
 
-    lectures.forEach(lec => {
-      lec.reviews.forEach(rev => {
-        if (!rev.isCompleted) {
-          const current = new Date(rev.targetDate + 'T00:00:00');
-          current.setDate(current.getDate() - days);
-          const newTarget = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-          
-          // Only shift back if it won't go earlier than the original target before vacation
-          rev.targetDate = newTarget;
-          count++;
-        }
+    if (shiftedReviews && shiftedReviews.length > 0) {
+      // 1. Precise restoration using stored shiftedReviews map
+      const shiftedMap = new Map();
+      shiftedReviews.forEach(sr => {
+        shiftedMap.set(`${sr.lectureId}_${sr.reviewId}`, sr.originalTargetDate);
       });
-    });
+
+      lectures.forEach(lec => {
+        lec.reviews.forEach(rev => {
+          const key = `${lec.id}_${rev.id}`;
+          if (!rev.isCompleted && shiftedMap.has(key)) {
+            rev.targetDate = shiftedMap.get(key);
+            count++;
+          }
+        });
+      });
+    } else {
+      // Fallback for older legacy vacations without shiftedReviews: only revert targetDate >= (startDate + days)
+      const minShiftedDateObj = new Date(startDate + 'T00:00:00');
+      minShiftedDateObj.setDate(minShiftedDateObj.getDate() + days);
+      const minShiftedDateStr = new Date(minShiftedDateObj.getTime() - (minShiftedDateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+      lectures.forEach(lec => {
+        lec.reviews.forEach(rev => {
+          if (!rev.isCompleted && rev.targetDate >= minShiftedDateStr) {
+            const current = new Date(rev.targetDate + 'T00:00:00');
+            current.setDate(current.getDate() - days);
+            rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            count++;
+          }
+        });
+      });
+    }
 
     localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
     
