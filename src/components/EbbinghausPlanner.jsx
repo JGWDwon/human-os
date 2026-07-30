@@ -162,10 +162,13 @@ export default function EbbinghausPlanner() {
       });
     });
 
+    const isVacation = storage.isVacationDate(dateStr);
+
     return {
       date: d,
       dateStr,
       isToday,
+      isVacation,
       dayName: ['일','월','화','수','목','금','토'][d.getDay()],
       reviews: dayReviews
     };
@@ -282,8 +285,12 @@ export default function EbbinghausPlanner() {
           <div 
             key={day.dateStr} 
             style={{ 
-              background: day.isToday ? 'rgba(139, 92, 246, 0.15)' : 'rgba(0,0,0,0.2)', 
-              border: `1px solid ${day.isToday ? 'rgba(139, 92, 246, 0.4)' : 'rgba(255,255,255,0.05)'}`,
+              background: day.isVacation 
+                ? 'rgba(16, 185, 129, 0.12)' 
+                : (day.isToday ? 'rgba(139, 92, 246, 0.15)' : 'rgba(0,0,0,0.2)'), 
+              border: day.isVacation
+                ? '1px solid rgba(16, 185, 129, 0.4)'
+                : `1px solid ${day.isToday ? 'rgba(139, 92, 246, 0.4)' : 'rgba(255,255,255,0.05)'}`,
               borderRadius: 'var(--radius-sm)',
               display: 'flex',
               flexDirection: 'column',
@@ -294,13 +301,22 @@ export default function EbbinghausPlanner() {
             <div style={{ 
               padding: '0.75rem', 
               borderBottom: '1px solid rgba(255,255,255,0.05)',
-              background: day.isToday ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
+              background: day.isVacation
+                ? 'rgba(16, 185, 129, 0.22)' 
+                : (day.isToday ? 'rgba(139, 92, 246, 0.2)' : 'transparent'),
               display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-              <span style={{ fontWeight: 'bold', color: day.isToday ? '#a78bfa' : 'var(--text-secondary)' }}>
-                {day.dayName}요일
-              </span>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ fontWeight: 'bold', color: day.isVacation ? '#34d399' : (day.isToday ? '#a78bfa' : 'var(--text-secondary)') }}>
+                  {day.dayName}요일
+                </span>
+                {day.isVacation && (
+                  <span style={{ fontSize: '0.65rem', background: 'rgba(16, 185, 129, 0.4)', color: '#fff', padding: '0.05rem 0.35rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                    🌴 휴가
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: '0.85rem', color: day.isVacation ? '#34d399' : 'var(--text-muted)' }}>
                 {day.date.getDate()}일
               </span>
             </div>
@@ -308,8 +324,8 @@ export default function EbbinghausPlanner() {
             {/* Reviews List */}
             <div style={{ padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, overflowY: 'auto' }}>
               {day.reviews.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', marginTop: '1rem', opacity: 0.5 }}>
-                  일정 없음
+                <div style={{ color: day.isVacation ? '#34d399' : 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', marginTop: '1rem', opacity: day.isVacation ? 0.9 : 0.5, fontWeight: day.isVacation ? 'bold' : 'normal' }}>
+                  {day.isVacation ? '🌴 휴가 기간' : '일정 없음'}
                 </div>
               ) : (
                 day.reviews.map(rev => (

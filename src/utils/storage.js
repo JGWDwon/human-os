@@ -724,6 +724,28 @@ export const storage = {
     return safeParse(raw, []);
   },
 
+  isVacationDate(dateStr) {
+    if (!dateStr) return false;
+    const vacations = this.getVacations();
+    return vacations.some(vac => dateStr >= vac.startDate && dateStr <= vac.endDate);
+  },
+
+  getAdjustedTargetDate(dateStr) {
+    let currentStr = dateStr;
+    const vacations = this.getVacations();
+    if (!vacations || vacations.length === 0) return currentStr;
+
+    // Keep advancing by 1 day if it lands on a vacation date
+    let safetyCounter = 0; // prevent infinite loops
+    while (this.isVacationDate(currentStr) && safetyCounter < 365) {
+      const d = new Date(currentStr + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      currentStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      safetyCounter++;
+    }
+    return currentStr;
+  },
+
   addLecture(subject, title, dateStr) {
     if (!dateStr) {
       const d = new Date();
@@ -734,15 +756,20 @@ export const storage = {
     
     // Ebbinghaus intervals: 1, 4, 7, 14, 30 days
     const intervals = [1, 4, 7, 14, 30];
-    const baseDate = new Date(dateStr);
+    const baseDate = new Date(dateStr + 'T00:00:00');
     
     const reviews = intervals.map(offset => {
       const targetDate = new Date(baseDate);
       targetDate.setDate(baseDate.getDate() + offset);
+      const rawTargetStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      
+      // If rawTargetStr lands on a vacation date, skip to next available non-vacation date
+      const adjustedTargetStr = this.getAdjustedTargetDate(rawTargetStr);
+
       return {
         id: `rev_${Date.now()}_${offset}`,
         dayOffset: offset,
-        targetDate: new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0],
+        targetDate: adjustedTargetStr,
         isCompleted: false,
         completedAt: null
       };
