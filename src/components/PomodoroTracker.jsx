@@ -770,14 +770,20 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
             </div>
           </div>
           
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '42px', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '44px', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '6px' }}>
             {weeklyData.weekData.map((day, idx) => {
               const maxMinutes = Math.max(...weeklyData.weekData.map(d => d.totalMinutes), 120); 
               const heightPct = Math.min((day.totalMinutes / maxMinutes) * 100, 100);
               
+              const h = Math.floor((day.totalMinutes || 0) / 60);
+              const m = (day.totalMinutes || 0) % 60;
+              const compactTimeLabel = day.totalMinutes > 0 ? (h > 0 ? (m > 0 ? `${h}h${m}m` : `${h}h`) : `${m}m`) : '';
+
               return (
                 <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.1rem', flex: 1 }}>
-                  <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', height: '8px' }}>{day.count > 0 ? `${day.count}` : ''}</div>
+                  <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', height: '10px', fontWeight: 600 }}>
+                    {compactTimeLabel}
+                  </div>
                   <div style={{ 
                     width: '100%', 
                     maxWidth: '10px', 
