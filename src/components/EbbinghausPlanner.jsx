@@ -351,7 +351,7 @@ export default function EbbinghausPlanner() {
                         color: '#60a5fa',
                         fontWeight: 'bold'
                       }}>
-                        {rev.dayOffset}일차 복습
+                        {rev.dayOffset}일차
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         {!rev.isCompleted && (
