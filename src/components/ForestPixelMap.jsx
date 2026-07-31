@@ -57,11 +57,13 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     
     const mainQuests = dayData.quests ? dayData.quests.filter(q => q.type === 'main' || !q.type) : [];
     const completedCount = mainQuests.filter(q => q.isCompleted).length;
-    const pomoCount = dayData.pomoCount || 0;
-    const pomoLevel = pomoCount >= 5 ? 3 : pomoCount >= 3 ? 2 : pomoCount >= 1 ? 1 : 0;
-    const finalLevel = Math.max(completedCount, pomoLevel);
+    const totalMins = dayData.totalMinutes || 0;
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    const timeDisplay = totalMins === 0 ? '0분' : h > 0 ? `${h}시간 ${m > 0 ? m + '분' : ''}` : `${m}분`;
+    const levelName = completedCount === 1 ? '새싹 🌱' : completedCount === 2 ? '성장 🌿' : completedCount >= 3 ? '울창 🌲' : '씨앗 🌱';
     
-    return `달성 단계: ${finalLevel}단계 (${finalLevel === 1 ? '새싹 🌱' : finalLevel === 2 ? '성장 🌿' : '울창 🌲'}) (메인퀘 ${completedCount}개, 뽀모도로 ${pomoCount}회)`;
+    return `달성 단계: ${levelName} (메인퀘 ${completedCount}개 완료, 집중시간: ${timeDisplay})`;
   };
 
   const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
