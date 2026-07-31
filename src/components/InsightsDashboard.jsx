@@ -130,35 +130,28 @@ export default function InsightsDashboard({ onClose }) {
         </div>
       </div>
 
-      {/* Weekly Trends Chart */}
+      {/* Weekly Focus Time Chart */}
       <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
         <h3 style={{ fontSize: '1.1rem', marginBottom: '1.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <TrendingUp size={18} color="var(--accent-primary)" /> 주차별 성장 트렌드 (최근 8주)
+          <TrendingUp size={18} color="var(--accent-primary)" /> 주차별 누적 몰입 시간 (최근 8주)
         </h3>
-        <div style={{ height: '300px', width: '100%' }}>
+        <div style={{ height: '260px', width: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
               <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickMargin={10} />
-              <YAxis yAxisId="left" stroke="var(--text-muted)" fontSize={12} />
-              <YAxis yAxisId="right" orientation="right" stroke="var(--text-muted)" fontSize={12} />
+              <YAxis 
+                stroke="var(--text-muted)" 
+                fontSize={12} 
+                tickFormatter={(value) => `${Math.floor(value / 60)}h`}
+              />
               <Tooltip 
                 contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
-                itemStyle={{ fontWeight: 'bold' }}
-                formatter={(value, name) => {
-                  if (name === '집중 시간') {
-                    const h = Math.floor(value / 60);
-                    const m = value % 60;
-                    const display = h > 0 ? `${h}시간 ${m > 0 ? m + '분' : ''}` : `${m}분`;
-                    return [display, name];
-                  }
-                  return [value + '회', name];
-                }}
+                itemStyle={{ fontWeight: 'bold', color: '#ef4444' }}
+                formatter={(value) => [formatTime(value), '총 몰입 시간']}
               />
-              <Legend wrapperStyle={{ paddingTop: '10px' }} />
-              <Bar yAxisId="left" dataKey="mainQuests" name="메인퀘스트 완료" fill="var(--accent-primary)" radius={[4, 4, 0, 0]} maxBarSize={40} />
-              <Line yAxisId="right" type="monotone" dataKey="pomodoroMins" name="집중 시간" stroke="#ef4444" strokeWidth={3} dot={{ r: 4, fill: '#ef4444', strokeWidth: 2, stroke: '#1e293b' }} activeDot={{ r: 6 }} />
-            </ComposedChart>
+              <Bar dataKey="pomodoroMins" name="총 몰입 시간" fill="#ef4444" radius={[6, 6, 0, 0]} maxBarSize={45} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
