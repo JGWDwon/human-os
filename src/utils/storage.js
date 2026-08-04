@@ -1014,64 +1014,44 @@ export const storage = {
   smartEbbinghausRedistribute(maxPerDay = 2) {
     const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     const lectures = this.getLectures();
-    const intervals = [1, 4, 7, 14, 30];
     let resetCount = 0;
 
-    // Step 1: Normalize completion status for each lecture
-    // If user pressed 4일차 but not 1일차, completedCount=1, so 1일차 becomes completed and 4일차+ become uncompleted
-    lectures.forEach(lec => {
-      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-      const completedCount = lec.reviews.filter(r => r.isCompleted).length;
-      lec.reviews.forEach((r, idx) => {
-        const shouldBeCompleted = idx < completedCount;
-        if (r.isCompleted !== shouldBeCompleted) {
-          r.isCompleted = shouldBeCompleted;
-          r.completedAt = shouldBeCompleted ? (r.completedAt || new Date().toISOString()) : null;
-          resetCount++;
-        }
-      });
-    });
-
-    // Step 2: Get active lectures sorted by dateAdded (oldest first = studied first)
+    // Step 1: Filter lectures with uncompleted reviews, sorted by dateAdded (chronological order)
     const activeLectures = lectures
       .filter(lec => lec.reviews.some(r => !r.isCompleted))
       .sort((a, b) => a.dateAdded.localeCompare(b.dateAdded));
 
-    if (activeLectures.length === 0) {
-      if (resetCount > 0) {
-        localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
-        this._dispatchSync();
-      }
-      return 0;
-    }
+    if (activeLectures.length === 0) return 0;
 
-    // Step 3: Distribute lectures across days (max N per day), oldest lectures first
-    let currentStr = this.getAdjustedTargetDate(todayStr);
-    let countInCurrentDay = 0;
+    // Step 2: Determine start study day (today or next available non-vacation date)
+    let currentStartStr = this.getAdjustedTargetDate(todayStr);
+    let countInCurrentStartDay = 0;
 
+    // Step 3: For each active lecture, schedule ONLY UNCOMPLETED reviews
+    // Completed reviews are NEVER touched or moved!
     activeLectures.forEach(lec => {
-      if (countInCurrentDay >= maxPerDay) {
-        const d = new Date(currentStr + 'T00:00:00');
+      // Advance currentStartStr if today's start bucket is full
+      if (countInCurrentStartDay >= maxPerDay) {
+        const d = new Date(currentStartStr + 'T00:00:00');
         d.setDate(d.getDate() + 1);
-        currentStr = this.getAdjustedTargetDate(
+        currentStartStr = this.getAdjustedTargetDate(
           new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
         );
-        countInCurrentDay = 0;
+        countInCurrentStartDay = 0;
       }
 
-      // Step 4: For this lecture, schedule remaining reviews using actual Ebbinghaus inter-stage gaps
-      // E.g. if 1일차 done, remaining = [4일차, 7일차, 14일차, 30일차]
-      // 4일차 → today, 7일차 → today+3, 14일차 → today+10, 30일차 → today+26
+      // Sort reviews by dayOffset
+      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
+
       const uncompleted = lec.reviews.filter(r => !r.isCompleted);
       if (uncompleted.length > 0) {
-        const firstDayOffset = uncompleted[0].dayOffset;
-        const firstIdx = intervals.indexOf(firstDayOffset);
+        const firstUncompletedOffset = uncompleted[0].dayOffset;
+        const lecStart = new Date(currentStartStr + 'T00:00:00');
 
         uncompleted.forEach(rev => {
-          // Calculate days from the first uncompleted review's interval
-          const dayGap = rev.dayOffset - firstDayOffset; // e.g. 7-4=3, 14-4=10, 30-4=26
-          const targetDate = new Date(currentStr + 'T00:00:00');
-          targetDate.setDate(targetDate.getDate() + dayGap);
+          const dayGap = rev.dayOffset - firstUncompletedOffset;
+          const targetDate = new Date(lecStart);
+          targetDate.setDate(lecStart.getDate() + dayGap);
 
           const rawStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
           const adjusted = this.getAdjustedTargetDate(rawStr);
@@ -1082,8 +1062,57 @@ export const storage = {
           }
         });
 
-        countInCurrentDay++;
+        countInCurrentStartDay++;
       }
+    });
+
+    // Step 4: Smooth out daily review piles so NO FUTURE DATE has > maxPerDay reviews due to weekend/vacation pushes
+    const uncompletedReviews = [];
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted) {
+          uncompletedReviews.push({
+            lecDateAdded: lec.dateAdded,
+            lecId: lec.id,
+            rev: rev
+          });
+        }
+      });
+    });
+
+    // Sort by targetDate first, then dateAdded, then dayOffset
+    uncompletedReviews.sort((a, b) => {
+      if (a.rev.targetDate !== b.rev.targetDate) {
+        return a.rev.targetDate.localeCompare(b.rev.targetDate);
+      }
+      if (a.lecDateAdded !== b.lecDateAdded) {
+        return a.lecDateAdded.localeCompare(b.lecDateAdded);
+      }
+      return a.rev.dayOffset - b.rev.dayOffset;
+    });
+
+    const dateCounts = {};
+    uncompletedReviews.forEach(item => {
+      let targetStr = item.rev.targetDate;
+      if (targetStr < todayStr) {
+        targetStr = todayStr;
+      }
+      targetStr = this.getAdjustedTargetDate(targetStr);
+
+      while ((dateCounts[targetStr] || 0) >= maxPerDay) {
+        const d = new Date(targetStr + 'T00:00:00');
+        d.setDate(d.getDate() + 1);
+        targetStr = this.getAdjustedTargetDate(
+          new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
+        );
+      }
+
+      if (item.rev.targetDate !== targetStr) {
+        item.rev.targetDate = targetStr;
+        resetCount++;
+      }
+
+      dateCounts[targetStr] = (dateCounts[targetStr] || 0) + 1;
     });
 
     if (resetCount > 0) {
