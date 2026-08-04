@@ -961,20 +961,23 @@ export const storage = {
     let resetCount = 0;
 
     lectures.forEach((lec, lecIdx) => {
-      // Find highest completed dayOffset (e.g. 4 if 4일차 was completed)
-      const completedOffsets = lec.reviews.filter(r => r.isCompleted).map(r => r.dayOffset);
-      const maxCompletedOffset = completedOffsets.length > 0 ? Math.max(...completedOffsets) : 0;
+      // Sort reviews by dayOffset just to be 100% safe (1, 4, 7, 14, 30)
+      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
 
-      // Auto-complete any earlier uncompleted reviews prior to maxCompletedOffset (e.g. 1일차 if 4일차 is completed)
-      lec.reviews.forEach(r => {
-        if (!r.isCompleted && r.dayOffset < maxCompletedOffset) {
-          r.isCompleted = true;
-          r.completedAt = new Date().toISOString();
+      // Total number of completed reviews for this lecture
+      const completedCount = lec.reviews.filter(r => r.isCompleted).length;
+
+      // Normalize completion status: first N reviews are marked completed (1/5), remaining are uncompleted
+      lec.reviews.forEach((r, idx) => {
+        const shouldBeCompleted = idx < completedCount;
+        if (r.isCompleted !== shouldBeCompleted) {
+          r.isCompleted = shouldBeCompleted;
+          r.completedAt = shouldBeCompleted ? (r.completedAt || new Date().toISOString()) : null;
           resetCount++;
         }
       });
 
-      // Filter remaining uncompleted reviews (whose dayOffset > maxCompletedOffset)
+      // Filter uncompleted reviews
       const uncompleted = lec.reviews.filter(r => !r.isCompleted);
       if (uncompleted.length === 0) return;
 
@@ -983,6 +986,7 @@ export const storage = {
         baseStart.setDate(baseStart.getDate() + lecIdx);
       }
 
+      // First uncompleted review stage (e.g. 4일차 if 1 review was completed)
       const firstOffset = uncompleted[0].dayOffset;
 
       uncompleted.forEach(rev => {
