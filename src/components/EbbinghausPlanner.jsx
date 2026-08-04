@@ -155,15 +155,20 @@ export default function EbbinghausPlanner() {
     }
   };
 
+  const handleReanchorToday = (stagger = false) => {
+    const count = storage.reanchorEbbinghausFromToday(stagger);
+    if (count > 0) {
+      alert(`✨ 오늘 날짜 기준으로 1일, 4일, 7일, 14일, 30일 에빙하우스 복습 주기가 완벽하게 재설정되었습니다!\n${count}개의 남아있는 복습이 새로 재배치되었습니다. 👍`);
+      refreshData();
+    } else {
+      alert("이미 모든 복습 일정이 최적으로 설정되어 있습니다! 👍");
+    }
+    setShowOverdueModal(false);
+  };
+
   const handleRecalculateReviews = () => {
-    if (window.confirm("모든 미완료 복습 일정을 원래 에빙하우스 간격(1일, 4일, 7일, 14일, 30일)으로 초기화합니다.\n\n이미 완료한 복습은 영향 없습니다.\n계속하시겠습니까?")) {
-      const count = storage.recalculateAllReviews();
-      if (count > 0) {
-        alert(`✨ 복습 일정 정리 완료!\n${count}개의 복습이 정확한 에빙하우스 간격으로 재배치되었습니다.`);
-        refreshData();
-      } else {
-        alert("모든 복습 일정이 이미 정확합니다! 👍");
-      }
+    if (window.confirm("오늘 날짜를 기준으로 남은 복습 일정을 1, 4, 7, 14, 30일 주기로 스마트 재설정하시겠습니까?\n\n(완료된 복습은 보존되고, 미완료된 복습이 오늘부터 1·4·7·14·30일 간격으로 휴가를 제외하고 재배치됩니다.)")) {
+      handleReanchorToday(false);
     }
   };
 
@@ -589,13 +594,31 @@ export default function EbbinghausPlanner() {
             </div>
 
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
-              밀린 복습 <strong style={{ color: '#ef4444' }}>{overdueCount}개</strong>를 한꺼번에 진행하기 부담스러우신가요?<br />
-              오늘부터 <strong>휴가일을 제외하고 하루에 일정 개수씩 나누어 자동 배치</strong>해 드립니다.
+              밀린 복습 <strong style={{ color: '#ef4444' }}>{overdueCount}개</strong>가 존재합니다.<br />
+              오늘 날짜를 기준점으로 <strong>1일, 4일, 7일, 14일, 30일 에빙하우스 주기</strong>로 스마트하게 재배치하거나 순차 분배할 수 있습니다.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button
-                onClick={() => handleDistributeOverdue(2)}
+                onClick={() => handleReanchorToday(false)}
+                className="btn"
+                style={{
+                  background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6', color: '#c084fc',
+                  padding: '0.85rem 1rem', borderRadius: '10px', textAlign: 'left', cursor: 'pointer',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>✨ 오늘 기준 1·4·7·14·30 스마트 재설정 (강력 추천)</div>
+                  <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
+                    오늘을 1일차로 시작하여 1일, 4일, 7일, 14일, 30일 간격을 휴가 제외하고 새로 설정합니다.
+                  </div>
+                </div>
+                <ArrowRight size={18} />
+              </button>
+
+              <button
+                onClick={() => handleReanchorToday(true)}
                 className="btn"
                 style={{
                   background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399',
@@ -604,16 +627,16 @@ export default function EbbinghausPlanner() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌱 하루 2개씩 균등 분배 (추천)</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌱 강의별 1일 시차 + 1·4·7·14·30 주기 분배</div>
                   <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                    약 {Math.ceil(overdueCount / 2)}일간 나누어 부담 없이 복습을 완료합니다.
+                    강의마다 하루씩 시차를 두고 1, 4, 7, 14, 30일 간격으로 부드럽게 분배합니다.
                   </div>
                 </div>
                 <ArrowRight size={18} />
               </button>
 
               <button
-                onClick={() => handleDistributeOverdue(3)}
+                onClick={() => handleDistributeOverdue(2)}
                 className="btn"
                 style={{
                   background: 'rgba(59, 130, 246, 0.15)', border: '1px solid #3b82f6', color: '#60a5fa',
@@ -622,9 +645,9 @@ export default function EbbinghausPlanner() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌿 하루 3개씩 균등 분배</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌿 하루 2개씩 순차 균등 분배</div>
                   <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                    약 {Math.ceil(overdueCount / 3)}일간 빠르게 나누어 복습을 진행합니다.
+                    휴가를 제외하고 매일 2개씩 차근차근 배치합니다.
                   </div>
                 </div>
                 <ArrowRight size={18} />
@@ -642,7 +665,7 @@ export default function EbbinghausPlanner() {
                 <div>
                   <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>⚡ 오늘 날짜로 모두 당겨오기</div>
                   <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                    {overdueCount}개의 복습을 전부 오늘 일정으로 한꺼번에 이동합니다.
+                    {overdueCount}개의 복습을 전부 오늘 하루 일정으로 한꺼번에 이동합니다.
                   </div>
                 </div>
                 <ArrowRight size={18} />

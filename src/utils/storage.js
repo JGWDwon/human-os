@@ -955,6 +955,44 @@ export const storage = {
     return overdueList.length;
   },
 
+  reanchorEbbinghausFromToday(stagger = false) {
+    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const lectures = this.getLectures();
+    let resetCount = 0;
+
+    lectures.forEach((lec, lecIdx) => {
+      const uncompleted = lec.reviews.filter(r => !r.isCompleted);
+      if (uncompleted.length === 0) return;
+
+      const baseStart = new Date(todayStr + 'T00:00:00');
+      if (stagger) {
+        baseStart.setDate(baseStart.getDate() + lecIdx);
+      }
+
+      const firstOffset = uncompleted[0].dayOffset || 1;
+
+      uncompleted.forEach(rev => {
+        const relativeOffset = Math.max(0, rev.dayOffset - firstOffset);
+        const targetDate = new Date(baseStart);
+        targetDate.setDate(baseStart.getDate() + relativeOffset);
+        
+        const rawTargetStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        const adjustedTargetStr = this.getAdjustedTargetDate(rawTargetStr);
+
+        if (rev.targetDate !== adjustedTargetStr) {
+          rev.targetDate = adjustedTargetStr;
+          resetCount++;
+        }
+      });
+    });
+
+    if (resetCount > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return resetCount;
+  },
+
   recalculateAllReviews() {
     const lectures = this.getLectures();
     const intervals = [1, 4, 7, 14, 30];
