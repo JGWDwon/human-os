@@ -1011,6 +1011,73 @@ export const storage = {
     return resetCount;
   },
 
+  smartEbbinghausRedistribute(maxPerDay = 2) {
+    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const lectures = this.getLectures();
+    let resetCount = 0;
+
+    // Normalize completed statuses for each lecture
+    lectures.forEach(lec => {
+      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
+      const completedCount = lec.reviews.filter(r => r.isCompleted).length;
+      lec.reviews.forEach((r, idx) => {
+        const shouldBeCompleted = idx < completedCount;
+        if (r.isCompleted !== shouldBeCompleted) {
+          r.isCompleted = shouldBeCompleted;
+          r.completedAt = shouldBeCompleted ? (r.completedAt || new Date().toISOString()) : null;
+          resetCount++;
+        }
+      });
+    });
+
+    // Get lectures that have remaining uncompleted reviews
+    const activeLectures = lectures.filter(lec => lec.reviews.some(r => !r.isCompleted));
+    if (activeLectures.length === 0) return 0;
+
+    let currentStr = todayStr;
+    currentStr = this.getAdjustedTargetDate(currentStr);
+
+    let countInCurrentDay = 0;
+
+    activeLectures.forEach(lec => {
+      if (countInCurrentDay >= maxPerDay) {
+        const d = new Date(currentStr + 'T00:00:00');
+        d.setDate(d.getDate() + 1);
+        const nextStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        currentStr = this.getAdjustedTargetDate(nextStr);
+        countInCurrentDay = 0;
+      }
+
+      const uncompleted = lec.reviews.filter(r => !r.isCompleted);
+      if (uncompleted.length > 0) {
+        const firstOffset = uncompleted[0].dayOffset;
+        const lecStart = new Date(currentStr + 'T00:00:00');
+
+        uncompleted.forEach(rev => {
+          const relativeOffset = Math.max(0, rev.dayOffset - firstOffset);
+          const targetDate = new Date(lecStart);
+          targetDate.setDate(lecStart.getDate() + relativeOffset);
+          
+          const rawTargetStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+          const adjustedTargetStr = this.getAdjustedTargetDate(rawTargetStr);
+
+          if (rev.targetDate !== adjustedTargetStr) {
+            rev.targetDate = adjustedTargetStr;
+            resetCount++;
+          }
+        });
+
+        countInCurrentDay++;
+      }
+    });
+
+    if (resetCount > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return activeLectures.length;
+  },
+
   recalculateAllReviews() {
     const lectures = this.getLectures();
     const intervals = [1, 4, 7, 14, 30];

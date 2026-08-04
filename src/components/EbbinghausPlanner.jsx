@@ -155,20 +155,20 @@ export default function EbbinghausPlanner() {
     }
   };
 
-  const handleReanchorToday = (stagger = false) => {
-    const count = storage.reanchorEbbinghausFromToday(stagger);
+  const handleSmartRedistribute = (maxPerDay = 2) => {
+    const count = storage.smartEbbinghausRedistribute(maxPerDay);
     if (count > 0) {
-      alert(`✨ 오늘 날짜 기준으로 1일, 4일, 7일, 14일, 30일 에빙하우스 복습 주기가 완벽하게 재설정되었습니다!\n${count}개의 남아있는 복습이 새로 재배치되었습니다. 👍`);
+      alert(`✨ 하루 최대 ${maxPerDay}개씩 강의를 부드럽게 균등 분배했습니다!\n특정 날짜 몰림 없이 화·수·목·금 평일에 균등 배치됩니다. 👍`);
       refreshData();
     } else {
-      alert("이미 모든 복습 일정이 최적으로 설정되어 있습니다! 👍");
+      alert("이미 모든 복습 일정이 균등하게 분배되어 있습니다! 👍");
     }
     setShowOverdueModal(false);
   };
 
   const handleRecalculateReviews = () => {
-    if (window.confirm("오늘 날짜를 기준으로 남은 복습 일정을 1, 4, 7, 14, 30일 주기로 스마트 재설정하시겠습니까?\n\n(완료된 복습은 보존되고, 미완료된 복습이 오늘부터 1·4·7·14·30일 간격으로 휴가를 제외하고 재배치됩니다.)")) {
-      handleReanchorToday(false);
+    if (window.confirm("복습이 한 날짜에 쏟아지지 않도록 평일(화·수·목·금)에 하루 2개씩 균등하게 나누어 1·4·7·14·30 주기로 재배치하시겠습니까?")) {
+      handleSmartRedistribute(2);
     }
   };
 
@@ -600,7 +600,7 @@ export default function EbbinghausPlanner() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button
-                onClick={() => handleReanchorToday(false)}
+                onClick={() => handleSmartRedistribute(2)}
                 className="btn"
                 style={{
                   background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6', color: '#c084fc',
@@ -609,16 +609,16 @@ export default function EbbinghausPlanner() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>✨ 오늘 기준 1·4·7·14·30 스마트 재설정 (강력 추천)</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>✨ 하루 2개씩 평일 균등 분배 (강력 추천)</div>
                   <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                    오늘을 1일차로 시작하여 1일, 4일, 7일, 14일, 30일 간격을 휴가 제외하고 새로 설정합니다.
+                    특정 날짜 몰림 없이 화·수·목·금에 하루 2개씩 1·4·7·14·30 주기로 나누어 배치합니다.
                   </div>
                 </div>
                 <ArrowRight size={18} />
               </button>
 
               <button
-                onClick={() => handleReanchorToday(true)}
+                onClick={() => handleSmartRedistribute(3)}
                 className="btn"
                 style={{
                   background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399',
@@ -627,9 +627,9 @@ export default function EbbinghausPlanner() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌱 강의별 1일 시차 + 1·4·7·14·30 주기 분배</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌱 하루 3개씩 평일 균등 분배</div>
                   <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                    강의마다 하루씩 시차를 두고 1, 4, 7, 14, 30일 간격으로 부드럽게 분배합니다.
+                    하루 최대 3개씩 요일별로 나누어 1·4·7·14·30 주기로 배치합니다.
                   </div>
                 </div>
                 <ArrowRight size={18} />
