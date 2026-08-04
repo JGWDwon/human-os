@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BookOpen, Plus, Check, ChevronLeft, ChevronRight, Trash2, Calendar, BrainCircuit, RotateCcw, Palmtree, ArrowRight } from 'lucide-react';
+import { BookOpen, Plus, Check, ChevronLeft, ChevronRight, Trash2, Calendar, BrainCircuit, RotateCcw, Palmtree, ArrowRight, Wand2 } from 'lucide-react';
 import { storage } from '../utils/storage';
 import confetti from 'canvas-confetti';
 
@@ -137,6 +137,18 @@ export default function EbbinghausPlanner() {
     }
   };
 
+  const handleRecalculateReviews = () => {
+    if (window.confirm("모든 미완료 복습 일정을 원래 에빙하우스 간격(1일, 4일, 7일, 14일, 30일)으로 초기화합니다.\n\n이미 완료한 복습은 영향 없습니다.\n계속하시겠습니까?")) {
+      const count = storage.recalculateAllReviews();
+      if (count > 0) {
+        alert(`✨ 복습 일정 정리 완료!\n${count}개의 복습이 정확한 에빙하우스 간격으로 재배치되었습니다.`);
+        refreshData();
+      } else {
+        alert("모든 복습 일정이 이미 정확합니다! 👍");
+      }
+    }
+  };
+
   // Calculate overdue review count
   const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && r.targetDate < todayStr).length;
 
@@ -207,6 +219,15 @@ export default function EbbinghausPlanner() {
             title="밀린 복습들을 오늘 일정으로 일괄 이동"
           >
             <RotateCcw size={14} /> 밀린 복습 오늘로 당겨오기 {overdueCount > 0 ? `(${overdueCount}개)` : ''}
+          </button>
+
+          <button 
+            onClick={handleRecalculateReviews}
+            className="btn btn-secondary"
+            style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid #fbbf24', color: '#fbbf24', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+            title="모든 미완료 복습 일정을 원래 1/4/7/14/30일 간격으로 재배치"
+          >
+            <Wand2 size={14} /> 복습 일정 초기화 (1·4·7·14·30)
           </button>
 
           <button 

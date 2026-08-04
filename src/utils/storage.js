@@ -913,6 +913,43 @@ export const storage = {
     return count;
   },
 
+  recalculateAllReviews() {
+    const lectures = this.getLectures();
+    const intervals = [1, 4, 7, 14, 30];
+    let resetCount = 0;
+
+    lectures.forEach(lec => {
+      const baseDate = new Date(lec.dateAdded + 'T00:00:00');
+
+      lec.reviews.forEach(rev => {
+        // Only recalculate uncompleted reviews
+        if (rev.isCompleted) return;
+
+        // Match dayOffset to the correct interval
+        const offset = rev.dayOffset;
+        if (!intervals.includes(offset)) return; // safety check
+
+        const targetDate = new Date(baseDate);
+        targetDate.setDate(baseDate.getDate() + offset);
+        const rawTargetStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+        // Skip vacation dates
+        const adjustedTargetStr = this.getAdjustedTargetDate(rawTargetStr);
+
+        if (rev.targetDate !== adjustedTargetStr) {
+          rev.targetDate = adjustedTargetStr;
+          resetCount++;
+        }
+      });
+    });
+
+    if (resetCount > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return resetCount;
+  },
+
   shiftAllUpcomingReviews(days) {
     if (!days || days <= 0) return 0;
     const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
