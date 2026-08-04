@@ -20,8 +20,9 @@ export default function EbbinghausPlanner() {
   const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const [selectedDateFilter, setSelectedDateFilter] = useState(todayStr);
 
-  // Vacation Modal states
+  // Vacation & Overdue Modal states
   const [showVacationModal, setShowVacationModal] = useState(false);
+  const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [vacStartDate, setVacStartDate] = useState(todayStr);
   const [vacEndDate, setVacEndDate] = useState(() => {
     const d = new Date();
@@ -96,14 +97,31 @@ export default function EbbinghausPlanner() {
     refreshData();
   };
 
-  const handleMoveOverdueToToday = () => {
+  const handleMoveOverdueClick = () => {
+    const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && r.targetDate < todayStr).length;
+    if (overdueCount === 0) {
+      alert("밀린 복습이 없습니다! 아주 훌륭합니다 🎉");
+      return;
+    }
+    setShowOverdueModal(true);
+  };
+
+  const handleDistributeOverdue = (maxPerDay) => {
+    const count = storage.distributeOverdueReviews(maxPerDay);
+    if (count > 0) {
+      alert(`🌱 밀린 복습 ${count}개를 오늘부터 하루 ${maxPerDay}개씩 나누어 균등하게 재배치했습니다!`);
+      refreshData();
+    }
+    setShowOverdueModal(false);
+  };
+
+  const handleMoveOverdueToTodayModal = () => {
     const count = storage.moveAllOverdueToToday();
     if (count > 0) {
-      alert(`지연되었던 복습 ${count}개를 오늘 날짜로 모두 이동했습니다! 💪`);
+      alert(`⚡ 밀린 복습 ${count}개를 오늘 날짜로 모두 이동했습니다! 💪`);
       refreshData();
-    } else {
-      alert("밀린 복습이 없습니다! 아주 훌륭합니다 🎉");
     }
+    setShowOverdueModal(false);
   };
 
   const handleApplyVacation = (e) => {
@@ -204,7 +222,7 @@ export default function EbbinghausPlanner() {
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <button 
-            onClick={handleMoveOverdueToToday}
+            onClick={handleMoveOverdueClick}
             className="btn btn-secondary"
             style={{ 
               background: overdueCount > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)', 
@@ -216,9 +234,9 @@ export default function EbbinghausPlanner() {
               alignItems: 'center', 
               gap: '0.3rem' 
             }}
-            title="밀린 복습들을 오늘 일정으로 일괄 이동"
+            title="밀린 복습 처리 및 균등 분배"
           >
-            <RotateCcw size={14} /> 밀린 복습 오늘로 당겨오기 {overdueCount > 0 ? `(${overdueCount}개)` : ''}
+            <RotateCcw size={14} /> 밀린 복습 정리 {overdueCount > 0 ? `(${overdueCount}개)` : ''}
           </button>
 
           <button 
@@ -547,6 +565,88 @@ export default function EbbinghausPlanner() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overdue Distribution Modal */}
+      {showOverdueModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem'
+        }}>
+          <div className="glass-panel animate-fade-in" style={{
+            maxWidth: '480px', width: '100%', background: '#0f172a', border: '1px solid #ef4444',
+            borderRadius: '16px', padding: '1.5rem', boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <RotateCcw size={22} /> 밀린 복습 스마트 재배치 ({overdueCount}개)
+              </h3>
+              <button onClick={() => setShowOverdueModal(false)} className="btn btn-secondary" style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}>닫기</button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+              밀린 복습 <strong style={{ color: '#ef4444' }}>{overdueCount}개</strong>를 한꺼번에 진행하기 부담스러우신가요?<br />
+              오늘부터 <strong>휴가일을 제외하고 하루에 일정 개수씩 나누어 자동 배치</strong>해 드립니다.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button
+                onClick={() => handleDistributeOverdue(2)}
+                className="btn"
+                style={{
+                  background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399',
+                  padding: '0.85rem 1rem', borderRadius: '10px', textAlign: 'left', cursor: 'pointer',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌱 하루 2개씩 균등 분배 (추천)</div>
+                  <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
+                    약 {Math.ceil(overdueCount / 2)}일간 나누어 부담 없이 복습을 완료합니다.
+                  </div>
+                </div>
+                <ArrowRight size={18} />
+              </button>
+
+              <button
+                onClick={() => handleDistributeOverdue(3)}
+                className="btn"
+                style={{
+                  background: 'rgba(59, 130, 246, 0.15)', border: '1px solid #3b82f6', color: '#60a5fa',
+                  padding: '0.85rem 1rem', borderRadius: '10px', textAlign: 'left', cursor: 'pointer',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>🌿 하루 3개씩 균등 분배</div>
+                  <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
+                    약 {Math.ceil(overdueCount / 3)}일간 빠르게 나누어 복습을 진행합니다.
+                  </div>
+                </div>
+                <ArrowRight size={18} />
+              </button>
+
+              <button
+                onClick={handleMoveOverdueToTodayModal}
+                className="btn"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#f87171',
+                  padding: '0.85rem 1rem', borderRadius: '10px', textAlign: 'left', cursor: 'pointer',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>⚡ 오늘 날짜로 모두 당겨오기</div>
+                  <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
+                    {overdueCount}개의 복습을 전부 오늘 일정으로 한꺼번에 이동합니다.
+                  </div>
+                </div>
+                <ArrowRight size={18} />
+              </button>
             </div>
           </div>
         </div>

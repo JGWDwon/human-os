@@ -913,6 +913,48 @@ export const storage = {
     return count;
   },
 
+  distributeOverdueReviews(maxPerDay = 2) {
+    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const lectures = this.getLectures();
+    
+    // Collect all uncompleted overdue reviews
+    const overdueList = [];
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted && rev.targetDate < todayStr) {
+          overdueList.push(rev);
+        }
+      });
+    });
+
+    if (overdueList.length === 0) return 0;
+
+    let currentStr = todayStr;
+    // Make sure starting day is not vacation
+    currentStr = this.getAdjustedTargetDate(currentStr);
+
+    let countInCurrentDay = 0;
+
+    overdueList.forEach(rev => {
+      if (countInCurrentDay >= maxPerDay) {
+        // Advance to next day
+        const d = new Date(currentStr + 'T00:00:00');
+        d.setDate(d.getDate() + 1);
+        const nextStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        // Skip vacation days
+        currentStr = this.getAdjustedTargetDate(nextStr);
+        countInCurrentDay = 0;
+      }
+
+      rev.targetDate = currentStr;
+      countInCurrentDay++;
+    });
+
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    this._dispatchSync();
+    return overdueList.length;
+  },
+
   recalculateAllReviews() {
     const lectures = this.getLectures();
     const intervals = [1, 4, 7, 14, 30];
