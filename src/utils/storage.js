@@ -961,6 +961,20 @@ export const storage = {
     let resetCount = 0;
 
     lectures.forEach((lec, lecIdx) => {
+      // Find highest completed dayOffset (e.g. 4 if 4일차 was completed)
+      const completedOffsets = lec.reviews.filter(r => r.isCompleted).map(r => r.dayOffset);
+      const maxCompletedOffset = completedOffsets.length > 0 ? Math.max(...completedOffsets) : 0;
+
+      // Auto-complete any earlier uncompleted reviews prior to maxCompletedOffset (e.g. 1일차 if 4일차 is completed)
+      lec.reviews.forEach(r => {
+        if (!r.isCompleted && r.dayOffset < maxCompletedOffset) {
+          r.isCompleted = true;
+          r.completedAt = new Date().toISOString();
+          resetCount++;
+        }
+      });
+
+      // Filter remaining uncompleted reviews (whose dayOffset > maxCompletedOffset)
       const uncompleted = lec.reviews.filter(r => !r.isCompleted);
       if (uncompleted.length === 0) return;
 
@@ -969,7 +983,7 @@ export const storage = {
         baseStart.setDate(baseStart.getDate() + lecIdx);
       }
 
-      const firstOffset = uncompleted[0].dayOffset || 1;
+      const firstOffset = uncompleted[0].dayOffset;
 
       uncompleted.forEach(rev => {
         const relativeOffset = Math.max(0, rev.dayOffset - firstOffset);
