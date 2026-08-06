@@ -20,6 +20,8 @@ export default function EbbinghausPlanner() {
   const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const [selectedDateFilter, setSelectedDateFilter] = useState(todayStr);
 
+  const [selectedDateForAdd, setSelectedDateForAdd] = useState(todayStr);
+
   // Vacation & Overdue Modal states
   const [showVacationModal, setShowVacationModal] = useState(false);
   const [showOverdueModal, setShowOverdueModal] = useState(false);
@@ -58,11 +60,12 @@ export default function EbbinghausPlanner() {
     e.preventDefault();
     if (!newSubject.trim() || !newTitle.trim()) return;
     
-    // Add based on today
-    storage.addLecture(newSubject, newTitle);
+    // Add based on selected date
+    storage.addLecture(newSubject, newTitle, selectedDateForAdd);
     
     setNewSubject('');
     setNewTitle('');
+    setSelectedDateForAdd(todayStr);
     setShowAddForm(false);
     refreshData();
     
@@ -267,7 +270,7 @@ export default function EbbinghausPlanner() {
             className="btn btn-primary"
             style={{ background: '#8b5cf6', borderColor: '#7c3aed', fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}
           >
-            {showAddForm ? '취소' : <><Plus size={16} /> 오늘 강의 추가</>}
+            {showAddForm ? '취소' : <><Plus size={16} /> 강의 추가 (날짜 지정)</>}
           </button>
         </div>
       </div>
@@ -275,29 +278,41 @@ export default function EbbinghausPlanner() {
       {/* Add Form */}
       {showAddForm && (
         <div style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '2rem' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#a78bfa' }}>오늘 배운 내용 기록하기</h3>
-          <form onSubmit={handleAddLecture} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 200px' }}>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#a78bfa' }}>배운 내용 및 학습 날짜 기록하기</h3>
+          <form onSubmit={handleAddLecture} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: '1 1 160px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#a78bfa', marginBottom: '0.3rem' }}>학습 날짜</label>
+              <input 
+                type="date" 
+                value={selectedDateForAdd}
+                onChange={(e) => setSelectedDateForAdd(e.target.value)}
+                required
+                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', color: 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px' }}
+              />
+            </div>
+            <div style={{ flex: '1 1 180px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#a78bfa', marginBottom: '0.3rem' }}>과목명</label>
               <input 
                 type="text" 
-                placeholder="과목명 (예: 재무회계)" 
+                placeholder="예: 재무회계" 
                 value={newSubject}
                 onChange={(e) => setNewSubject(e.target.value)}
                 required
-                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.2)' }}
+                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', color: 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px' }}
               />
             </div>
-            <div style={{ flex: '2 1 300px' }}>
+            <div style={{ flex: '2 1 240px' }}>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#a78bfa', marginBottom: '0.3rem' }}>강의/단원 제목</label>
               <input 
                 type="text" 
-                placeholder="강의/단원 제목 (예: 1강~3강 문제풀이)" 
+                placeholder="예: 1강~3강 문제풀이" 
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 required
-                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.2)' }}
+                style={{ width: '100%', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', color: 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px' }}
               />
             </div>
-            <button type="submit" className="btn btn-primary" style={{ background: '#8b5cf6', borderColor: '#7c3aed' }}>
+            <button type="submit" className="btn btn-primary" style={{ background: '#8b5cf6', borderColor: '#7c3aed', height: '42px' }}>
               복습 스케줄 생성
             </button>
           </form>
