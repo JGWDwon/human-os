@@ -36,14 +36,48 @@ function App() {
     return storage.getLevelInfo(profile.totalXP);
   });
 
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
   useEffect(() => {
     const handleXpUpdate = () => {
       const profile = storage.getUserProfile();
       setXpInfo(storage.getLevelInfo(profile.totalXP));
     };
     window.addEventListener('xp-updated', handleXpUpdate);
+
+    // In-App Update Detector for native app experience
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                setUpdateAvailable(true);
+              }
+            });
+          }
+        });
+      });
+
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        setUpdateAvailable(true);
+      });
+    }
+
     return () => window.removeEventListener('xp-updated', handleXpUpdate);
   }, []);
+
+  const handleApplyUpdate = () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg && reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+      });
+    }
+    window.location.reload();
+  };
 
   const handleDateSelect = (date) => {
     setSelectedDate(date);
@@ -59,9 +93,31 @@ function App() {
         {/* Header */}
         <header style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
           <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
-              Human-OS <span style={{ color: 'var(--accent-primary)' }}>v1.0</span>
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>
+                Human-OS <span style={{ color: 'var(--accent-primary)' }}>v1.0</span>
+              </h1>
+              {updateAvailable && (
+                <button
+                  onClick={handleApplyUpdate}
+                  style={{
+                    background: 'linear-gradient(90deg, #8b5cf6, #ec4899)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '0.3rem 0.75rem',
+                    borderRadius: '20px',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    boxShadow: '0 0 12px rgba(236, 72, 153, 0.5)',
+                    animation: 'pulse 1.5s infinite'
+                  }}
+                  title="새로운 기능 업데이트 적용하기"
+                >
+                  🚀 최신 버전 업데이트 적용
+                </button>
+              )}
+            </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
               나의 성장 일지
             </p>
