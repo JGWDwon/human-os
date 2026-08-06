@@ -3,7 +3,8 @@
   "appName": "Human OS",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "url": "https://JGWDwon.github.io/human-os",
+    "cleartext": true
   },
   "plugins": {
     "SocialLogin": {
