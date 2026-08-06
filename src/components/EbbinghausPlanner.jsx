@@ -97,6 +97,26 @@ export default function EbbinghausPlanner() {
   const handleShiftReview = (e, lectureId, reviewId, days) => {
     e.stopPropagation(); // Prevent toggling completion status
     storage.postponeReview(lectureId, reviewId, days);
+    
+    // Check if the review's new targetDate is outside current visible week, and auto-navigate if needed
+    const updatedLectures = storage.getLectures();
+    const lec = updatedLectures.find(l => l.id === lectureId);
+    if (lec) {
+      const rev = lec.reviews.find(r => r.id === reviewId);
+      if (rev && rev.targetDate) {
+        const revDate = new Date(rev.targetDate + 'T00:00:00');
+        const weekEnd = new Date(currentWeekStart);
+        weekEnd.setDate(currentWeekStart.getDate() + 6);
+
+        if (revDate < currentWeekStart || revDate > weekEnd) {
+          const dayOfWeek = revDate.getDay();
+          const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+          const targetWeekStart = new Date(revDate);
+          targetWeekStart.setDate(revDate.getDate() + diffToMon);
+          setCurrentWeekStart(targetWeekStart);
+        }
+      }
+    }
     refreshData();
   };
 
