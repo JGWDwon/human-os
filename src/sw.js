@@ -1,7 +1,9 @@
-// HumanOS Custom Service Worker
-// Handles Workbox precaching + independent background timer notifications
-
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { clientsClaim } from 'workbox-core';
+
+// Force new service worker to activate immediately and take control of clients
+self.skipWaiting();
+clientsClaim();
 
 // Workbox precache manifest (injected by vite-plugin-pwa)
 precacheAndRoute(self.__WB_MANIFEST);
