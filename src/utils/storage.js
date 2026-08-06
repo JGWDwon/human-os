@@ -883,9 +883,10 @@ export const storage = {
       if (lec.id === lectureId) {
         lec.reviews.forEach(rev => {
           if (rev.id === reviewId) {
-            const current = new Date(rev.targetDate);
+            const current = new Date(rev.targetDate + 'T00:00:00');
             current.setDate(current.getDate() + days);
-            rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            const rawTargetStr = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+            rev.targetDate = this.getAdjustedTargetDate(rawTargetStr);
           }
         });
       }
