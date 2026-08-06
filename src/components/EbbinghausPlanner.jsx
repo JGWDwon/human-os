@@ -91,9 +91,9 @@ export default function EbbinghausPlanner() {
     refreshData();
   };
 
-  const handlePostponeReview = (e, lectureId, reviewId) => {
+  const handleShiftReview = (e, lectureId, reviewId, days) => {
     e.stopPropagation(); // Prevent toggling completion status
-    storage.postponeReview(lectureId, reviewId, 1);
+    storage.postponeReview(lectureId, reviewId, days);
     refreshData();
   };
 
@@ -399,21 +399,38 @@ export default function EbbinghausPlanner() {
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         {!rev.isCompleted && (
-                          <button
-                            onClick={(e) => handlePostponeReview(e, rev.lectureId, rev.id)}
-                            style={{
-                              background: 'rgba(255,255,255,0.08)',
-                              border: '1px solid rgba(255,255,255,0.15)',
-                              color: '#cbd5e1',
-                              fontSize: '0.65rem',
-                              padding: '0.05rem 0.3rem',
-                              borderRadius: '3px',
-                              cursor: 'pointer'
-                            }}
-                            title="이 복습 1일 뒤로 미루기"
-                          >
-                            +1일
-                          </button>
+                          <div style={{ display: 'flex', gap: '0.2rem' }}>
+                            <button
+                              onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
+                              style={{
+                                background: 'rgba(255,255,255,0.08)',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                color: '#cbd5e1',
+                                fontSize: '0.65rem',
+                                padding: '0.05rem 0.3rem',
+                                borderRadius: '3px',
+                                cursor: 'pointer'
+                              }}
+                              title="이 복습 1일 앞으로 당기기 (-1일)"
+                            >
+                              -1일
+                            </button>
+                            <button
+                              onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
+                              style={{
+                                background: 'rgba(255,255,255,0.08)',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                color: '#cbd5e1',
+                                fontSize: '0.65rem',
+                                padding: '0.05rem 0.3rem',
+                                borderRadius: '3px',
+                                cursor: 'pointer'
+                              }}
+                              title="이 복습 1일 뒤로 미루기 (+1일)"
+                            >
+                              +1일
+                            </button>
+                          </div>
                         )}
                         {rev.isCompleted && <Check size={14} color="#10b981" />}
                         {!rev.isCompleted && (day.dateStr < todayStr) && (

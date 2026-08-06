@@ -961,13 +961,9 @@ export const storage = {
     let resetCount = 0;
 
     lectures.forEach((lec, lecIdx) => {
-      // Sort reviews by dayOffset just to be 100% safe (1, 4, 7, 14, 30)
       lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-
-      // Total number of completed reviews for this lecture
       const completedCount = lec.reviews.filter(r => r.isCompleted).length;
 
-      // Normalize completion status: first N reviews are marked completed (1/5), remaining are uncompleted
       lec.reviews.forEach((r, idx) => {
         const shouldBeCompleted = idx < completedCount;
         if (r.isCompleted !== shouldBeCompleted) {
@@ -977,7 +973,6 @@ export const storage = {
         }
       });
 
-      // Filter uncompleted reviews
       const uncompleted = lec.reviews.filter(r => !r.isCompleted);
       if (uncompleted.length === 0) return;
 
@@ -986,9 +981,7 @@ export const storage = {
         baseStart.setDate(baseStart.getDate() + lecIdx);
       }
 
-      // First uncompleted review stage (e.g. 4일차 if 1 review was completed)
       const firstOffset = uncompleted[0].dayOffset;
-
       uncompleted.forEach(rev => {
         const relativeOffset = Math.max(0, rev.dayOffset - firstOffset);
         const targetDate = new Date(baseStart);
@@ -1016,37 +1009,52 @@ export const storage = {
     const lectures = this.getLectures();
     let resetCount = 0;
 
-    // Step 1: Filter lectures with uncompleted reviews, sorted by dateAdded (chronological order)
+    // ---- Step 1: Normalize completion status ----
+    lectures.forEach(lec => {
+      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
+      const completedCount = lec.reviews.filter(r => r.isCompleted).length;
+      lec.reviews.forEach((r, idx) => {
+        const shouldBeCompleted = idx < completedCount;
+        if (r.isCompleted !== shouldBeCompleted) {
+          r.isCompleted = shouldBeCompleted;
+          r.completedAt = shouldBeCompleted ? (r.completedAt || new Date().toISOString()) : null;
+          resetCount++;
+        }
+      });
+    });
+
+    // ---- Step 2: Gather active lectures ----
     const activeLectures = lectures
       .filter(lec => lec.reviews.some(r => !r.isCompleted))
       .sort((a, b) => a.dateAdded.localeCompare(b.dateAdded));
 
-    if (activeLectures.length === 0) return 0;
+    if (activeLectures.length === 0) {
+      if (resetCount > 0) {
+        localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+        this._dispatchSync();
+      }
+      return 0;
+    }
 
-    // Step 2: Determine start study day (today or next available non-vacation date)
-    let currentStartStr = this.getAdjustedTargetDate(todayStr);
-    let countInCurrentStartDay = 0;
+    // ---- Step 3: Distribute lectures across days (max N per day) ----
+    let currentStr = this.getAdjustedTargetDate(todayStr);
+    let countInCurrentDay = 0;
 
-    // Step 3: For each active lecture, schedule ONLY UNCOMPLETED reviews
-    // Completed reviews are NEVER touched or moved!
     activeLectures.forEach(lec => {
-      // Advance currentStartStr if today's start bucket is full
-      if (countInCurrentStartDay >= maxPerDay) {
-        const d = new Date(currentStartStr + 'T00:00:00');
+      if (countInCurrentDay >= maxPerDay) {
+        const d = new Date(currentStr + 'T00:00:00');
         d.setDate(d.getDate() + 1);
-        currentStartStr = this.getAdjustedTargetDate(
+        currentStr = this.getAdjustedTargetDate(
           new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
         );
-        countInCurrentStartDay = 0;
+        countInCurrentDay = 0;
       }
 
-      // Sort reviews by dayOffset
       lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-
       const uncompleted = lec.reviews.filter(r => !r.isCompleted);
       if (uncompleted.length > 0) {
         const firstUncompletedOffset = uncompleted[0].dayOffset;
-        const lecStart = new Date(currentStartStr + 'T00:00:00');
+        const lecStart = new Date(currentStr + 'T00:00:00');
 
         uncompleted.forEach(rev => {
           const dayGap = rev.dayOffset - firstUncompletedOffset;
@@ -1061,12 +1069,11 @@ export const storage = {
             resetCount++;
           }
         });
-
-        countInCurrentStartDay++;
+        countInCurrentDay++;
       }
     });
 
-    // Step 4: Smooth out daily review piles so NO FUTURE DATE has > maxPerDay reviews due to weekend/vacation pushes
+    // ---- Step 4: Smooth daily piles (no day exceeds maxPerDay) ----
     const uncompletedReviews = [];
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
@@ -1080,7 +1087,6 @@ export const storage = {
       });
     });
 
-    // Sort by targetDate first, then dateAdded, then dayOffset
     uncompletedReviews.sort((a, b) => {
       if (a.rev.targetDate !== b.rev.targetDate) {
         return a.rev.targetDate.localeCompare(b.rev.targetDate);
@@ -1094,9 +1100,7 @@ export const storage = {
     const dateCounts = {};
     uncompletedReviews.forEach(item => {
       let targetStr = item.rev.targetDate;
-      if (targetStr < todayStr) {
-        targetStr = todayStr;
-      }
+      if (targetStr < todayStr) targetStr = todayStr;
       targetStr = this.getAdjustedTargetDate(targetStr);
 
       while ((dateCounts[targetStr] || 0) >= maxPerDay) {
@@ -1111,7 +1115,6 @@ export const storage = {
         item.rev.targetDate = targetStr;
         resetCount++;
       }
-
       dateCounts[targetStr] = (dateCounts[targetStr] || 0) + 1;
     });
 
