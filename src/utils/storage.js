@@ -455,6 +455,7 @@ export const storage = {
       pomodoro: localStorage.getItem(STORAGE_KEYS.POMODORO),
       diary: localStorage.getItem(STORAGE_KEYS.DIARY),
       lectures: localStorage.getItem(STORAGE_KEYS.LECTURES),
+      vacations: localStorage.getItem(STORAGE_KEYS.VACATIONS),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
       version: '1.0'
@@ -476,6 +477,7 @@ export const storage = {
     if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, ensureString(jsonData.pomodoro));
     if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, ensureString(jsonData.diary));
     if (jsonData.lectures) localStorage.setItem(STORAGE_KEYS.LECTURES, ensureString(jsonData.lectures));
+    if (jsonData.vacations) localStorage.setItem(STORAGE_KEYS.VACATIONS, ensureString(jsonData.vacations));
     if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
