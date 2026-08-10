@@ -643,12 +643,12 @@ export const storage = {
       };
     });
 
-    if (sessions.length > 0) {
+    // 1. Detailed study sessions
+    if (sessions && sessions.length > 0) {
       sessions.forEach(sess => {
         if (!sess.startTime) return;
-        const [hStr] = sess.startTime.split(':');
-        const h = parseInt(hStr, 10);
-        if (h >= 0 && h < 24) {
+        const h = parseInt(sess.startTime.split(':')[0], 10);
+        if (!isNaN(h) && h >= 0 && h < 24) {
           const mins = sess.durationMins || 1;
           if (sess.type === 'focus') {
             hourlySlots[h].focusMins += mins;
@@ -657,17 +657,47 @@ export const storage = {
           }
         }
       });
-    } else if (pomodoroData && pomodoroData.timestamps && pomodoroData.timestamps.length > 0) {
+    }
+    
+    // 2. Legacy Pomodoro timestamps backward compatibility integration
+    if (pomodoroData && pomodoroData.timestamps && pomodoroData.timestamps.length > 0) {
       pomodoroData.timestamps.forEach(ts => {
-        const timeStr = typeof ts === 'string' ? ts : ts.time;
-        const mins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
-        if (timeStr) {
-          const h = parseInt(timeStr.split(':')[0], 10);
-          if (h >= 0 && h < 24) {
-            hourlySlots[h].focusMins += mins;
+        let hour = -1;
+        let mins = 25;
+
+        if (typeof ts === 'string') {
+          if (ts.includes(':')) hour = parseInt(ts.split(':')[0], 10);
+          else hour = new Date(ts).getHours();
+        } else if (ts && typeof ts === 'object') {
+          mins = ts.minutes || 25;
+          const tStr = ts.time || '';
+          if (typeof tStr === 'string' && tStr.includes(':')) {
+            hour = parseInt(tStr.split(':')[0], 10);
+          } else if (tStr) {
+            hour = new Date(tStr).getHours();
           }
         }
+
+        if (!isNaN(hour) && hour >= 0 && hour < 24) {
+          hourlySlots[hour].focusMins += mins;
+        }
       });
+    }
+
+    // 3. Fallback: If totalMinutes in pomodoroData exceeds timeline focusMins, auto-allocate remaining mins
+    if (pomodoroData && pomodoroData.totalMinutes > 0) {
+      const currentTimelineFocusMins = hourlySlots.reduce((sum, slot) => sum + slot.focusMins, 0);
+      if (pomodoroData.totalMinutes > currentTimelineFocusMins) {
+        let remainingToDistribute = pomodoroData.totalMinutes - currentTimelineFocusMins;
+        // Distribute to active daytime hours (09:00 ~ 22:00)
+        for (let h = 9; h <= 22 && remainingToDistribute > 0; h++) {
+          const add = Math.min(60 - hourlySlots[h].focusMins, remainingToDistribute);
+          if (add > 0) {
+            hourlySlots[h].focusMins += add;
+            remainingToDistribute -= add;
+          }
+        }
+      }
     }
 
     hourlySlots.forEach(slot => {
