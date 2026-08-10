@@ -827,21 +827,42 @@ export const storage = {
       });
     }
 
-    // Top 3 waste slots among active waking hours (10-min slots)
-    const activeSlotsAgg = slotAggregate.filter(s => !s.isSleepTime);
-    const sortedByWaste = [...activeSlotsAgg].sort((a, b) => b.totalIdleMins - a.totalIdleMins);
+    // Top 3 waste slots among active waking hours (Calculated based on 1-HOUR intervals for practical insights)
+    const hourlyAggregate = Array.from({ length: 24 }, (_, hour) => {
+      let timeLabel = '';
+      if (hour >= 5 && hour < 12) timeLabel = '오전';
+      else if (hour >= 12 && hour < 18) timeLabel = '오후';
+      else if (hour >= 18 && hour < 23) timeLabel = '저녁';
+      else timeLabel = '밤/취침';
+
+      const nextHourStr = (hour + 1).toString().padStart(2, '0');
+      const hourStr = hour.toString().padStart(2, '0');
+
+      return {
+        hour,
+        label: `${timeLabel} ${hourStr}:00 ~ ${nextHourStr}:00`,
+        isSleepTime: hour >= 23 || hour < 5,
+        totalFocusMins: 0,
+        totalPauseMins: 0,
+        totalIdleMins: 0
+      };
+    });
+
+    // Sum up 10-min slots into 1-hour buckets for active waking hours
+    slotAggregate.filter(s => !s.isSleepTime).forEach(slot => {
+      hourlyAggregate[slot.hour].totalFocusMins += slot.totalFocusMins;
+      hourlyAggregate[slot.hour].totalPauseMins += slot.totalPauseMins;
+      hourlyAggregate[slot.hour].totalIdleMins += slot.totalIdleMins;
+    });
+
+    const activeHourlyAgg = hourlyAggregate.filter(h => !h.isSleepTime);
+    const sortedByWaste = [...activeHourlyAgg].sort((a, b) => b.totalIdleMins - a.totalIdleMins);
 
     const topIdleSlots = sortedByWaste.slice(0, 3).map(slot => {
       const avgIdleMins = Math.round(slot.totalIdleMins / daysCount);
-      let timeLabel = '';
-      if (slot.hour >= 5 && slot.hour < 12) timeLabel = '오전';
-      else if (slot.hour >= 12 && slot.hour < 18) timeLabel = '오후';
-      else timeLabel = '저녁';
-
       return {
-        idx: slot.idx,
         hour: slot.hour,
-        label: `${timeLabel} ${slot.label}`,
+        label: slot.label,
         avgIdleMins,
         totalFocusMins: slot.totalFocusMins
       };
