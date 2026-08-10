@@ -711,7 +711,13 @@ export const storage = {
         }
 
         if (!isNaN(hour) && hour >= 0 && hour < 24) {
-          const startSlotIdx = hour * 6 + Math.min(5, Math.floor((isNaN(minute) ? 0 : minute) / 10));
+          // The recorded time is the COMPLETION time. Calculate actual START time.
+          const completionTotalMins = hour * 60 + (isNaN(minute) ? 0 : minute);
+          const startTotalMins = Math.max(0, completionTotalMins - mins);
+          const startHour = Math.floor(startTotalMins / 60);
+          const startMin = startTotalMins % 60;
+          const startSlotIdx = Math.min(143, startHour * 6 + Math.floor(startMin / 10));
+          
           let remaining = mins;
           for (let currIdx = startSlotIdx; currIdx < 144 && remaining > 0; currIdx++) {
             const alloc = Math.min(10 - slots[currIdx].focusMins, remaining);
