@@ -331,7 +331,8 @@ export const storage = {
     }
     data[dateStr].count += countToAdd;
     data[dateStr].totalMinutes += minutes;
-    data[dateStr].timestamps.push({ time: d.toISOString(), minutes: minutes });
+    const fullTimeStr = `${dateStr}T${timeStr}:00`;
+    data[dateStr].timestamps.push({ time: fullTimeStr, minutes: minutes });
     
     // Sort timestamps chronologically
     data[dateStr].timestamps.sort((a, b) => {
@@ -686,32 +687,31 @@ export const storage = {
         let minute = 0;
         let mins = 25;
 
-        if (typeof ts === 'string') {
-          if (ts.includes(':')) {
-            const parts = ts.split(':');
+        let timeStr = typeof ts === 'string' ? ts : (ts && ts.time ? ts.time : '');
+        mins = (typeof ts === 'object' && ts.minutes) ? ts.minutes : 25;
+
+        if (timeStr) {
+          if (timeStr.includes('T')) {
+            const timePart = timeStr.split('T')[1];
+            if (timePart && timePart.includes(':')) {
+              const parts = timePart.split(':');
+              hour = parseInt(parts[0], 10);
+              minute = parseInt(parts[1], 10);
+              if (timeStr.endsWith('Z')) {
+                const dObj = new Date(timeStr);
+                hour = dObj.getHours();
+                minute = dObj.getMinutes();
+              }
+            }
+          } else if (timeStr.includes(':')) {
+            const parts = timeStr.split(':');
             hour = parseInt(parts[0], 10);
             minute = parseInt(parts[1] || '0', 10);
-          } else {
-            const dateObj = new Date(ts);
-            hour = dateObj.getHours();
-            minute = dateObj.getMinutes();
-          }
-        } else if (ts && typeof ts === 'object') {
-          mins = ts.minutes || 25;
-          const tStr = ts.time || '';
-          if (typeof tStr === 'string' && tStr.includes(':')) {
-            const parts = tStr.split(':');
-            hour = parseInt(parts[0], 10);
-            minute = parseInt(parts[1] || '0', 10);
-          } else if (tStr) {
-            const dateObj = new Date(tStr);
-            hour = dateObj.getHours();
-            minute = dateObj.getMinutes();
           }
         }
 
         if (!isNaN(hour) && hour >= 0 && hour < 24) {
-          const startSlotIdx = hour * 6 + Math.min(5, Math.floor(minute / 10));
+          const startSlotIdx = hour * 6 + Math.min(5, Math.floor((isNaN(minute) ? 0 : minute) / 10));
           let remaining = mins;
           for (let currIdx = startSlotIdx; currIdx < 144 && remaining > 0; currIdx++) {
             const alloc = Math.min(10 - slots[currIdx].focusMins, remaining);
@@ -729,8 +729,8 @@ export const storage = {
       const currentTimelineFocusMins = slots.reduce((sum, slot) => sum + slot.focusMins, 0);
       if (pomodoroData.totalMinutes > currentTimelineFocusMins) {
         let remainingToDistribute = pomodoroData.totalMinutes - currentTimelineFocusMins;
-        // Distribute to active daytime 10-min slots (05:00 ~ 23:00, slots 30 to 137)
-        for (let idx = 30; idx <= 137 && remainingToDistribute > 0; idx++) {
+        // Distribute fallback to active daytime 10-min slots starting from 09:00 (slots 54 to 137)
+        for (let idx = 54; idx <= 137 && remainingToDistribute > 0; idx++) {
           const add = Math.min(10 - slots[idx].focusMins, remainingToDistribute);
           if (add > 0) {
             slots[idx].focusMins += add;
