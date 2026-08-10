@@ -5,7 +5,8 @@ const STORAGE_KEYS = {
   POMODORO: 'human_os_pomodoro_v1',
   USER_PROFILE: 'human_os_profile_v1',
   LECTURES: 'human_os_lectures_v1',
-  VACATIONS: 'human_os_vacations_v1'
+  VACATIONS: 'human_os_vacations_v1',
+  STUDY_SESSIONS: 'human_os_study_sessions_v1'
 };
 
 function safeParse(str, fallback = {}) {
@@ -456,6 +457,7 @@ export const storage = {
       diary: localStorage.getItem(STORAGE_KEYS.DIARY),
       lectures: localStorage.getItem(STORAGE_KEYS.LECTURES),
       vacations: localStorage.getItem(STORAGE_KEYS.VACATIONS),
+      studySessions: localStorage.getItem(STORAGE_KEYS.STUDY_SESSIONS),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
       version: '1.0'
@@ -478,6 +480,7 @@ export const storage = {
     if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, ensureString(jsonData.diary));
     if (jsonData.lectures) localStorage.setItem(STORAGE_KEYS.LECTURES, ensureString(jsonData.lectures));
     if (jsonData.vacations) localStorage.setItem(STORAGE_KEYS.VACATIONS, ensureString(jsonData.vacations));
+    if (jsonData.studySessions) localStorage.setItem(STORAGE_KEYS.STUDY_SESSIONS, ensureString(jsonData.studySessions));
     if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
@@ -588,6 +591,178 @@ export const storage = {
       });
     }
     return result;
+  },
+
+  // --- Detailed Study Sessions & Time Waste Analysis ---
+  logStudySession(dateStr, type, startTimeStr, endTimeStr, durationMins) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const raw = localStorage.getItem(STORAGE_KEYS.STUDY_SESSIONS);
+    const data = safeParse(raw, {});
+    if (!data[dateStr]) data[dateStr] = [];
+
+    const newSession = {
+      id: `sess_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      type, // 'focus' | 'pause'
+      startTime: startTimeStr, // "14:00"
+      endTime: endTimeStr,     // "14:25"
+      durationMins: Math.max(1, Math.round(durationMins)),
+      timestamp: Date.now()
+    };
+
+    data[dateStr].push(newSession);
+    localStorage.setItem(STORAGE_KEYS.STUDY_SESSIONS, JSON.stringify(data));
+    this._dispatchSync();
+    return newSession;
+  },
+
+  getDailySessions(dateStr) {
+    const raw = localStorage.getItem(STORAGE_KEYS.STUDY_SESSIONS);
+    const data = safeParse(raw, {});
+    return data[dateStr] || [];
+  },
+
+  getDailySessionTimeline(dateStr) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const sessions = this.getDailySessions(dateStr);
+    const pomodoroData = this.getPomodoroByDate(dateStr);
+
+    const hourlySlots = Array.from({ length: 24 }, (_, hour) => {
+      const hourLabel = `${hour.toString().padStart(2, '0')}:00`;
+      return {
+        hour,
+        label: hourLabel,
+        focusMins: 0,
+        pauseMins: 0,
+        idleMins: 60
+      };
+    });
+
+    if (sessions.length > 0) {
+      sessions.forEach(sess => {
+        if (!sess.startTime) return;
+        const [hStr] = sess.startTime.split(':');
+        const h = parseInt(hStr, 10);
+        if (h >= 0 && h < 24) {
+          const mins = sess.durationMins || 1;
+          if (sess.type === 'focus') {
+            hourlySlots[h].focusMins += mins;
+          } else if (sess.type === 'pause') {
+            hourlySlots[h].pauseMins += mins;
+          }
+        }
+      });
+    } else if (pomodoroData && pomodoroData.timestamps && pomodoroData.timestamps.length > 0) {
+      pomodoroData.timestamps.forEach(ts => {
+        const timeStr = typeof ts === 'string' ? ts : ts.time;
+        const mins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
+        if (timeStr) {
+          const h = parseInt(timeStr.split(':')[0], 10);
+          if (h >= 0 && h < 24) {
+            hourlySlots[h].focusMins += mins;
+          }
+        }
+      });
+    }
+
+    hourlySlots.forEach(slot => {
+      slot.idleMins = Math.max(0, 60 - slot.focusMins - slot.pauseMins);
+      if (slot.focusMins > 0) {
+        slot.status = 'focus';
+      } else if (slot.pauseMins > 0) {
+        slot.status = 'pause';
+      } else {
+        slot.status = 'idle';
+      }
+    });
+
+    return hourlySlots;
+  },
+
+  getTimeWasteAnalysis(daysCount = 7) {
+    const dailyTrends = [];
+    const hourlyAggregate = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      label: `${hour.toString().padStart(2, '0')}:00`,
+      totalFocusMins: 0,
+      totalPauseMins: 0,
+      totalIdleMins: 0
+    }));
+
+    const today = new Date();
+    let totalAllFocusMins = 0;
+    let totalAllPauseMins = 0;
+    let totalAllIdleMins = 0;
+
+    for (let i = daysCount - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const dayName = ['일','월','화','수','목','금','토'][d.getDay()];
+
+      const timeline = this.getDailySessionTimeline(dateStr);
+      let dayFocus = 0;
+      let dayPause = 0;
+
+      const activeWindowSlots = timeline.filter(slot => slot.hour >= 8 && slot.hour <= 23);
+      activeWindowSlots.forEach(slot => {
+        dayFocus += slot.focusMins;
+        dayPause += slot.pauseMins;
+
+        hourlyAggregate[slot.hour].totalFocusMins += slot.focusMins;
+        hourlyAggregate[slot.hour].totalPauseMins += slot.pauseMins;
+        const wasteInSlot = Math.max(0, 60 - slot.focusMins - slot.pauseMins);
+        hourlyAggregate[slot.hour].totalIdleMins += wasteInSlot;
+      });
+
+      const dayWaste = Math.max(0, 960 - dayFocus - dayPause);
+
+      totalAllFocusMins += dayFocus;
+      totalAllPauseMins += dayPause;
+      totalAllIdleMins += dayWaste;
+
+      dailyTrends.push({
+        date: dateStr.substring(5),
+        fullDate: dateStr,
+        dayName,
+        focusMins: dayFocus,
+        pauseMins: dayPause,
+        wasteMins: dayWaste
+      });
+    }
+
+    const activeSlotsAgg = hourlyAggregate.filter(slot => slot.hour >= 8 && slot.hour <= 23);
+    const sortedByWaste = [...activeSlotsAgg].sort((a, b) => b.totalIdleMins - a.totalIdleMins);
+
+    const topIdleSlots = sortedByWaste.slice(0, 3).map(slot => {
+      const avgIdleMins = Math.round(slot.totalIdleMins / daysCount);
+      let timeLabel = '';
+      if (slot.hour >= 6 && slot.hour < 12) timeLabel = '오전';
+      else if (slot.hour >= 12 && slot.hour < 18) timeLabel = '오후';
+      else timeLabel = '저녁/밤';
+
+      return {
+        hour: slot.hour,
+        label: `${timeLabel} ${slot.hour.toString().padStart(2, '0')}:00 ~ ${(slot.hour + 1).toString().padStart(2, '0')}:00`,
+        avgIdleMins,
+        totalFocusMins: slot.totalFocusMins
+      };
+    });
+
+    return {
+      dailyTrends,
+      topIdleSlots,
+      totalFocusMins: totalAllFocusMins,
+      totalPauseMins: totalAllPauseMins,
+      totalWasteMins: totalAllIdleMins,
+      avgDailyFocusMins: Math.round(totalAllFocusMins / daysCount),
+      avgDailyWasteMins: Math.round(totalAllIdleMins / daysCount)
+    };
   },
 
   triggerBackupDownload() {

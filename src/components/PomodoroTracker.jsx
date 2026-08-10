@@ -28,6 +28,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const [customMinutes, setCustomMinutes] = useState('25');
   const [selectedDuration, setSelectedDuration] = useState(25); // minutes
   const [customDuration, setCustomDuration] = useState('');
+  const sessionStartTsRef = useRef(null);
+  const pauseStartTsRef = useRef(null);
 
   // Persistent Timer State
   const [timerState, setTimerState] = useState(() => {
@@ -370,10 +372,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         console.log('Notification permission request failed:', e);
       }
     }
- 
-    const targetDuration = timerState.timeLeft;
-    const endTime = Date.now() + (targetDuration * 1000);
-    const minutesLeft = Math.round(targetDuration / 60);
+
+    const duration = timerState.timeLeft;
+    const endTime = Date.now() + duration * 1000;
+    const now = new Date();
+    const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
+
+    // If resuming from pause, log pause duration
+    if (timerState.isPaused && pauseStartTsRef.current) {
+      const pauseSecs = Math.round((Date.now() - pauseStartTsRef.current) / 1000);
+      const pauseMins = Math.max(1, Math.round(pauseSecs / 60));
+      const pauseStartStr = new Date(pauseStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
+      storage.logStudySession(selectedDate, 'pause', pauseStartStr, timeStr, pauseMins);
+      pauseStartTsRef.current = null;
+    }
+
+    sessionStartTsRef.current = Date.now();
+
+    const minutesLeft = Math.ceil(duration / 60);
 
     // Schedule native local notification
     if (Capacitor.isNativePlatform()) {
@@ -415,6 +431,18 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const pauseTimer = () => {
     playSound('click');
     
+    // Log focus session up to pause
+    const now = new Date();
+    const nowStr = now.toTimeString().split(' ')[0].substring(0, 5);
+    if (sessionStartTsRef.current) {
+      const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
+      const focusMins = Math.max(1, Math.round(focusSecs / 60));
+      const startStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
+      storage.logStudySession(selectedDate, 'focus', startStr, nowStr, focusMins);
+      sessionStartTsRef.current = null;
+    }
+    pauseStartTsRef.current = Date.now();
+
     // Cancel native local notification
     if (Capacitor.isNativePlatform()) {
       try {

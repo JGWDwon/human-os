@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { BarChart2, Download, Upload, Trophy, CheckCircle, Timer, BookOpen, AlertCircle, TrendingUp } from 'lucide-react';
-import { ComposedChart, BarChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart2, Download, Upload, Trophy, CheckCircle, Timer, BookOpen, AlertCircle, Clock, AlertTriangle, Calendar, PauseCircle, Zap } from 'lucide-react';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { storage } from '../utils/storage';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -9,23 +9,29 @@ import { Share } from '@capacitor/share';
 export default function InsightsDashboard({ onClose }) {
   const [stats, setStats] = useState(null);
   const [historyTimeline, setHistoryTimeline] = useState([]);
-  const [weeklyData, setWeeklyData] = useState([]);
-  const [timeDistribution, setTimeDistribution] = useState([]);
-  const [slotSummary, setSlotSummary] = useState(null);
+  
+  // New Time Waste Analysis states
+  const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+  const [selectedTimelineDate, setSelectedTimelineDate] = useState(todayStr);
+  const [dailyTimeline, setDailyTimeline] = useState([]);
+  const [wasteAnalysis, setWasteAnalysis] = useState(null);
+  const [hoveredSlot, setHoveredSlot] = useState(null);
+
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     // Load Stats
     setStats(storage.getAllTimeStats());
-    setWeeklyData(storage.getWeeklyGraphData(8));
-    setTimeDistribution(storage.getPomodoroTimeDistribution(30));
-    setSlotSummary(storage.getTimeSlotSummary(30));
+    
+    // Load Timeline & Waste Analysis
+    setDailyTimeline(storage.getDailySessionTimeline(selectedTimelineDate));
+    setWasteAnalysis(storage.getTimeWasteAnalysis(7));
 
     // Build timeline from last 30 days
     const recentQuests = storage.getQuestHistory(30).reverse(); // oldest first
     const activeTimeline = recentQuests.filter(day => day.status !== 'none');
     setHistoryTimeline(activeTimeline);
-  }, []);
+  }, [selectedTimelineDate]);
 
   const handleExport = async () => {
     const data = storage.getAllData();
@@ -34,7 +40,6 @@ export default function InsightsDashboard({ onClose }) {
 
     if (Capacitor.isNativePlatform()) {
       try {
-        // 앱 캐시 디렉토리에 파일 저장 후 공유 시트로 내보내기
         await Filesystem.writeFile({
           path: filename,
           data: jsonStr,
@@ -55,7 +60,6 @@ export default function InsightsDashboard({ onClose }) {
         alert('저장 실패: ' + e.message);
       }
     } else {
-      // 웹 브라우저 fallback
       const blob = new Blob([jsonStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -67,7 +71,6 @@ export default function InsightsDashboard({ onClose }) {
   };
 
   const handleImport = async (e) => {
-    // 웹: FileReader 방식 (input[type=file])
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -89,164 +92,269 @@ export default function InsightsDashboard({ onClose }) {
   };
 
   const formatTime = (minutes) => {
+    if (!minutes || minutes <= 0) return '0분';
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     if (h > 0) return `${h}시간 ${m > 0 ? m + '분' : ''}`;
     return `${m}분`;
   };
 
-  if (!stats) return null;
+  if (!stats || !wasteAnalysis) return null;
+
+  // Selected date total summary
+  const selectedFocusMins = dailyTimeline.reduce((sum, slot) => sum + slot.focusMins, 0);
+  const selectedPauseMins = dailyTimeline.reduce((sum, slot) => sum + slot.pauseMins, 0);
+  // Active window 08시~24시 (16시간 = 960분)
+  const selectedWasteMins = Math.max(0, 960 - selectedFocusMins - selectedPauseMins);
 
   return (
     <div className="glass-panel animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
-          <BarChart2 size={24} color="var(--accent-secondary)" />
-          나의 성장 기록 (Insights)
-        </h2>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
+            <BarChart2 size={24} color="var(--accent-secondary)" />
+            공부 시간 & 시간 낭비 종합 분석
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.3rem' }}>
+            언제 집중하고 일시정지했는지 24시간 타임라인으로 파악하고 낭비되는 시간대를 정밀 진단하세요.
+          </p>
+        </div>
         <button onClick={onClose} className="btn btn-secondary">돌아가기</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Trophy size={16} /> 총 출석 일수
+      {/* Top 4 Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Trophy size={16} color="#10b981" /> 총 출석 일수
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>{stats.activeDays}일</div>
-        </div>
-        
-        <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <CheckCircle size={16} /> 누적 퀘스트 완료
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{stats.totalCompletedQuests}회</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-primary)' }}>{stats.activeDays}일</div>
         </div>
 
-        <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Timer size={16} /> 총 집중 시간
+        <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <CheckCircle size={16} color="#3b82f6" /> 누적 퀘스트 완료
           </div>
-          <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>{formatTime(stats.totalPomodoroMins)}</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{stats.totalCompletedQuests}회</div>
         </div>
-      </div>
 
-      {/* Weekly Focus Time Chart */}
-      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 style={{ fontSize: '1.1rem', marginBottom: '1.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <TrendingUp size={18} color="var(--accent-primary)" /> 주차별 누적 몰입 시간 (최근 8주)
-        </h3>
-        <div style={{ height: '260px', width: '100%' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-              <XAxis dataKey="name" stroke="var(--text-muted)" fontSize={12} tickMargin={10} />
-              <YAxis 
-                stroke="var(--text-muted)" 
-                fontSize={12} 
-                tickFormatter={(value) => `${Math.floor(value / 60)}h`}
-              />
-              <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
-                itemStyle={{ fontWeight: 'bold', color: '#ef4444' }}
-                formatter={(value) => [formatTime(value), '총 몰입 시간']}
-              />
-              <Bar dataKey="pomodoroMins" name="총 몰입 시간" fill="#ef4444" radius={[6, 6, 0, 0]} maxBarSize={45} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Timer size={16} color="#10b981" /> 최근 7일 공부 시간
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#10b981' }}>{formatTime(wasteAnalysis.totalFocusMins)}</div>
+        </div>
+
+        <div style={{ background: 'rgba(239, 68, 68, 0.12)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <AlertTriangle size={16} color="#ef4444" /> 하루 평균 낭비 시간
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#ef4444' }}>{formatTime(wasteAnalysis.avgDailyWasteMins)}</div>
         </div>
       </div>
 
-      {/* Hourly Time Distribution Chart */}
-      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Timer size={18} color="#ef4444" /> 나의 집중 시간대 분석 (최근 30일)
-        </h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          하루 중 어느 시간대에 가장 많이 몰입하고 공부했는지 실제 시간(분) 기준으로 파악하세요.
-        </p>
-
-        {/* Golden Time Banner */}
-        {slotSummary && slotSummary.totalMinutes > 0 && slotSummary.topSlot && (
-          <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.85rem 1.25rem', borderRadius: '8px', fontSize: '0.9rem', color: '#34d399', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <span style={{ fontSize: '1.2rem' }}>💡</span>
-            <span>
-              사용자님은 주로 <strong>{slotSummary.topSlot.icon} {slotSummary.topSlot.label}</strong>에 집중력이 가장 뛰어납니다! ({formatTime(slotSummary.topSlot.minutes)}, 전체의 {slotSummary.topSlot.percent}%)
-            </span>
+      {/* SECTION 1: 24-Hour Daily Timeline Grid & Breakdown */}
+      <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <h3 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Clock size={18} color="#10b981" /> 하루 24시간 타임라인 바 (공부 vs 일시정지 vs 공백)
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+              하루 중 어느 시점에 공부(🟩)하고, 일시정지(🟧)했는지 시간대별 타임블록으로 확인하세요.
+            </p>
           </div>
-        )}
 
-        {/* 8 Time Slots Summary Cards */}
-        {slotSummary && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.6rem', marginBottom: '1.5rem' }}>
-            {slotSummary.slots.map(slot => {
-              const isTop = slotSummary.topSlot && slot.id === slotSummary.topSlot.id && slot.minutes > 0;
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Calendar size={16} color="var(--text-muted)" />
+            <input 
+              type="date" 
+              value={selectedTimelineDate}
+              onChange={(e) => setSelectedTimelineDate(e.target.value)}
+              style={{ background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.35rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem' }}
+            />
+          </div>
+        </div>
+
+        {/* Selected Date Summary Stats Header */}
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem 1rem', borderRadius: '6px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ width: '10px', height: '10px', background: '#10b981', borderRadius: '2px', display: 'inline-block' }}></span>
+            <span style={{ color: 'var(--text-muted)' }}>공부:</span>
+            <strong style={{ color: '#10b981' }}>{formatTime(selectedFocusMins)}</strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ width: '10px', height: '10px', background: '#f59e0b', borderRadius: '2px', display: 'inline-block' }}></span>
+            <span style={{ color: 'var(--text-muted)' }}>일시정지:</span>
+            <strong style={{ color: '#f59e0b' }}>{formatTime(selectedPauseMins)}</strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ width: '10px', height: '10px', background: 'rgba(255,255,255,0.15)', borderRadius: '2px', display: 'inline-block' }}></span>
+            <span style={{ color: 'var(--text-muted)' }}>공백(비어있는 시간):</span>
+            <strong style={{ color: '#ef4444' }}>{formatTime(selectedWasteMins)}</strong>
+          </div>
+        </div>
+
+        {/* 24-Hour Interactive Timeline Bar */}
+        <div style={{ marginBottom: '0.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: '3px', height: '38px', background: 'rgba(0,0,0,0.5)', padding: '3px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+            {dailyTimeline.map((slot) => {
+              const hasFocus = slot.focusMins > 0;
+              const hasPause = slot.pauseMins > 0;
+              
+              let bgColor = 'rgba(255,255,255,0.04)';
+              if (hasFocus && hasPause) bgColor = 'linear-gradient(135deg, #10b981 60%, #f59e0b 40%)';
+              else if (hasFocus) bgColor = '#10b981';
+              else if (hasPause) bgColor = '#f59e0b';
+
+              const isHovered = hoveredSlot && hoveredSlot.hour === slot.hour;
+
               return (
-                <div key={slot.id} style={{
-                  background: isTop ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.03)',
-                  border: isTop ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '6px', padding: '0.6rem 0.5rem', textAlign: 'center',
-                  position: 'relative', overflow: 'hidden'
-                }}>
-                  {isTop && <div style={{ position: 'absolute', top: '2px', right: '4px', fontSize: '0.6rem', color: '#34d399', fontWeight: 'bold' }}>🏆 BEST</div>}
-                  <div style={{ fontSize: '1.1rem', marginBottom: '0.15rem' }}>{slot.icon}</div>
-                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.2 }}>{slot.label}</div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: isTop ? '#34d399' : 'var(--text-primary)', margin: '0.2rem 0 0.15rem' }}>
-                    {formatTime(slot.minutes)}
-                  </div>
-                  {/* Mini progress bar */}
-                  <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{ width: `${slot.percent}%`, height: '100%', background: isTop ? '#34d399' : '#ef4444', borderRadius: '2px', transition: 'width 0.5s ease' }} />
-                  </div>
-                  <div style={{ fontSize: '0.65rem', color: isTop ? '#34d399' : '#ef4444', fontWeight: 'bold', marginTop: '0.15rem' }}>
-                    {slot.percent}%
-                  </div>
-                </div>
+                <div 
+                  key={slot.hour}
+                  onMouseEnter={() => setHoveredSlot(slot)}
+                  onMouseLeave={() => setHoveredSlot(null)}
+                  style={{
+                    background: bgColor,
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    transform: isHovered ? 'scaleY(1.15)' : 'scaleY(1)',
+                    boxShadow: isHovered ? '0 0 8px rgba(255,255,255,0.5)' : 'none',
+                    position: 'relative'
+                  }}
+                />
               );
             })}
           </div>
-        )}
 
-        <div style={{ height: '200px', width: '100%' }}>
+          {/* Time Labels (Every 3 hours) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+            <span>00:00</span>
+            <span>03:00</span>
+            <span>06:00</span>
+            <span>09:00</span>
+            <span>12:00</span>
+            <span>15:00</span>
+            <span>18:00</span>
+            <span>21:00</span>
+          </div>
+        </div>
+
+        {/* Hover / Slot Detail Card */}
+        {hoveredSlot ? (
+          <div style={{ background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(139, 92, 246, 0.4)', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '0.85rem', color: '#fff', display: 'flex', gap: '1.5rem', alignItems: 'center', marginTop: '0.75rem' }}>
+            <div>
+              <strong style={{ color: '#a78bfa' }}>⏱️ {hoveredSlot.label} 시간대 상세보기</strong>
+            </div>
+            <div style={{ color: '#10b981' }}>공부: <strong>{hoveredSlot.focusMins}분</strong></div>
+            <div style={{ color: '#f59e0b' }}>일시정지: <strong>{hoveredSlot.pauseMins}분</strong></div>
+            <div style={{ color: 'var(--text-muted)' }}>공백/휴식: <strong>{hoveredSlot.idleMins}분</strong></div>
+          </div>
+        ) : (
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
+            💡 타임라인 바 위로 마우스를 올리거나 터치하면 시간대별 세부 공부/일시정지 분을 볼 수 있습니다.
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2: Top Time Waste Analysis Report & Coaching */}
+      <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+        <h3 style={{ fontSize: '1.1rem', marginBottom: '0.4rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertTriangle size={18} color="#ef4444" /> 주로 시간이 비어있는 낭비 구간 분석 (최근 7일)
+        </h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
+          활동 시간대(08시~24시) 중 공부나 타이머 동작 없이 지속적으로 비어있었던 Top 3 시간대입니다.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+          {wasteAnalysis.topIdleSlots.map((slot, rankIdx) => {
+            const medal = ['🥇 1위 낭비 구간', '🥈 2위 낭비 구간', '🥉 3위 낭비 구간'][rankIdx];
+            return (
+              <div key={slot.hour} style={{
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '8px', padding: '1rem',
+                display: 'flex', flexDirection: 'column', gap: '0.4rem'
+              }}>
+                <div style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 'bold' }}>{medal}</div>
+                <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{slot.label}</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  평균 공백: <strong style={{ color: '#ef4444' }}>{slot.avgIdleMins}분/시간</strong>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.2rem' }}>
+                  해당 시간대 평균 공부량: {formatTime(Math.round(slot.totalFocusMins / 7))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Coaching Guide Box */}
+        <div style={{ background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '0.85rem 1.25rem', borderRadius: '8px', fontSize: '0.85rem', color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <Zap size={20} color="#a78bfa" style={{ flexShrink: 0 }} />
+          <div>
+            <strong>시간 낭비 개선 팁:</strong> 가장 공백이 큰 <strong>{wasteAnalysis.topIdleSlots[0]?.label}</strong> 구간에 뽀모도로 타이머 25분 1세트만 먼저 켜는 습관을 들여보세요!
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 3: Daily Time Waste Trend (Recharts) */}
+      <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <BarChart2 size={18} color="#3b82f6" /> 일자별 공부 vs 일시정지 vs 낭비 시간 추이 (최근 7일)
+        </h3>
+        
+        <div style={{ height: '260px', width: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={timeDistribution} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-              <XAxis dataKey="hour" stroke="var(--text-muted)" fontSize={11} interval={1} />
-              <YAxis stroke="var(--text-muted)" fontSize={12} allowDecimals={false} />
+            <ComposedChart data={wasteAnalysis.dailyTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
+              <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} />
+              <YAxis stroke="var(--text-muted)" fontSize={12} tickFormatter={(val) => `${Math.floor(val / 60)}h`} />
               <Tooltip 
-                contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
-                itemStyle={{ fontWeight: 'bold', color: '#ef4444' }}
-                formatter={(value) => [`${formatTime(value)}`, '누적 집중 시간']}
+                contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderColor: 'rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}
+                formatter={(val, name) => {
+                  const labels = { focusMins: '공부 시간', pauseMins: '일시정지 시간', wasteMins: '낭비된 시간' };
+                  return [formatTime(val), labels[name] || name];
+                }}
               />
-              <Bar dataKey="minutes" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={30} />
-            </BarChart>
+              <Legend formatter={(val) => {
+                const labels = { focusMins: '공부 시간 (🟩)', pauseMins: '일시정지 (🟧)', wasteMins: '낭비 시간 (🟥)' };
+                return labels[val] || val;
+              }} />
+              <Bar dataKey="focusMins" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={30} />
+              <Bar dataKey="pauseMins" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={30} />
+              <Line type="monotone" dataKey="wasteMins" stroke="#ef4444" strokeWidth={3} dot={{ r: 4, fill: '#ef4444' }} />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '2rem', flex: 1 }}>
-        {/* Timeline */}
-        <div style={{ flex: 2, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <BookOpen size={18} /> 과거 타임라인 (최근 30일)
+      {/* SECTION 4: Timeline & Backup Management */}
+      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+        {/* Past Quest Timeline */}
+        <div style={{ flex: '2 1 300px', background: 'rgba(0,0,0,0.2)', padding: '1.25rem', borderRadius: 'var(--radius-sm)' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <BookOpen size={16} /> 활동 수행 타임라인 (최근 30일)
           </h3>
-          <div style={{ flex: 1, overflowY: 'auto', maxHeight: '400px', paddingRight: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div style={{ overflowY: 'auto', maxHeight: '220px', paddingRight: '0.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {historyTimeline.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>아직 활동 기록이 없습니다. 꾸준히 기록을 쌓아보세요!</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>아직 활동 기록이 없습니다. 꾸준히 기록을 쌓아보세요!</p>
             ) : (
               historyTimeline.map((day, idx) => (
-                <div key={idx} style={{ position: 'relative', paddingLeft: '1.5rem', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
+                <div key={idx} style={{ position: 'relative', paddingLeft: '1.25rem', borderLeft: '2px solid rgba(255,255,255,0.1)' }}>
                   <div style={{ 
-                    position: 'absolute', left: '-6px', top: '2px', width: '10px', height: '10px', borderRadius: '50%',
+                    position: 'absolute', left: '-5px', top: '2px', width: '8px', height: '8px', borderRadius: '50%',
                     background: day.status === 'completed' ? 'var(--accent-primary)' : day.status === 'partial' ? 'rgba(16, 185, 129, 0.5)' : day.status === 'hibernation' ? 'var(--accent-hibernation)' : 'var(--text-muted)'
                   }} />
-                  <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.2rem' }}>
                     {day.date}
                   </div>
-                  
-                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-sm)', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                    {day.status === 'completed' && <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>🎯 메인 퀘스트 전량 완수!</span>}
-                    {day.status === 'partial' && <span style={{ color: '#34d399' }}>✨ 일일 퀘스트 수행 완료</span>}
-                    {day.status === 'hibernation' && <span style={{ color: 'var(--accent-hibernation)' }}>🌴 휴가/일정 연기 모드</span>}
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem', display: 'inline-block' }}>
+                    {day.status === 'completed' && <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>🎯 메인 퀘스트 완수</span>}
+                    {day.status === 'partial' && <span style={{ color: '#34d399' }}>✨ 일일 퀘스트 수행</span>}
+                    {day.status === 'hibernation' && <span style={{ color: 'var(--accent-hibernation)' }}>🌴 휴가/연기 모드</span>}
                   </div>
                 </div>
               ))
@@ -254,43 +362,42 @@ export default function InsightsDashboard({ onClose }) {
           </div>
         </div>
 
-        {/* Data Management */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: 'var(--radius-sm)' }}>
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <AlertCircle size={18} /> 안전한 데이터 백업
+        {/* Data Backup */}
+        <div style={{ flex: '1 1 240px', background: 'rgba(0,0,0,0.2)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <AlertCircle size={16} /> 안전한 데이터 백업
             </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-              모든 기록은 앱 내부에 자동 저장됩니다.<br/>
-              앱을 삭제하거나 기기를 바꿀 때를 대비해 가끔씩 파일로 백업해두세요.
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.4 }}>
+              기록을 파일로 저장해두면 기기를 바꿔도 손쉽게 복구할 수 있습니다.
             </p>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <button 
+              onClick={handleExport}
+              className="btn btn-primary"
+              style={{ display: 'flex', justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}
+            >
+              <Download size={16} />
+              기록 파일 저장 (.json)
+            </button>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <button 
-                onClick={handleExport}
-                className="btn btn-primary"
-                style={{ display: 'flex', justifyContent: 'center' }}
-              >
-                <Download size={18} />
-                내 기록 파일로 저장 (.json)
-              </button>
-              
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="btn btn-secondary"
-                style={{ display: 'flex', justifyContent: 'center' }}
-              >
-                <Upload size={18} />
-                저장된 파일 불러오기
-              </button>
-              <input 
-                type="file" 
-                accept=".json" 
-                ref={fileInputRef} 
-                style={{ display: 'none' }} 
-                onChange={handleImport}
-              />
-            </div>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="btn btn-secondary"
+              style={{ display: 'flex', justifyContent: 'center', padding: '0.5rem', fontSize: '0.85rem' }}
+            >
+              <Upload size={16} />
+              파일 불러오기
+            </button>
+            <input 
+              type="file" 
+              accept=".json" 
+              ref={fileInputRef} 
+              style={{ display: 'none' }} 
+              onChange={handleImport}
+            />
           </div>
         </div>
       </div>
