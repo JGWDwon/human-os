@@ -632,14 +632,19 @@ export const storage = {
     const sessions = this.getDailySessions(dateStr);
     const pomodoroData = this.getPomodoroByDate(dateStr);
 
-    // Create 48 slots (30-minute granularity for 24 hours)
-    const slots = Array.from({ length: 48 }, (_, idx) => {
-      const hour = Math.floor(idx / 2);
-      const minute = (idx % 2) * 30;
+    // Create 144 slots (10-minute granularity for 24 hours)
+    const slots = Array.from({ length: 144 }, (_, idx) => {
+      const hour = Math.floor(idx / 6);
+      const minute = (idx % 6) * 10;
       const hourStr = hour.toString().padStart(2, '0');
       const minStr = minute.toString().padStart(2, '0');
-      const nextHourStr = (minute === 30 ? hour + 1 : hour).toString().padStart(2, '0');
-      const nextMinStr = minute === 30 ? '00' : '30';
+      
+      const nextTotalMins = (idx + 1) * 10;
+      const nextHour = Math.floor(nextTotalMins / 60) % 24;
+      const nextMin = nextTotalMins % 60;
+      const nextHourStr = nextHour.toString().padStart(2, '0');
+      const nextMinStr = nextMin.toString().padStart(2, '0');
+      
       const isSleepTime = hour >= 23 || hour < 5;
 
       return {
@@ -651,7 +656,7 @@ export const storage = {
         isSleepTime,
         focusMins: 0,
         pauseMins: 0,
-        capacityMins: 30
+        capacityMins: 10
       };
     });
 
@@ -663,12 +668,12 @@ export const storage = {
         const h = parseInt(hStr, 10);
         const m = parseInt(mStr || '0', 10);
         if (!isNaN(h) && h >= 0 && h < 24) {
-          const slotIdx = h * 2 + (m >= 30 ? 1 : 0);
-          const mins = Math.min(30, sess.durationMins || 1);
+          const slotIdx = h * 6 + Math.min(5, Math.floor(m / 10));
+          const mins = Math.min(10, sess.durationMins || 1);
           if (sess.type === 'focus') {
-            slots[slotIdx].focusMins = Math.min(30, slots[slotIdx].focusMins + mins);
+            slots[slotIdx].focusMins = Math.min(10, slots[slotIdx].focusMins + mins);
           } else if (sess.type === 'pause') {
-            slots[slotIdx].pauseMins = Math.min(30, slots[slotIdx].pauseMins + mins);
+            slots[slotIdx].pauseMins = Math.min(10, slots[slotIdx].pauseMins + mins);
           }
         }
       });
@@ -706,8 +711,15 @@ export const storage = {
         }
 
         if (!isNaN(hour) && hour >= 0 && hour < 24) {
-          const slotIdx = hour * 2 + (minute >= 30 ? 1 : 0);
-          slots[slotIdx].focusMins = Math.min(30, slots[slotIdx].focusMins + mins);
+          const startSlotIdx = hour * 6 + Math.min(5, Math.floor(minute / 10));
+          let remaining = mins;
+          for (let currIdx = startSlotIdx; currIdx < 144 && remaining > 0; currIdx++) {
+            const alloc = Math.min(10 - slots[currIdx].focusMins, remaining);
+            if (alloc > 0) {
+              slots[currIdx].focusMins += alloc;
+              remaining -= alloc;
+            }
+          }
         }
       });
     }
@@ -717,9 +729,9 @@ export const storage = {
       const currentTimelineFocusMins = slots.reduce((sum, slot) => sum + slot.focusMins, 0);
       if (pomodoroData.totalMinutes > currentTimelineFocusMins) {
         let remainingToDistribute = pomodoroData.totalMinutes - currentTimelineFocusMins;
-        // Distribute to active daytime 30-min slots (05:00 ~ 23:00, slots 10 to 45)
-        for (let idx = 10; idx <= 45 && remainingToDistribute > 0; idx++) {
-          const add = Math.min(30 - slots[idx].focusMins, remainingToDistribute);
+        // Distribute to active daytime 10-min slots (05:00 ~ 23:00, slots 30 to 137)
+        for (let idx = 30; idx <= 137 && remainingToDistribute > 0; idx++) {
+          const add = Math.min(10 - slots[idx].focusMins, remainingToDistribute);
           if (add > 0) {
             slots[idx].focusMins += add;
             remainingToDistribute -= add;
@@ -729,7 +741,7 @@ export const storage = {
     }
 
     slots.forEach(slot => {
-      slot.idleMins = Math.max(0, 30 - slot.focusMins - slot.pauseMins);
+      slot.idleMins = Math.max(0, 10 - slot.focusMins - slot.pauseMins);
       if (slot.focusMins > 0) {
         slot.status = 'focus';
       } else if (slot.pauseMins > 0) {
@@ -746,14 +758,18 @@ export const storage = {
 
   getTimeWasteAnalysis(daysCount = 7) {
     const dailyTrends = [];
-    // 48 slots aggregate
-    const slotAggregate = Array.from({ length: 48 }, (_, idx) => {
-      const hour = Math.floor(idx / 2);
-      const minute = (idx % 2) * 30;
+    // 144 slots aggregate
+    const slotAggregate = Array.from({ length: 144 }, (_, idx) => {
+      const hour = Math.floor(idx / 6);
+      const minute = (idx % 6) * 10;
       const hourStr = hour.toString().padStart(2, '0');
       const minStr = minute.toString().padStart(2, '0');
-      const nextHourStr = (minute === 30 ? hour + 1 : hour).toString().padStart(2, '0');
-      const nextMinStr = minute === 30 ? '00' : '30';
+
+      const nextTotalMins = (idx + 1) * 10;
+      const nextHour = Math.floor(nextTotalMins / 60) % 24;
+      const nextMin = nextTotalMins % 60;
+      const nextHourStr = nextHour.toString().padStart(2, '0');
+      const nextMinStr = nextMin.toString().padStart(2, '0');
 
       return {
         idx,
@@ -782,7 +798,7 @@ export const storage = {
       let dayFocus = 0;
       let dayPause = 0;
 
-      // Active waking hours: 05:00 ~ 23:00 (slots 10 to 45 = 36 slots * 30m = 1,080m = 18시간)
+      // Active waking hours: 05:00 ~ 23:00 (slots 30 to 137 = 108 slots * 10m = 1,080m = 18시간)
       const activeWindowSlots = timeline.filter(s => !s.isSleepTime);
       activeWindowSlots.forEach(slot => {
         dayFocus += slot.focusMins;
@@ -790,11 +806,11 @@ export const storage = {
 
         slotAggregate[slot.idx].totalFocusMins += slot.focusMins;
         slotAggregate[slot.idx].totalPauseMins += slot.pauseMins;
-        const wasteInSlot = Math.max(0, 30 - slot.focusMins - slot.pauseMins);
+        const wasteInSlot = Math.max(0, 10 - slot.focusMins - slot.pauseMins);
         slotAggregate[slot.idx].totalIdleMins += wasteInSlot;
       });
 
-      // 18시간(1,080분) 중 공부/휴식 안 한 비어있는 시간 = 낭비 시간 (취침시간 23:00~05:00 6시간은 제외)
+      // 18시간(1,080분) 중 공부/휴식 안 한 비어있는 시간 = 낭비 시간 (취침시간 23:00~05:00 6시간 제외)
       const dayWaste = Math.max(0, 1080 - dayFocus - dayPause);
 
       totalAllFocusMins += dayFocus;
@@ -811,7 +827,7 @@ export const storage = {
       });
     }
 
-    // Top 3 waste slots among active waking hours
+    // Top 3 waste slots among active waking hours (10-min slots)
     const activeSlotsAgg = slotAggregate.filter(s => !s.isSleepTime);
     const sortedByWaste = [...activeSlotsAgg].sort((a, b) => b.totalIdleMins - a.totalIdleMins);
 
