@@ -632,14 +632,26 @@ export const storage = {
     const sessions = this.getDailySessions(dateStr);
     const pomodoroData = this.getPomodoroByDate(dateStr);
 
-    const hourlySlots = Array.from({ length: 24 }, (_, hour) => {
-      const hourLabel = `${hour.toString().padStart(2, '0')}:00`;
+    // Create 48 slots (30-minute granularity for 24 hours)
+    const slots = Array.from({ length: 48 }, (_, idx) => {
+      const hour = Math.floor(idx / 2);
+      const minute = (idx % 2) * 30;
+      const hourStr = hour.toString().padStart(2, '0');
+      const minStr = minute.toString().padStart(2, '0');
+      const nextHourStr = (minute === 30 ? hour + 1 : hour).toString().padStart(2, '0');
+      const nextMinStr = minute === 30 ? '00' : '30';
+      const isSleepTime = hour >= 23 || hour < 5;
+
       return {
+        idx,
         hour,
-        label: hourLabel,
+        minute,
+        label: `${hourStr}:${minStr}`,
+        fullRangeLabel: `${hourStr}:${minStr} ~ ${nextHourStr}:${nextMinStr}`,
+        isSleepTime,
         focusMins: 0,
         pauseMins: 0,
-        idleMins: 60
+        capacityMins: 30
       };
     });
 
@@ -647,82 +659,113 @@ export const storage = {
     if (sessions && sessions.length > 0) {
       sessions.forEach(sess => {
         if (!sess.startTime) return;
-        const h = parseInt(sess.startTime.split(':')[0], 10);
+        const [hStr, mStr] = sess.startTime.split(':');
+        const h = parseInt(hStr, 10);
+        const m = parseInt(mStr || '0', 10);
         if (!isNaN(h) && h >= 0 && h < 24) {
-          const mins = sess.durationMins || 1;
+          const slotIdx = h * 2 + (m >= 30 ? 1 : 0);
+          const mins = Math.min(30, sess.durationMins || 1);
           if (sess.type === 'focus') {
-            hourlySlots[h].focusMins += mins;
+            slots[slotIdx].focusMins = Math.min(30, slots[slotIdx].focusMins + mins);
           } else if (sess.type === 'pause') {
-            hourlySlots[h].pauseMins += mins;
+            slots[slotIdx].pauseMins = Math.min(30, slots[slotIdx].pauseMins + mins);
           }
         }
       });
     }
-    
+
     // 2. Legacy Pomodoro timestamps backward compatibility integration
     if (pomodoroData && pomodoroData.timestamps && pomodoroData.timestamps.length > 0) {
       pomodoroData.timestamps.forEach(ts => {
         let hour = -1;
+        let minute = 0;
         let mins = 25;
 
         if (typeof ts === 'string') {
-          if (ts.includes(':')) hour = parseInt(ts.split(':')[0], 10);
-          else hour = new Date(ts).getHours();
+          if (ts.includes(':')) {
+            const parts = ts.split(':');
+            hour = parseInt(parts[0], 10);
+            minute = parseInt(parts[1] || '0', 10);
+          } else {
+            const dateObj = new Date(ts);
+            hour = dateObj.getHours();
+            minute = dateObj.getMinutes();
+          }
         } else if (ts && typeof ts === 'object') {
           mins = ts.minutes || 25;
           const tStr = ts.time || '';
           if (typeof tStr === 'string' && tStr.includes(':')) {
-            hour = parseInt(tStr.split(':')[0], 10);
+            const parts = tStr.split(':');
+            hour = parseInt(parts[0], 10);
+            minute = parseInt(parts[1] || '0', 10);
           } else if (tStr) {
-            hour = new Date(tStr).getHours();
+            const dateObj = new Date(tStr);
+            hour = dateObj.getHours();
+            minute = dateObj.getMinutes();
           }
         }
 
         if (!isNaN(hour) && hour >= 0 && hour < 24) {
-          hourlySlots[hour].focusMins += mins;
+          const slotIdx = hour * 2 + (minute >= 30 ? 1 : 0);
+          slots[slotIdx].focusMins = Math.min(30, slots[slotIdx].focusMins + mins);
         }
       });
     }
 
     // 3. Fallback: If totalMinutes in pomodoroData exceeds timeline focusMins, auto-allocate remaining mins
     if (pomodoroData && pomodoroData.totalMinutes > 0) {
-      const currentTimelineFocusMins = hourlySlots.reduce((sum, slot) => sum + slot.focusMins, 0);
+      const currentTimelineFocusMins = slots.reduce((sum, slot) => sum + slot.focusMins, 0);
       if (pomodoroData.totalMinutes > currentTimelineFocusMins) {
         let remainingToDistribute = pomodoroData.totalMinutes - currentTimelineFocusMins;
-        // Distribute to active daytime hours (09:00 ~ 22:00)
-        for (let h = 9; h <= 22 && remainingToDistribute > 0; h++) {
-          const add = Math.min(60 - hourlySlots[h].focusMins, remainingToDistribute);
+        // Distribute to active daytime 30-min slots (05:00 ~ 23:00, slots 10 to 45)
+        for (let idx = 10; idx <= 45 && remainingToDistribute > 0; idx++) {
+          const add = Math.min(30 - slots[idx].focusMins, remainingToDistribute);
           if (add > 0) {
-            hourlySlots[h].focusMins += add;
+            slots[idx].focusMins += add;
             remainingToDistribute -= add;
           }
         }
       }
     }
 
-    hourlySlots.forEach(slot => {
-      slot.idleMins = Math.max(0, 60 - slot.focusMins - slot.pauseMins);
+    slots.forEach(slot => {
+      slot.idleMins = Math.max(0, 30 - slot.focusMins - slot.pauseMins);
       if (slot.focusMins > 0) {
         slot.status = 'focus';
       } else if (slot.pauseMins > 0) {
         slot.status = 'pause';
+      } else if (slot.isSleepTime) {
+        slot.status = 'sleep';
       } else {
         slot.status = 'idle';
       }
     });
 
-    return hourlySlots;
+    return slots;
   },
 
   getTimeWasteAnalysis(daysCount = 7) {
     const dailyTrends = [];
-    const hourlyAggregate = Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      label: `${hour.toString().padStart(2, '0')}:00`,
-      totalFocusMins: 0,
-      totalPauseMins: 0,
-      totalIdleMins: 0
-    }));
+    // 48 slots aggregate
+    const slotAggregate = Array.from({ length: 48 }, (_, idx) => {
+      const hour = Math.floor(idx / 2);
+      const minute = (idx % 2) * 30;
+      const hourStr = hour.toString().padStart(2, '0');
+      const minStr = minute.toString().padStart(2, '0');
+      const nextHourStr = (minute === 30 ? hour + 1 : hour).toString().padStart(2, '0');
+      const nextMinStr = minute === 30 ? '00' : '30';
+
+      return {
+        idx,
+        hour,
+        minute,
+        label: `${hourStr}:${minStr} ~ ${nextHourStr}:${nextMinStr}`,
+        isSleepTime: hour >= 23 || hour < 5,
+        totalFocusMins: 0,
+        totalPauseMins: 0,
+        totalIdleMins: 0
+      };
+    });
 
     const today = new Date();
     let totalAllFocusMins = 0;
@@ -739,18 +782,20 @@ export const storage = {
       let dayFocus = 0;
       let dayPause = 0;
 
-      const activeWindowSlots = timeline.filter(slot => slot.hour >= 8 && slot.hour <= 23);
+      // Active waking hours: 05:00 ~ 23:00 (slots 10 to 45 = 36 slots * 30m = 1,080m = 18시간)
+      const activeWindowSlots = timeline.filter(s => !s.isSleepTime);
       activeWindowSlots.forEach(slot => {
         dayFocus += slot.focusMins;
         dayPause += slot.pauseMins;
 
-        hourlyAggregate[slot.hour].totalFocusMins += slot.focusMins;
-        hourlyAggregate[slot.hour].totalPauseMins += slot.pauseMins;
-        const wasteInSlot = Math.max(0, 60 - slot.focusMins - slot.pauseMins);
-        hourlyAggregate[slot.hour].totalIdleMins += wasteInSlot;
+        slotAggregate[slot.idx].totalFocusMins += slot.focusMins;
+        slotAggregate[slot.idx].totalPauseMins += slot.pauseMins;
+        const wasteInSlot = Math.max(0, 30 - slot.focusMins - slot.pauseMins);
+        slotAggregate[slot.idx].totalIdleMins += wasteInSlot;
       });
 
-      const dayWaste = Math.max(0, 960 - dayFocus - dayPause);
+      // 18시간(1,080분) 중 공부/휴식 안 한 비어있는 시간 = 낭비 시간 (취침시간 23:00~05:00 6시간은 제외)
+      const dayWaste = Math.max(0, 1080 - dayFocus - dayPause);
 
       totalAllFocusMins += dayFocus;
       totalAllPauseMins += dayPause;
@@ -766,19 +811,21 @@ export const storage = {
       });
     }
 
-    const activeSlotsAgg = hourlyAggregate.filter(slot => slot.hour >= 8 && slot.hour <= 23);
+    // Top 3 waste slots among active waking hours
+    const activeSlotsAgg = slotAggregate.filter(s => !s.isSleepTime);
     const sortedByWaste = [...activeSlotsAgg].sort((a, b) => b.totalIdleMins - a.totalIdleMins);
 
     const topIdleSlots = sortedByWaste.slice(0, 3).map(slot => {
       const avgIdleMins = Math.round(slot.totalIdleMins / daysCount);
       let timeLabel = '';
-      if (slot.hour >= 6 && slot.hour < 12) timeLabel = '오전';
+      if (slot.hour >= 5 && slot.hour < 12) timeLabel = '오전';
       else if (slot.hour >= 12 && slot.hour < 18) timeLabel = '오후';
-      else timeLabel = '저녁/밤';
+      else timeLabel = '저녁';
 
       return {
+        idx: slot.idx,
         hour: slot.hour,
-        label: `${timeLabel} ${slot.hour.toString().padStart(2, '0')}:00 ~ ${(slot.hour + 1).toString().padStart(2, '0')}:00`,
+        label: `${timeLabel} ${slot.label}`,
         avgIdleMins,
         totalFocusMins: slot.totalFocusMins
       };

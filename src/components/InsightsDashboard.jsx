@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { BarChart2, Download, Upload, Trophy, CheckCircle, Timer, BookOpen, AlertCircle, Clock, AlertTriangle, Calendar, PauseCircle, Zap } from 'lucide-react';
+import { BarChart2, Download, Upload, Trophy, CheckCircle, Timer, BookOpen, AlertCircle, Clock, AlertTriangle, Calendar, Moon, Zap } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { storage } from '../utils/storage';
 import { Capacitor } from '@capacitor/core';
@@ -10,7 +10,6 @@ export default function InsightsDashboard({ onClose }) {
   const [stats, setStats] = useState(null);
   const [historyTimeline, setHistoryTimeline] = useState([]);
   
-  // New Time Waste Analysis states
   const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const [selectedTimelineDate, setSelectedTimelineDate] = useState(todayStr);
   const [dailyTimeline, setDailyTimeline] = useState([]);
@@ -20,15 +19,11 @@ export default function InsightsDashboard({ onClose }) {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    // Load Stats
     setStats(storage.getAllTimeStats());
-    
-    // Load Timeline & Waste Analysis
     setDailyTimeline(storage.getDailySessionTimeline(selectedTimelineDate));
     setWasteAnalysis(storage.getTimeWasteAnalysis(7));
 
-    // Build timeline from last 30 days
-    const recentQuests = storage.getQuestHistory(30).reverse(); // oldest first
+    const recentQuests = storage.getQuestHistory(30).reverse();
     const activeTimeline = recentQuests.filter(day => day.status !== 'none');
     setHistoryTimeline(activeTimeline);
   }, [selectedTimelineDate]);
@@ -101,11 +96,10 @@ export default function InsightsDashboard({ onClose }) {
 
   if (!stats || !wasteAnalysis) return null;
 
-  // Selected date total summary
+  // Active waking hours: 05:00~23:00 (18 hours = 1080 mins)
   const selectedFocusMins = dailyTimeline.reduce((sum, slot) => sum + slot.focusMins, 0);
   const selectedPauseMins = dailyTimeline.reduce((sum, slot) => sum + slot.pauseMins, 0);
-  // Active window 08시~24시 (16시간 = 960분)
-  const selectedWasteMins = Math.max(0, 960 - selectedFocusMins - selectedPauseMins);
+  const selectedWasteMins = Math.max(0, 1080 - selectedFocusMins - selectedPauseMins);
 
   return (
     <div className="glass-panel animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
@@ -114,10 +108,10 @@ export default function InsightsDashboard({ onClose }) {
         <div>
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
             <BarChart2 size={24} color="var(--accent-secondary)" />
-            공부 시간 & 시간 낭비 종합 분석
+            공부 시간 & 시간 낭비 종합 분석 (30분 단위)
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.3rem' }}>
-            언제 집중하고 일시정지했는지 24시간 타임라인으로 파악하고 낭비되는 시간대를 정밀 진단하세요.
+            23시~05시는 취침 시간(💤)으로 지정되며, 활동시간(05시~23시) 중 공부/일시정지/공백을 30분 단위로 세밀하게 정밀 진단합니다.
           </p>
         </div>
         <button onClick={onClose} className="btn btn-secondary">돌아가기</button>
@@ -148,21 +142,21 @@ export default function InsightsDashboard({ onClose }) {
 
         <div style={{ background: 'rgba(239, 68, 68, 0.12)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <AlertTriangle size={16} color="#ef4444" /> 하루 평균 낭비 시간
+            <AlertTriangle size={16} color="#ef4444" /> 하루 평균 활동 낭비 시간
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#ef4444' }}>{formatTime(wasteAnalysis.avgDailyWasteMins)}</div>
         </div>
       </div>
 
-      {/* SECTION 1: 24-Hour Daily Timeline Grid & Breakdown */}
+      {/* SECTION 1: 30-Min Granularity 48-Slot Daily Timeline */}
       <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
             <h3 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Clock size={18} color="#10b981" /> 하루 24시간 타임라인 바 (공부 vs 일시정지 vs 공백)
+              <Clock size={18} color="#10b981" /> 30분 세분화 타임라인 바 (공부 vs 일시정지 vs 취침 vs 공백)
             </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.2rem' }}>
-              하루 중 어느 시점에 공부(🟩)하고, 일시정지(🟧)했는지 시간대별 타임블록으로 확인하세요.
+              하루 48개(30분 단위) 타임블록으로 세분화하여, 23시~05시 취침시간(💤) 및 활동 집중 구간을 정밀 관찰합니다.
             </p>
           </div>
 
@@ -177,7 +171,7 @@ export default function InsightsDashboard({ onClose }) {
           </div>
         </div>
 
-        {/* Selected Date Summary Stats Header */}
+        {/* Selected Date Summary Header */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem 1rem', borderRadius: '6px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span style={{ width: '10px', height: '10px', background: '#10b981', borderRadius: '2px', display: 'inline-block' }}></span>
@@ -190,15 +184,20 @@ export default function InsightsDashboard({ onClose }) {
             <strong style={{ color: '#f59e0b' }}>{formatTime(selectedPauseMins)}</strong>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ width: '10px', height: '10px', background: 'rgba(139, 92, 246, 0.4)', borderRadius: '2px', display: 'inline-block' }}></span>
+            <span style={{ color: 'var(--text-muted)' }}>취침 시간 (23~05시):</span>
+            <strong style={{ color: '#c4b5fd' }}>6시간 00분 💤</strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <span style={{ width: '10px', height: '10px', background: 'rgba(255,255,255,0.15)', borderRadius: '2px', display: 'inline-block' }}></span>
-            <span style={{ color: 'var(--text-muted)' }}>공백(비어있는 시간):</span>
+            <span style={{ color: 'var(--text-muted)' }}>활동 공백(낭비 시간):</span>
             <strong style={{ color: '#ef4444' }}>{formatTime(selectedWasteMins)}</strong>
           </div>
         </div>
 
-        {/* 24-Hour Interactive Timeline Bar */}
+        {/* 48-Slot Granular Timeline Bar */}
         <div style={{ marginBottom: '0.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: '3px', height: '38px', background: 'rgba(0,0,0,0.5)', padding: '3px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(48, 1fr)', gap: '2px', height: '40px', background: 'rgba(0,0,0,0.5)', padding: '3px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}>
             {dailyTimeline.map((slot) => {
               const hasFocus = slot.focusMins > 0;
               const hasPause = slot.pauseMins > 0;
@@ -207,46 +206,48 @@ export default function InsightsDashboard({ onClose }) {
               if (hasFocus && hasPause) bgColor = 'linear-gradient(135deg, #10b981 60%, #f59e0b 40%)';
               else if (hasFocus) bgColor = '#10b981';
               else if (hasPause) bgColor = '#f59e0b';
+              else if (slot.isSleepTime) bgColor = 'rgba(139, 92, 246, 0.25)'; // Sleep mode moonlight purple
 
-              const isHovered = hoveredSlot && hoveredSlot.hour === slot.hour;
+              const isHovered = hoveredSlot && hoveredSlot.idx === slot.idx;
 
               return (
                 <div 
-                  key={slot.hour}
+                  key={slot.idx}
                   onMouseEnter={() => setHoveredSlot(slot)}
                   onMouseLeave={() => setHoveredSlot(null)}
                   style={{
                     background: bgColor,
-                    borderRadius: '3px',
+                    borderRadius: '2px',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
-                    transform: isHovered ? 'scaleY(1.15)' : 'scaleY(1)',
+                    transform: isHovered ? 'scaleY(1.2)' : 'scaleY(1)',
                     boxShadow: isHovered ? '0 0 8px rgba(255,255,255,0.5)' : 'none',
-                    position: 'relative'
+                    border: slot.isSleepTime && !hasFocus && !hasPause ? '1px dashed rgba(139, 92, 246, 0.3)' : 'none'
                   }}
                 />
               );
             })}
           </div>
 
-          {/* Time Labels (Every 3 hours) */}
+          {/* Time Labels (Every 3 hours = 6 slots interval) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-            <span>00:00</span>
-            <span>03:00</span>
-            <span>06:00</span>
-            <span>09:00</span>
-            <span>12:00</span>
-            <span>15:00</span>
-            <span>18:00</span>
-            <span>21:00</span>
+            <span>00:00 🌙</span>
+            <span>03:00 🌙</span>
+            <span>06:00 🌅</span>
+            <span>09:00 ☀️</span>
+            <span>12:00 🍽️</span>
+            <span>15:00 📚</span>
+            <span>18:00 🌆</span>
+            <span>21:00 🌃</span>
           </div>
         </div>
 
         {/* Hover / Slot Detail Card */}
         {hoveredSlot ? (
-          <div style={{ background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(139, 92, 246, 0.4)', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '0.85rem', color: '#fff', display: 'flex', gap: '1.5rem', alignItems: 'center', marginTop: '0.75rem' }}>
+          <div style={{ background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(139, 92, 246, 0.4)', padding: '0.6rem 1rem', borderRadius: '6px', fontSize: '0.85rem', color: '#fff', display: 'flex', gap: '1.5rem', alignItems: 'center', marginTop: '0.75rem', flexWrap: 'wrap' }}>
             <div>
-              <strong style={{ color: '#a78bfa' }}>⏱️ {hoveredSlot.label} 시간대 상세보기</strong>
+              <strong style={{ color: '#a78bfa' }}>⏱️ {hoveredSlot.fullRangeLabel} 시간대 (30분 슬롯)</strong>
+              {hoveredSlot.isSleepTime && <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', color: '#c4b5fd', background: 'rgba(139, 92, 246, 0.2)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>💤 취침 시간대</span>}
             </div>
             <div style={{ color: '#10b981' }}>공부: <strong>{hoveredSlot.focusMins}분</strong></div>
             <div style={{ color: '#f59e0b' }}>일시정지: <strong>{hoveredSlot.pauseMins}분</strong></div>
@@ -254,25 +255,25 @@ export default function InsightsDashboard({ onClose }) {
           </div>
         ) : (
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
-            💡 타임라인 바 위로 마우스를 올리거나 터치하면 시간대별 세부 공부/일시정지 분을 볼 수 있습니다.
+            💡 48개 세분화 블록에 마우스를 올리거나 터치하면 30분 단위 상세 공부/일시정지 시간을 볼 수 있습니다. (보라색 블록 = 취침시간 23:00~05:00)
           </div>
         )}
       </div>
 
-      {/* SECTION 2: Top Time Waste Analysis Report & Coaching */}
+      {/* SECTION 2: Top Active Time Waste Analysis & Coaching */}
       <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
         <h3 style={{ fontSize: '1.1rem', marginBottom: '0.4rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <AlertTriangle size={18} color="#ef4444" /> 주로 시간이 비어있는 낭비 구간 분석 (최근 7일)
+          <AlertTriangle size={18} color="#ef4444" /> 활동 시간(05시~23시) 중 주요 낭비 구간 분석 (최근 7일)
         </h3>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1.25rem' }}>
-          활동 시간대(08시~24시) 중 공부나 타이머 동작 없이 지속적으로 비어있었던 Top 3 시간대입니다.
+          취침 시간(23시~05시)을 제외한 낮 활동 시간대 중 공부나 타이머 동작 없이 지속적으로 비어있었던 Top 3 (30분 슬롯) 구간입니다.
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
           {wasteAnalysis.topIdleSlots.map((slot, rankIdx) => {
             const medal = ['🥇 1위 낭비 구간', '🥈 2위 낭비 구간', '🥉 3위 낭비 구간'][rankIdx];
             return (
-              <div key={slot.hour} style={{
+              <div key={slot.idx} style={{
                 background: 'rgba(239, 68, 68, 0.08)',
                 border: '1px solid rgba(239, 68, 68, 0.3)',
                 borderRadius: '8px', padding: '1rem',
@@ -281,10 +282,10 @@ export default function InsightsDashboard({ onClose }) {
                 <div style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 'bold' }}>{medal}</div>
                 <div style={{ fontSize: '1rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{slot.label}</div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  평균 공백: <strong style={{ color: '#ef4444' }}>{slot.avgIdleMins}분/시간</strong>
+                  평균 공백: <strong style={{ color: '#ef4444' }}>{slot.avgIdleMins}분/30분</strong>
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.2rem' }}>
-                  해당 시간대 평균 공부량: {formatTime(Math.round(slot.totalFocusMins / 7))}
+                  해당 30분 평균 공부량: {formatTime(Math.round(slot.totalFocusMins / 7))}
                 </div>
               </div>
             );
@@ -303,7 +304,7 @@ export default function InsightsDashboard({ onClose }) {
       {/* SECTION 3: Daily Time Waste Trend (Recharts) */}
       <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', border: '1px solid rgba(255,255,255,0.08)' }}>
         <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <BarChart2 size={18} color="#3b82f6" /> 일자별 공부 vs 일시정지 vs 낭비 시간 추이 (최근 7일)
+          <BarChart2 size={18} color="#3b82f6" /> 일자별 공부 vs 일시정지 vs 활동 낭비 시간 추이 (최근 7일)
         </h3>
         
         <div style={{ height: '260px', width: '100%' }}>
@@ -315,12 +316,12 @@ export default function InsightsDashboard({ onClose }) {
               <Tooltip 
                 contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', borderColor: 'rgba(255,255,255,0.15)', borderRadius: '8px', color: '#fff' }}
                 formatter={(val, name) => {
-                  const labels = { focusMins: '공부 시간', pauseMins: '일시정지 시간', wasteMins: '낭비된 시간' };
+                  const labels = { focusMins: '공부 시간', pauseMins: '일시정지 시간', wasteMins: '활동 낭비 시간' };
                   return [formatTime(val), labels[name] || name];
                 }}
               />
               <Legend formatter={(val) => {
-                const labels = { focusMins: '공부 시간 (🟩)', pauseMins: '일시정지 (🟧)', wasteMins: '낭비 시간 (🟥)' };
+                const labels = { focusMins: '공부 시간 (🟩)', pauseMins: '일시정지 (🟧)', wasteMins: '활동 낭비 (🟥)' };
                 return labels[val] || val;
               }} />
               <Bar dataKey="focusMins" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={30} />
@@ -333,7 +334,6 @@ export default function InsightsDashboard({ onClose }) {
 
       {/* SECTION 4: Timeline & Backup Management */}
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-        {/* Past Quest Timeline */}
         <div style={{ flex: '2 1 300px', background: 'rgba(0,0,0,0.2)', padding: '1.25rem', borderRadius: 'var(--radius-sm)' }}>
           <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <BookOpen size={16} /> 활동 수행 타임라인 (최근 30일)
@@ -362,7 +362,6 @@ export default function InsightsDashboard({ onClose }) {
           </div>
         </div>
 
-        {/* Data Backup */}
         <div style={{ flex: '1 1 240px', background: 'rgba(0,0,0,0.2)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
