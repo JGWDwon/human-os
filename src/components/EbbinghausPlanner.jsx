@@ -158,14 +158,14 @@ export default function EbbinghausPlanner() {
       return;
     }
     const result = storage.addVacation(vacStartDate, vacEndDate);
-    alert(`🌴 여행/휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n남아있는 복습 일정 ${result.count}개가 ${result.days}일 뒤로 연기되었습니다. 즐거운 여행 되세요!`);
+    alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n\n휴가 기간은 "없는 날"로 처리됩니다.\n미완료 복습 ${result.count}개가 휴가일을 건너뛰어 재배치되었습니다.\n(완료된 복습은 그대로 유지됩니다)\n\n즐거운 여행 되세요! 🎉`);
     refreshData();
   };
 
   const handleRevertVacation = (vacationId) => {
-    if (window.confirm("이 여행 일정을 취소하고 연기되었던 복습 일정을 원복하시겠습니까?")) {
+    if (window.confirm("이 휴가 일정을 취소하시겠습니까?\n휴가 기간이 삭제되고, 미완료 복습이 원래 14714 간격으로 재계산됩니다.\n(완료된 복습은 그대로 유지됩니다)")) {
       const result = storage.revertVacation(vacationId);
-      alert(`↩️ 여행 취소 완료!\n연기되었던 복습 일정이 ${result.days}일 앞으로 원복 되었습니다.`);
+      alert(`↩️ 휴가 취소 완료!\n${result.count}개의 미완료 복습이 원래 간격으로 재배치되었습니다.`);
       refreshData();
     }
   };
@@ -181,16 +181,16 @@ export default function EbbinghausPlanner() {
   const handleSmartRedistribute = (maxPerDay = 2) => {
     const count = storage.smartEbbinghausRedistribute(maxPerDay);
     if (count > 0) {
-      alert(`✨ 하루 최대 ${maxPerDay}개씩 강의를 부드럽게 균등 분배했습니다!\n특정 날짜 몰림 없이 화·수·목·금 평일에 균등 배치됩니다. 👍`);
+      alert(`✨ 복습 재배치 완료!\n\n• 미완료 복습 ${count}개가 14714 간격 기준으로 재계산되었습니다.\n• 휴가 기간은 "없는 날"로 건너뜁니다.\n• 하루 최대 ${maxPerDay}개씩 균등 분배됩니다.\n• 이미 완료한 복습은 그대로 유지됩니다! ✅`);
       refreshData();
     } else {
-      alert("이미 모든 복습 일정이 균등하게 분배되어 있습니다! 👍");
+      alert("이미 모든 복습 일정이 정확하게 배치되어 있습니다! 👍");
     }
     setShowOverdueModal(false);
   };
 
   const handleRecalculateReviews = () => {
-    if (window.confirm("복습이 한 날짜에 쏟아지지 않도록 평일(화·수·목·금)에 하루 2개씩 균등하게 나누어 1·4·7·14·30 주기로 재배치하시겠습니까?")) {
+    if (window.confirm("복습 일정을 재설정하시겠습니까?\n\n✅ 완료된 복습: 그대로 유지\n🔄 미완료 복습: 14714 간격으로 재계산\n🌴 휴가 기간: 없는 날로 건너뜀\n📊 하루 최대 2개씩 균등 분배")) {
       handleSmartRedistribute(2);
     }
   };

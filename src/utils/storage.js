@@ -1027,20 +1027,40 @@ export const storage = {
     return vacations.some(vac => dateStr >= vac.startDate && dateStr <= vac.endDate);
   },
 
+  _dateToStr(d) {
+    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+  },
+
   getAdjustedTargetDate(dateStr) {
     let currentStr = dateStr;
     const vacations = this.getVacations();
     if (!vacations || vacations.length === 0) return currentStr;
 
-    // Keep advancing by 1 day if it lands on a vacation date
-    let safetyCounter = 0; // prevent infinite loops
+    let safetyCounter = 0;
     while (this.isVacationDate(currentStr) && safetyCounter < 365) {
       const d = new Date(currentStr + 'T00:00:00');
       d.setDate(d.getDate() + 1);
-      currentStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      currentStr = this._dateToStr(d);
       safetyCounter++;
     }
     return currentStr;
+  },
+
+  // Core: Count `offset` non-vacation days from startDateStr
+  // Vacation days are treated as "non-existent" and don't count toward the interval
+  getDateAfterNonVacationDays(startDateStr, offset) {
+    const current = new Date(startDateStr + 'T00:00:00');
+    let counted = 0;
+    let safety = 0;
+    while (counted < offset && safety < 730) {
+      current.setDate(current.getDate() + 1);
+      const str = this._dateToStr(current);
+      if (!this.isVacationDate(str)) {
+        counted++;
+      }
+      safety++;
+    }
+    return this._dateToStr(current);
   },
 
   addLecture(subject, title, dateStr) {
@@ -1051,22 +1071,17 @@ export const storage = {
     
     const lectures = this.getLectures();
     
-    // Ebbinghaus intervals: 1, 4, 7, 14, 30 days
+    // Ebbinghaus intervals: 1, 4, 7, 14, 30 days (vacation days are invisible/skipped)
     const intervals = [1, 4, 7, 14, 30];
-    const baseDate = new Date(dateStr + 'T00:00:00');
     
     const reviews = intervals.map(offset => {
-      const targetDate = new Date(baseDate);
-      targetDate.setDate(baseDate.getDate() + offset);
-      const rawTargetStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-      
-      // If rawTargetStr lands on a vacation date, skip to next available non-vacation date
-      const adjustedTargetStr = this.getAdjustedTargetDate(rawTargetStr);
+      // Count `offset` non-vacation days from study date
+      const targetDateStr = this.getDateAfterNonVacationDays(dateStr, offset);
 
       return {
         id: `rev_${Date.now()}_${offset}`,
         dayOffset: offset,
-        targetDate: adjustedTargetStr,
+        targetDate: targetDateStr,
         isCompleted: false,
         completedAt: null
       };
@@ -1303,75 +1318,31 @@ export const storage = {
   },
 
   smartEbbinghausRedistribute(maxPerDay = 2) {
-    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const todayStr = this._dateToStr(new Date());
     const lectures = this.getLectures();
     let resetCount = 0;
 
-    // ---- Step 1: Normalize completion status ----
+    // ---- Step 1: Recalculate uncompleted reviews with vacation-aware 14714 intervals ----
+    // Completed reviews are NEVER touched
     lectures.forEach(lec => {
       lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-      const completedCount = lec.reviews.filter(r => r.isCompleted).length;
-      lec.reviews.forEach((r, idx) => {
-        const shouldBeCompleted = idx < completedCount;
-        if (r.isCompleted !== shouldBeCompleted) {
-          r.isCompleted = shouldBeCompleted;
-          r.completedAt = shouldBeCompleted ? (r.completedAt || new Date().toISOString()) : null;
+      lec.reviews.forEach(rev => {
+        if (rev.isCompleted) return; // PRESERVE completed reviews
+
+        // Recalculate target date: count dayOffset non-vacation days from study date
+        const correctDate = this.getDateAfterNonVacationDays(lec.dateAdded, rev.dayOffset);
+        // If the correct date is in the past, move to today
+        const effectiveDate = correctDate < todayStr ? todayStr : correctDate;
+        const adjusted = this.getAdjustedTargetDate(effectiveDate);
+
+        if (rev.targetDate !== adjusted) {
+          rev.targetDate = adjusted;
           resetCount++;
         }
       });
     });
 
-    // ---- Step 2: Gather active lectures ----
-    const activeLectures = lectures
-      .filter(lec => lec.reviews.some(r => !r.isCompleted))
-      .sort((a, b) => a.dateAdded.localeCompare(b.dateAdded));
-
-    if (activeLectures.length === 0) {
-      if (resetCount > 0) {
-        localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
-        this._dispatchSync();
-      }
-      return 0;
-    }
-
-    // ---- Step 3: Distribute lectures across days (max N per day) ----
-    let currentStr = this.getAdjustedTargetDate(todayStr);
-    let countInCurrentDay = 0;
-
-    activeLectures.forEach(lec => {
-      if (countInCurrentDay >= maxPerDay) {
-        const d = new Date(currentStr + 'T00:00:00');
-        d.setDate(d.getDate() + 1);
-        currentStr = this.getAdjustedTargetDate(
-          new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
-        );
-        countInCurrentDay = 0;
-      }
-
-      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-      const uncompleted = lec.reviews.filter(r => !r.isCompleted);
-      if (uncompleted.length > 0) {
-        const firstUncompletedOffset = uncompleted[0].dayOffset;
-        const lecStart = new Date(currentStr + 'T00:00:00');
-
-        uncompleted.forEach(rev => {
-          const dayGap = rev.dayOffset - firstUncompletedOffset;
-          const targetDate = new Date(lecStart);
-          targetDate.setDate(lecStart.getDate() + dayGap);
-
-          const rawStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-          const adjusted = this.getAdjustedTargetDate(rawStr);
-
-          if (rev.targetDate !== adjusted) {
-            rev.targetDate = adjusted;
-            resetCount++;
-          }
-        });
-        countInCurrentDay++;
-      }
-    });
-
-    // ---- Step 4: Smooth daily piles (no day exceeds maxPerDay) ----
+    // ---- Step 2: Smooth daily piles (no day exceeds maxPerDay reviews) ----
     const uncompletedReviews = [];
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
@@ -1398,15 +1369,10 @@ export const storage = {
     const dateCounts = {};
     uncompletedReviews.forEach(item => {
       let targetStr = item.rev.targetDate;
-      if (targetStr < todayStr) targetStr = todayStr;
-      targetStr = this.getAdjustedTargetDate(targetStr);
+      if (targetStr < todayStr) targetStr = this.getAdjustedTargetDate(todayStr);
 
       while ((dateCounts[targetStr] || 0) >= maxPerDay) {
-        const d = new Date(targetStr + 'T00:00:00');
-        d.setDate(d.getDate() + 1);
-        targetStr = this.getAdjustedTargetDate(
-          new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0]
-        );
+        targetStr = this.getDateAfterNonVacationDays(targetStr, 1);
       }
 
       if (item.rev.targetDate !== targetStr) {
@@ -1420,7 +1386,7 @@ export const storage = {
       localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
       this._dispatchSync();
     }
-    return activeLectures.length;
+    return resetCount;
   },
 
   recalculateAllReviews() {
@@ -1429,25 +1395,18 @@ export const storage = {
     let resetCount = 0;
 
     lectures.forEach(lec => {
-      const baseDate = new Date(lec.dateAdded + 'T00:00:00');
-
       lec.reviews.forEach(rev => {
-        // Only recalculate uncompleted reviews
+        // PRESERVE completed reviews - never touch them
         if (rev.isCompleted) return;
 
-        // Match dayOffset to the correct interval
         const offset = rev.dayOffset;
-        if (!intervals.includes(offset)) return; // safety check
+        if (!intervals.includes(offset)) return;
 
-        const targetDate = new Date(baseDate);
-        targetDate.setDate(baseDate.getDate() + offset);
-        const rawTargetStr = new Date(targetDate.getTime() - (targetDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        // Count `offset` non-vacation days from the study date
+        const newTargetDate = this.getDateAfterNonVacationDays(lec.dateAdded, offset);
 
-        // Skip vacation dates
-        const adjustedTargetStr = this.getAdjustedTargetDate(rawTargetStr);
-
-        if (rev.targetDate !== adjustedTargetStr) {
-          rev.targetDate = adjustedTargetStr;
+        if (rev.targetDate !== newTargetDate) {
+          rev.targetDate = newTargetDate;
           resetCount++;
         }
       });
@@ -1495,49 +1454,27 @@ export const storage = {
     if (end < start) return { days: 0, count: 0 };
 
     const diffTime = end.getTime() - start.getTime();
-    const days = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1; // inclusive
+    const days = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-    const lectures = this.getLectures();
-    const shiftedReviews = [];
+    // 1. Store the vacation period first
+    const vacations = this.getVacations();
+    const newVacation = {
+      id: 'vac_' + Date.now(),
+      startDate,
+      endDate,
+      days,
+      appliedAt: new Date().toISOString()
+    };
+    vacations.unshift(newVacation);
+    localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
 
-    lectures.forEach(lec => {
-      lec.reviews.forEach(rev => {
-        if (!rev.isCompleted && rev.targetDate >= startDate) {
-          shiftedReviews.push({
-            lectureId: lec.id,
-            reviewId: rev.id,
-            originalTargetDate: rev.targetDate
-          });
-          const current = new Date(rev.targetDate + 'T00:00:00');
-          current.setDate(current.getDate() + days);
-          rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        }
-      });
-    });
+    // 2. Recalculate ALL uncompleted reviews with vacation-aware intervals
+    //    Vacation days are now "invisible" — 14714 intervals skip them entirely
+    //    Completed reviews are PRESERVED
+    const count = this.recalculateAllReviews();
 
-    const count = shiftedReviews.length;
-
-    if (count > 0 || days > 0) {
-      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
-      
-      const vacations = this.getVacations();
-      const newVacation = {
-        id: 'vac_' + Date.now(),
-        startDate,
-        endDate,
-        days,
-        count,
-        shiftedReviews,
-        appliedAt: new Date().toISOString()
-      };
-      vacations.unshift(newVacation);
-      localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
-      
-      this._dispatchSync();
-      return { days, count };
-    }
-
-    return { days, count: 0 };
+    this._dispatchSync();
+    return { days, count };
   },
 
   revertVacation(vacationId) {
@@ -1546,50 +1483,15 @@ export const storage = {
     if (vacIndex === -1) return { days: 0, count: 0 };
 
     const vac = vacations[vacIndex];
-    const { startDate, days, shiftedReviews } = vac;
+    const { days } = vac;
 
-    const lectures = this.getLectures();
-    let count = 0;
-
-    if (shiftedReviews && shiftedReviews.length > 0) {
-      // 1. Precise restoration using stored shiftedReviews map
-      const shiftedMap = new Map();
-      shiftedReviews.forEach(sr => {
-        shiftedMap.set(`${sr.lectureId}_${sr.reviewId}`, sr.originalTargetDate);
-      });
-
-      lectures.forEach(lec => {
-        lec.reviews.forEach(rev => {
-          const key = `${lec.id}_${rev.id}`;
-          if (!rev.isCompleted && shiftedMap.has(key)) {
-            rev.targetDate = shiftedMap.get(key);
-            count++;
-          }
-        });
-      });
-    } else {
-      // Fallback for older legacy vacations without shiftedReviews: only revert targetDate >= (startDate + days)
-      const minShiftedDateObj = new Date(startDate + 'T00:00:00');
-      minShiftedDateObj.setDate(minShiftedDateObj.getDate() + days);
-      const minShiftedDateStr = new Date(minShiftedDateObj.getTime() - (minShiftedDateObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-
-      lectures.forEach(lec => {
-        lec.reviews.forEach(rev => {
-          if (!rev.isCompleted && rev.targetDate >= minShiftedDateStr) {
-            const current = new Date(rev.targetDate + 'T00:00:00');
-            current.setDate(current.getDate() - days);
-            rev.targetDate = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-            count++;
-          }
-        });
-      });
-    }
-
-    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
-    
-    // Remove from vacation list
+    // 1. Remove the vacation from the list
     vacations.splice(vacIndex, 1);
     localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
+
+    // 2. Recalculate all uncompleted reviews without the removed vacation
+    //    Completed reviews are PRESERVED
+    const count = this.recalculateAllReviews();
 
     this._dispatchSync();
     return { days, count };
