@@ -178,10 +178,10 @@ export default function EbbinghausPlanner() {
     }
   };
 
-  const handleSmartRedistribute = (maxPerDay = 2) => {
+  const handleSmartRedistribute = (maxPerDay = 3) => {
     const count = storage.smartEbbinghausRedistribute(maxPerDay);
     if (count > 0) {
-      alert(`✨ 복습 재배치 완료!\n\n• 미완료 복습 ${count}개가 14714 간격 기준으로 재계산되었습니다.\n• 휴가 기간은 "없는 날"로 건너뜁니다.\n• 하루 최대 ${maxPerDay}개씩 균등 분배됩니다.\n• 이미 완료한 복습은 그대로 유지됩니다! ✅`);
+      alert(`✨ 복습 재배치 완료!\n\n• 밀린 복습을 당겨오되 회차 간 14714 원래 상대 간격(+3일, +7일 등)을 100% 보수 유지했습니다.\n• 휴가 기간은 "없는 날"로 계산하여 건너뜁니다.\n• 하루 최대 ${maxPerDay}개까지 균등 분배됩니다.\n• 이미 완료한 복습은 그대로 보존됩니다! ✅`);
       refreshData();
     } else {
       alert("이미 모든 복습 일정이 정확하게 배치되어 있습니다! 👍");
@@ -190,10 +190,8 @@ export default function EbbinghausPlanner() {
   };
 
   const handleRecalculateReviews = () => {
-    if (window.confirm("모든 미완료 복습 일정을 강의 시작일 기준 원래의 1·4·7·14·30 망각곡선 간격(휴가 기간 제외)으로 초기화하시겠습니까?\n\n• 이미 완료한 복습은 그대로 보존됩니다.\n• 휴가 기간은 없는 날로 계산됩니다.")) {
-      const count = storage.recalculateAllReviews();
-      alert(`✨ 복습 일정 초기화 완료!\n미완료 복습 ${count}개가 순수 1·4·7·14·30 간격(휴가 제외)으로 원위치 재정렬되었습니다.`);
-      refreshData();
+    if (window.confirm("복습 일정을 당겨오며 재배치하시겠습니까?\n\n• 14714 회차 간 본래 상대 간격(+3일, +7일 등) 엄격 유지\n• 휴가 기간은 없는 날로 계산하여 건너뜀\n• 하루 최대 3개까지 균등 배분\n• 이미 완료한 복습은 보존")) {
+      handleSmartRedistribute(3);
     }
   };
 
@@ -654,7 +652,7 @@ export default function EbbinghausPlanner() {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button
-                onClick={() => handleSmartRedistribute(2)}
+                onClick={() => handleSmartRedistribute(3)}
                 className="btn"
                 style={{
                   background: 'rgba(139, 92, 246, 0.2)', border: '1px solid #8b5cf6', color: '#c084fc',
@@ -663,9 +661,9 @@ export default function EbbinghausPlanner() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>✨ 하루 2개씩 평일 균등 분배 (강력 추천)</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>✨ 하루 최대 3개씩 (회차 간격 100% 보존 추천)</div>
                   <div style={{ fontSize: '0.78rem', opacity: 0.85, marginTop: '0.2rem' }}>
-                    특정 날짜 몰림 없이 화·수·목·금에 하루 2개씩 1·4·7·14·30 주기로 나누어 배치합니다.
+                    밀린 복습을 오늘로 당겨오되 회차 간 14714 상대 간격(+3일, +7일 등)을 100% 보존합니다.
                   </div>
                 </div>
                 <ArrowRight size={18} />

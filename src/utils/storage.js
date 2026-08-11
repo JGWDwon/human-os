@@ -1310,47 +1310,39 @@ export const storage = {
     return resetCount;
   },
 
-  smartEbbinghausRedistribute(maxPerDay = 2) {
+  smartEbbinghausRedistribute(maxPerDay = 3) {
     const todayStr = this._dateToStr(new Date());
     const lectures = this.getLectures();
     let resetCount = 0;
 
-    // ---- Step 1: Recalculate uncompleted reviews with vacation-aware 14714 intervals ----
-    // Ensure strict minimum 1-day spacing between consecutive reviews of the SAME lecture
+    // ---- Step 1: Pull overdue reviews forward to today while STRICTLY PRESERVING relative 14714 offsets ----
     lectures.forEach(lec => {
       lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-      let minAllowedDate = lec.dateAdded;
+      const uncompleted = lec.reviews.filter(r => !r.isCompleted);
+      if (uncompleted.length === 0) return;
 
-      lec.reviews.forEach(rev => {
-        if (rev.isCompleted) {
-          if (rev.targetDate > minAllowedDate) {
-            minAllowedDate = rev.targetDate;
-          }
-          return; // PRESERVE completed reviews
-        }
+      const firstUncompleted = uncompleted[0];
 
-        // Ideal 14714 target date
-        let correctDate = this.getDateAfterNonVacationDays(lec.dateAdded, rev.dayOffset);
+      // Calculate ideal vacation-aware date for first uncompleted review
+      let idealFirstDate = this.getDateAfterNonVacationDays(lec.dateAdded, firstUncompleted.dayOffset);
+      let anchorDate = idealFirstDate < todayStr ? this.getAdjustedTargetDate(todayStr) : idealFirstDate;
 
-        // Ensure this review is scheduled at least 1 non-vacation day AFTER the previous review of the same lecture
-        const minNextDate = this.getDateAfterNonVacationDays(minAllowedDate, 1);
-        const earliestAllowed = minNextDate > todayStr ? minNextDate : this.getAdjustedTargetDate(todayStr);
+      uncompleted.forEach(rev => {
+        // Gap in 14714 offset days from the first uncompleted review
+        const gapOffset = rev.dayOffset - firstUncompleted.dayOffset;
 
-        if (correctDate < earliestAllowed) {
-          correctDate = earliestAllowed;
-        }
+        // Target date is `anchorDate` + `gapOffset` non-vacation days!
+        // This guarantees that relative 14714 intervals (e.g. 7d -> 14d gap = 7 days) are 100% PRESERVED even when pulled forward!
+        const targetDate = gapOffset === 0 ? anchorDate : this.getDateAfterNonVacationDays(anchorDate, gapOffset);
 
-        const adjusted = this.getAdjustedTargetDate(correctDate);
-        minAllowedDate = adjusted;
-
-        if (rev.targetDate !== adjusted) {
-          rev.targetDate = adjusted;
+        if (rev.targetDate !== targetDate) {
+          rev.targetDate = targetDate;
           resetCount++;
         }
       });
     });
 
-    // ---- Step 2: Smooth daily piles (no day exceeds maxPerDay reviews) ----
+    // ---- Step 2: Smooth daily load (max N per day, default 3) without compressing relative spacing ----
     const uncompletedReviews = [];
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
@@ -1381,7 +1373,7 @@ export const storage = {
       let targetStr = item.rev.targetDate;
       if (targetStr < todayStr) targetStr = this.getAdjustedTargetDate(todayStr);
 
-      // Never assign two reviews of the SAME lecture on the same date!
+      // Ensure minimum 1 non-vacation day spacing from previous review of the SAME lecture
       if (lastAssignedForLec[item.lecId]) {
         const minNext = this.getDateAfterNonVacationDays(lastAssignedForLec[item.lecId], 1);
         if (targetStr < minNext) {
@@ -1389,6 +1381,7 @@ export const storage = {
         }
       }
 
+      // Respect daily limit (maxPerDay = 3)
       while ((dateCounts[targetStr] || 0) >= maxPerDay) {
         targetStr = this.getDateAfterNonVacationDays(targetStr, 1);
       }
