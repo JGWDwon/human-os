@@ -190,8 +190,10 @@ export default function EbbinghausPlanner() {
   };
 
   const handleRecalculateReviews = () => {
-    if (window.confirm("복습 일정을 재설정하시겠습니까?\n\n✅ 완료된 복습: 그대로 유지\n🔄 미완료 복습: 14714 간격으로 재계산\n🌴 휴가 기간: 없는 날로 건너뜀\n📊 하루 최대 2개씩 균등 분배")) {
-      handleSmartRedistribute(2);
+    if (window.confirm("모든 미완료 복습 일정을 강의 시작일 기준 원래의 1·4·7·14·30 망각곡선 간격(휴가 기간 제외)으로 초기화하시겠습니까?\n\n• 이미 완료한 복습은 그대로 보존됩니다.\n• 휴가 기간은 없는 날로 계산됩니다.")) {
+      const count = storage.recalculateAllReviews();
+      alert(`✨ 복습 일정 초기화 완료!\n미완료 복습 ${count}개가 순수 1·4·7·14·30 간격(휴가 제외)으로 원위치 재정렬되었습니다.`);
+      refreshData();
     }
   };
 

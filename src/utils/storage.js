@@ -1414,32 +1414,18 @@ export const storage = {
     let resetCount = 0;
 
     lectures.forEach(lec => {
-      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-      let minAllowedDate = lec.dateAdded;
-
       lec.reviews.forEach(rev => {
-        if (rev.isCompleted) {
-          if (rev.targetDate > minAllowedDate) {
-            minAllowedDate = rev.targetDate;
-          }
-          return;
-        }
+        // PRESERVE completed reviews - never touch them
+        if (rev.isCompleted) return;
 
         const offset = rev.dayOffset;
         if (!intervals.includes(offset)) return;
 
-        let newTargetDate = this.getDateAfterNonVacationDays(lec.dateAdded, offset);
-        const minNextDate = this.getDateAfterNonVacationDays(minAllowedDate, 1);
+        // Calculate exact target date: `offset` non-vacation days from the lecture start date (lec.dateAdded)
+        const pureTargetDate = this.getDateAfterNonVacationDays(lec.dateAdded, offset);
 
-        if (newTargetDate < minNextDate) {
-          newTargetDate = minNextDate;
-        }
-
-        newTargetDate = this.getAdjustedTargetDate(newTargetDate);
-        minAllowedDate = newTargetDate;
-
-        if (rev.targetDate !== newTargetDate) {
-          rev.targetDate = newTargetDate;
+        if (rev.targetDate !== pureTargetDate) {
+          rev.targetDate = pureTargetDate;
           resetCount++;
         }
       });
