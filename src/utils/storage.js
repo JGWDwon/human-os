@@ -1316,17 +1316,32 @@ export const storage = {
     let resetCount = 0;
 
     // ---- Step 1: Recalculate uncompleted reviews with vacation-aware 14714 intervals ----
-    // Completed reviews are NEVER touched
+    // Ensure strict minimum 1-day spacing between consecutive reviews of the SAME lecture
     lectures.forEach(lec => {
       lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-      lec.reviews.forEach(rev => {
-        if (rev.isCompleted) return; // PRESERVE completed reviews
+      let minAllowedDate = lec.dateAdded;
 
-        // Recalculate target date: count dayOffset non-vacation days from study date
-        const correctDate = this.getDateAfterNonVacationDays(lec.dateAdded, rev.dayOffset);
-        // If the correct date is in the past, move to today
-        const effectiveDate = correctDate < todayStr ? todayStr : correctDate;
-        const adjusted = this.getAdjustedTargetDate(effectiveDate);
+      lec.reviews.forEach(rev => {
+        if (rev.isCompleted) {
+          if (rev.targetDate > minAllowedDate) {
+            minAllowedDate = rev.targetDate;
+          }
+          return; // PRESERVE completed reviews
+        }
+
+        // Ideal 14714 target date
+        let correctDate = this.getDateAfterNonVacationDays(lec.dateAdded, rev.dayOffset);
+
+        // Ensure this review is scheduled at least 1 non-vacation day AFTER the previous review of the same lecture
+        const minNextDate = this.getDateAfterNonVacationDays(minAllowedDate, 1);
+        const earliestAllowed = minNextDate > todayStr ? minNextDate : this.getAdjustedTargetDate(todayStr);
+
+        if (correctDate < earliestAllowed) {
+          correctDate = earliestAllowed;
+        }
+
+        const adjusted = this.getAdjustedTargetDate(correctDate);
+        minAllowedDate = adjusted;
 
         if (rev.targetDate !== adjusted) {
           rev.targetDate = adjusted;
@@ -1353,16 +1368,26 @@ export const storage = {
       if (a.rev.targetDate !== b.rev.targetDate) {
         return a.rev.targetDate.localeCompare(b.rev.targetDate);
       }
-      if (a.lecDateAdded !== b.lecDateAdded) {
-        return a.lecDateAdded.localeCompare(b.lecDateAdded);
+      if (a.lecId !== b.lecId) {
+        return a.lecId.localeCompare(b.lecId);
       }
       return a.rev.dayOffset - b.rev.dayOffset;
     });
 
     const dateCounts = {};
+    const lastAssignedForLec = {};
+
     uncompletedReviews.forEach(item => {
       let targetStr = item.rev.targetDate;
       if (targetStr < todayStr) targetStr = this.getAdjustedTargetDate(todayStr);
+
+      // Never assign two reviews of the SAME lecture on the same date!
+      if (lastAssignedForLec[item.lecId]) {
+        const minNext = this.getDateAfterNonVacationDays(lastAssignedForLec[item.lecId], 1);
+        if (targetStr < minNext) {
+          targetStr = minNext;
+        }
+      }
 
       while ((dateCounts[targetStr] || 0) >= maxPerDay) {
         targetStr = this.getDateAfterNonVacationDays(targetStr, 1);
@@ -1373,6 +1398,7 @@ export const storage = {
         resetCount++;
       }
       dateCounts[targetStr] = (dateCounts[targetStr] || 0) + 1;
+      lastAssignedForLec[item.lecId] = targetStr;
     });
 
     if (resetCount > 0) {
@@ -1388,15 +1414,29 @@ export const storage = {
     let resetCount = 0;
 
     lectures.forEach(lec => {
+      lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
+      let minAllowedDate = lec.dateAdded;
+
       lec.reviews.forEach(rev => {
-        // PRESERVE completed reviews - never touch them
-        if (rev.isCompleted) return;
+        if (rev.isCompleted) {
+          if (rev.targetDate > minAllowedDate) {
+            minAllowedDate = rev.targetDate;
+          }
+          return;
+        }
 
         const offset = rev.dayOffset;
         if (!intervals.includes(offset)) return;
 
-        // Count `offset` non-vacation days from the study date
-        const newTargetDate = this.getDateAfterNonVacationDays(lec.dateAdded, offset);
+        let newTargetDate = this.getDateAfterNonVacationDays(lec.dateAdded, offset);
+        const minNextDate = this.getDateAfterNonVacationDays(minAllowedDate, 1);
+
+        if (newTargetDate < minNextDate) {
+          newTargetDate = minNextDate;
+        }
+
+        newTargetDate = this.getAdjustedTargetDate(newTargetDate);
+        minAllowedDate = newTargetDate;
 
         if (rev.targetDate !== newTargetDate) {
           rev.targetDate = newTargetDate;
