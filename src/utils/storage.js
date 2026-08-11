@@ -1208,13 +1208,14 @@ export const storage = {
   },
 
   moveAllOverdueToToday() {
-    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const todayStr = this._dateToStr(new Date());
+    const adjustedTodayStr = this.getAdjustedTargetDate(todayStr);
     const lectures = this.getLectures();
     let count = 0;
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
         if (!rev.isCompleted && rev.targetDate < todayStr) {
-          rev.targetDate = todayStr;
+          rev.targetDate = adjustedTodayStr;
           count++;
         }
       });
@@ -1227,7 +1228,7 @@ export const storage = {
   },
 
   distributeOverdueReviews(maxPerDay = 2) {
-    const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const todayStr = this._dateToStr(new Date());
     const lectures = this.getLectures();
     
     // Collect all uncompleted overdue reviews
@@ -1242,20 +1243,12 @@ export const storage = {
 
     if (overdueList.length === 0) return 0;
 
-    let currentStr = todayStr;
-    // Make sure starting day is not vacation
-    currentStr = this.getAdjustedTargetDate(currentStr);
-
+    let currentStr = this.getAdjustedTargetDate(todayStr);
     let countInCurrentDay = 0;
 
     overdueList.forEach(rev => {
       if (countInCurrentDay >= maxPerDay) {
-        // Advance to next day
-        const d = new Date(currentStr + 'T00:00:00');
-        d.setDate(d.getDate() + 1);
-        const nextStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        // Skip vacation days
-        currentStr = this.getAdjustedTargetDate(nextStr);
+        currentStr = this.getDateAfterNonVacationDays(currentStr, 1);
         countInCurrentDay = 0;
       }
 
