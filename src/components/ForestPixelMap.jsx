@@ -166,11 +166,15 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
 
                 {/* Study time bottom */}
                 <span style={{
-                  fontSize: '0.55rem',
-                  fontWeight: 700,
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
                   lineHeight: 1,
-                  color: day.status === 'none' ? 'transparent' : 'rgba(255,255,255,0.95)',
-                  letterSpacing: '-0.02em'
+                  color: totalMins > 0 ? '#34d399' : 'transparent',
+                  background: totalMins > 0 ? 'rgba(0,0,0,0.55)' : 'transparent',
+                  padding: totalMins > 0 ? '1px 3px' : '0',
+                  borderRadius: '3px',
+                  letterSpacing: '-0.02em',
+                  boxShadow: totalMins > 0 ? '0 1px 3px rgba(0,0,0,0.5)' : 'none'
                 }}>
                   {timeLabel || ' '}
                 </span>

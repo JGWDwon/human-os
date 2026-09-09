@@ -162,8 +162,9 @@ export const storage = {
     const history = [];
     
     for (let day = 1; day <= daysInMonth; day++) {
-      const d = new Date(year, month, day);
-      const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const monthStr = String(month + 1).padStart(2, '0');
+      const dayStr = String(day).padStart(2, '0');
+      const dateStr = `${year}-${monthStr}-${dayStr}`;
       
       const pomo = pomoData[dateStr] || { count: 0, totalMinutes: 0, timestamps: [] };
       const totalMins = pomo.totalMinutes || 0;
