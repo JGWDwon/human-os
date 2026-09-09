@@ -817,37 +817,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           </form>
         </div>
 
-        {/* Weekly Stats Bar */}
-        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <CalendarDays size={15} /> 이번 주 주간 통계
-            </span>
-            <span style={{ fontSize: '0.9rem', color: 'var(--accent-secondary)', fontWeight: 'bold' }}>
-              총 {Math.floor(weeklyData.weeklyMinutes / 60)}시간 {weeklyData.weeklyMinutes % 60}분
-            </span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.3rem', textAlign: 'center', marginTop: '0.5rem' }}>
-            {['월', '화', '수', '목', '금', '토', '일'].map((dayLabel, idx) => {
-              const dayObj = weeklyData.weekData[idx] || { minutes: 0 };
-              const hasStudy = dayObj.minutes > 0;
-              return (
-                <div key={dayLabel} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{dayLabel}</div>
-                  <div style={{
-                    width: '100%', height: '32px', borderRadius: '4px',
-                    background: hasStudy ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.04)',
-                    border: hasStudy ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.7rem', color: hasStudy ? '#34d399' : 'var(--text-muted)', fontWeight: hasStudy ? 'bold' : 'normal'
-                  }}>
-                    {hasStudy ? `${Math.floor(dayObj.minutes / 60)}h${dayObj.minutes % 60}m` : '-'}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        {/* Weekly Stats Summary */}
+        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem 1.25rem', borderRadius: 'var(--radius-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
+            <CalendarDays size={18} color="var(--accent-secondary)" /> 이번 주 누적 공부시간
+          </span>
+          <span style={{ fontSize: '1.15rem', color: 'var(--accent-secondary)', fontWeight: 'bold', textShadow: '0 0 10px rgba(59, 130, 246, 0.3)' }}>
+            총 {Math.floor(weeklyData.weeklyMinutes / 60)}시간 {weeklyData.weeklyMinutes % 60}분
+          </span>
         </div>
       </div>
     </div>
