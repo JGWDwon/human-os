@@ -15,24 +15,28 @@ export default function InsightsDashboard({ onClose }) {
     const allStats = storage.getAllTimeStats();
     setStats(allStats);
 
-    // Calculate last 7 days study focus trend
+    // Calculate last 7 days study focus trend using local ISO date string
     const pomoRaw = localStorage.getItem('human_os_pomodoro_v1');
     const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
-    
+
     const trend = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const monthStr = String(d.getMonth() + 1).padStart(2, '0');
-      const dayStr = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${d.getFullYear()}-${monthStr}-${dayStr}`;
+      const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       const dayName = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
 
       const totalMins = pomoData[dateStr]?.totalMinutes || 0;
+      const hoursNum = Number((totalMins / 60).toFixed(1));
+
       trend.push({
-        dayLabel: `${d.getMonth() + 1}/${d.getDate()}(${dayName})`,
+        dateStr,
+        dayName,
+        dateShort: `${d.getMonth() + 1}/${d.getDate()}`,
+        dayLabel: `${dayName} (${d.getMonth() + 1}/${d.getDate()})`,
         minutes: totalMins,
-        hours: (totalMins / 60).toFixed(1)
+        hours: hoursNum,
+        isToday: i === 0
       });
     }
     setWeeklyTrend(trend);
@@ -107,6 +111,7 @@ export default function InsightsDashboard({ onClose }) {
   if (!stats) return null;
 
   const recent7DaysMins = weeklyTrend.reduce((sum, item) => sum + item.minutes, 0);
+  const maxMins = Math.max(...weeklyTrend.map(t => t.minutes), 60);
 
   return (
     <div className="glass-panel animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh' }}>
@@ -183,24 +188,51 @@ export default function InsightsDashboard({ onClose }) {
       <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.5rem', borderRadius: 'var(--radius-sm)', flex: 1, display: 'flex', flexDirection: 'column', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
           <h3 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Calendar size={18} color="#10b981" /> 최근 7일 공부 시간 트렌드 (시간)
+            <Calendar size={18} color="#10b981" /> 최근 7일 공부 시간 트렌드
           </h3>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>단위: 시간(h)</span>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>최근 7일간 집중 시간 (요일별)</span>
         </div>
 
-        <div style={{ flex: 1, minHeight: '260px', width: '100%' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={weeklyTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="dayLabel" stroke="var(--text-muted)" fontSize={12} tickLine={false} />
-              <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} />
-              <Tooltip 
-                contentStyle={{ background: '#0f172a', border: '1px solid #10b981', borderRadius: '8px', color: '#fff' }}
-                formatter={(val, name, item) => [`${formatTime(item.payload.minutes)}`, '집중 시간']}
-              />
-              <Bar dataKey="hours" fill="#10b981" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: '0.75rem', height: '240px', padding: '1.25rem 0.5rem 0.5rem 0.5rem', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          {weeklyTrend.map((item) => {
+            const heightPercent = item.minutes > 0 ? Math.max(12, Math.round((item.minutes / maxMins) * 100)) : 4;
+            
+            return (
+              <div key={item.dateStr} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+                {/* Time label above bar */}
+                <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: item.minutes > 0 ? '#34d399' : 'rgba(255,255,255,0.25)', marginBottom: '0.35rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  {formatTime(item.minutes)}
+                </div>
+
+                {/* Bar */}
+                <div 
+                  style={{ 
+                    width: '100%', 
+                    maxWidth: '44px', 
+                    height: `${heightPercent}%`, 
+                    background: item.minutes > 0 
+                      ? (item.isToday ? 'linear-gradient(180deg, #c084fc 0%, #7c3aed 100%)' : 'linear-gradient(180deg, #34d399 0%, #059669 100%)') 
+                      : 'rgba(255,255,255,0.06)', 
+                    borderRadius: '6px 6px 2px 2px',
+                    transition: 'all 0.3s ease',
+                    boxShadow: item.minutes > 0 ? '0 4px 12px rgba(16, 185, 129, 0.3)' : 'none',
+                    border: item.isToday ? '1px solid #c084fc' : 'none'
+                  }} 
+                  title={`${item.dayLabel}: ${formatTime(item.minutes)}`}
+                />
+
+                {/* Day of Week Label */}
+                <div style={{ marginTop: '0.65rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: item.isToday ? '#c084fc' : (item.minutes > 0 ? '#fff' : 'var(--text-muted)') }}>
+                    {item.dayName}요일
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                    {item.dateShort}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
