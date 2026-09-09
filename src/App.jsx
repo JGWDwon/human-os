@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Settings, BarChart2, Target, Zap } from 'lucide-react';
 import PomodoroTracker from './components/PomodoroTracker';
-import MicroQuestList from './components/MicroQuestList';
 import ForestPixelMap from './components/ForestPixelMap';
 import InsightsDashboard from './components/InsightsDashboard';
 import PhaseRoadmap from './components/PhaseRoadmap';
@@ -217,7 +216,7 @@ function App() {
               className="btn btn-secondary"
               style={{ flex: 1, padding: '0.75rem', background: currentPhase === 1 ? 'var(--accent-primary)' : 'rgba(0,0,0,0.3)', color: currentPhase === 1 ? '#fff' : 'var(--text-muted)', border: currentPhase === 1 ? 'none' : '1px solid var(--panel-border)' }}
             >
-              Phase 1. 생존 모드 (타이머/일상)
+              Phase 1. 집중 사냥터 (타이머 & 성장의 숲)
             </button>
             <button 
               onClick={() => setCurrentPhase(2)}
@@ -240,69 +239,13 @@ function App() {
               <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>환경 설정</h3>
               <button onClick={() => setShowSettings(false)} className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem' }}>닫기</button>
             </div>
-            
-
-            {/* Custom Quest Settings */}
-            <div style={{ marginBottom: '2rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-              <h4 style={{ color: 'var(--accent-primary)', marginBottom: '1rem', fontSize: '0.95rem' }}>내 맞춤 일상 퀘스트 수정</h4>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                매일 초기화될 때 제공될 기본 퀘스트 5가지(메인 3개, 서브 2개)를 내게 맞게 변경합니다. (저장 후 즉시 반영됩니다)
-              </p>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {storage.getCustomQuests().map((q, idx) => (
-                  <div key={q.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', borderLeft: `3px solid ${q.type === 'main' ? 'var(--accent-primary)' : 'var(--accent-secondary)'}` }}>
-                    <div style={{ fontSize: '0.85rem', color: q.type === 'main' ? 'var(--accent-primary)' : 'var(--accent-secondary)', fontWeight: 'bold' }}>
-                      {q.type === 'main' ? `🎯 메인 퀘스트 ${idx + 1}` : `✨ 서브 퀘스트 ${idx - 2}`}
-                    </div>
-                    <input 
-                      type="text" 
-                      defaultValue={q.title}
-                      placeholder="퀘스트 제목 (예: 기지개 켜기)"
-                      id={`custom-quest-title-${q.id}`}
-                    />
-                    <input 
-                      type="text" 
-                      defaultValue={q.description}
-                      placeholder="상세 설명 (예: 10초 동안 몸 풀기)"
-                      id={`custom-quest-desc-${q.id}`}
-                      style={{ fontSize: '0.85rem' }}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
-                <button 
-                  onClick={() => {
-                    const customQuests = storage.getCustomQuests().map(q => ({
-                      ...q,
-                      title: document.getElementById(`custom-quest-title-${q.id}`).value,
-                      description: document.getElementById(`custom-quest-desc-${q.id}`).value
-                    }));
-                    storage.saveCustomQuests(customQuests);
-                    
-                    const updatedQuests = storage.getQuestsByDate(selectedDate).map(tq => {
-                      const custom = customQuests.find(cq => cq.id === tq.id);
-                      return { ...tq, title: custom.title, description: custom.description };
-                    });
-                    storage.saveQuestsByDate(selectedDate, updatedQuests);
-                    
-                    window.dispatchEvent(new CustomEvent('quests-updated'));
-                    alert('퀘스트가 성공적으로 수정되었습니다!');
-                  }} 
-                  className="btn btn-primary"
-                >
-                  퀘스트 저장
-                </button>
-              </div>
-            </div>
 
             <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
               <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>데이터 관리 및 복구</h4>
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <button 
                   onClick={() => {
-                    if(window.confirm('과거의 모든 퀘스트 및 뽀모도로 기록을 긁어모아 내 경험치(XP)와 레벨을 정확하게 재계산합니다. 진행하시겠습니까?')) {
+                    if(window.confirm('과거의 모든 뽀모도로 기록을 긁어모아 내 경험치(XP)와 레벨을 정확하게 재계산합니다. 진행하시겠습니까?')) {
                       storage.recalculateTotalXP();
                       window.dispatchEvent(new CustomEvent('xp-updated'));
                       window.dispatchEvent(new CustomEvent('cloud-sync-needed'));
@@ -322,25 +265,7 @@ function App() {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button 
                   onClick={() => {
-                    if(window.confirm('선택된 날짜의 퀘스트와 뽀모도로 기록을 초기화하시겠습니까? (획득한 경험치도 차감됩니다)')) {
-                      // 1. Get quests for selectedDate
-                      const quests = storage.getQuestsByDate(selectedDate);
-                      let xpToSubtract = 0;
-                      const resetQuests = quests.map(q => {
-                        if (q.isCompleted) {
-                           xpToSubtract += (q.type === 'sub' ? 5 : 10);
-                        }
-                        return { ...q, isCompleted: false, skippedReason: null };
-                      });
-                      storage.saveQuestsByDate(selectedDate, resetQuests);
-                      
-                      // 2. Subtract XP
-                      if (xpToSubtract > 0) {
-                        storage.addXP(-xpToSubtract);
-                        window.dispatchEvent(new CustomEvent('xp-updated'));
-                      }
-                      
-                      // 3. Reset Pomodoro
+                    if(window.confirm('선택된 날짜의 뽀모도로 공부 기록을 초기화하시겠습니까? (획득한 경험치도 차감됩니다)')) {
                       const rawData = localStorage.getItem('human_os_pomodoro_v1');
                       if (rawData) {
                         const data = JSON.parse(rawData);
@@ -348,15 +273,13 @@ function App() {
                           const minsToSubtract = data[selectedDate].totalMinutes || 0;
                           if (minsToSubtract > 0) {
                             storage.addXP(-minsToSubtract);
+                            window.dispatchEvent(new CustomEvent('xp-updated'));
                           }
                           delete data[selectedDate];
                           localStorage.setItem('human_os_pomodoro_v1', JSON.stringify(data));
                           window.dispatchEvent(new CustomEvent('cloud-sync-needed'));
                         }
                       }
-                      
-                      // 4. Refresh
-                      window.dispatchEvent(new CustomEvent('quests-updated'));
                       setRefreshTrigger(prev => prev + 1);
                       alert('해당 날짜의 기록이 초기화되었습니다.');
                     }
@@ -372,7 +295,7 @@ function App() {
                 </button>
                 <button 
                   onClick={() => {
-                    if(window.confirm('모든 퀘스트 기록과 다이어리 기록을 완전히 초기화하시겠습니까? (이 작업은 되돌릴 수 없습니다)')) {
+                    if(window.confirm('모든 공부 기록과 다이어리 기록을 완전히 초기화하시겠습니까? (이 작업은 되돌릴 수 없습니다)')) {
                       localStorage.clear();
                       window.location.reload();
                     }
@@ -396,20 +319,15 @@ function App() {
           <EbbinghausPlanner />
         ) : (
         <div className="hud-bottom-split">
-          
-          {/* Left Column: Action Board (Timer & Quests) */}
+          {/* Left Column: Pomodoro Timer */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1 }}>
             <PomodoroTracker selectedDate={selectedDate} onUpdate={triggerRefresh} />
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <MicroQuestList selectedDate={selectedDate} onQuestUpdate={triggerRefresh} />
-            </div>
           </div>
           
-          {/* Right Column: Calendar Forest */}
+          {/* Right Column: Calendar Forest (4h/6h/8h Study Goal Pixel Map) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1 }}>
             <ForestPixelMap refreshTrigger={refreshTrigger} selectedDate={selectedDate} onDateSelect={handleDateSelect} />
           </div>
-          
         </div>
         )}
       </div>

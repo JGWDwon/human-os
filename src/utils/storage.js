@@ -122,12 +122,8 @@ export const storage = {
     this._dispatchSync();
   },
   
-  // Get history for the Pixel Map
-  // Returns { date: 'YYYY-MM-DD', status: 'completed' | 'partial' | 'hibernation' | 'none' }
+  // Get history for the Pixel Map (4h: sprout, 6h: partial, 8h: completed)
   getQuestHistory(days = 30) {
-    const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const data = safeParse(rawData, {});
-    
     const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const pomoData = safeParse(pomoRaw, {});
     
@@ -135,76 +131,61 @@ export const storage = {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       
-      const dayQuests = data[dateStr] || [];
-      const mainQuests = dayQuests.filter(q => q.type === 'main' || !q.type);
-      const completed = mainQuests.filter(q => q.isCompleted).length;
-      const skipped = mainQuests.filter(q => q.skippedReason).length;
+      const pomo = pomoData[dateStr] || { totalMinutes: 0 };
+      const totalMins = pomo.totalMinutes || 0;
+      const isVac = this.isVacationDate(dateStr);
       
-      const pomo = pomoData[dateStr] || { count: 0, timestamps: [] };
-      const validPomoCount = (pomo.timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length;
-      const pomoLevel = validPomoCount >= 5 ? 3 : validPomoCount >= 3 ? 2 : validPomoCount >= 1 ? 1 : 0;
-      const finalLevel = Math.max(completed, pomoLevel);
-      
-      if (finalLevel >= 3) {
-        history.push({ date: dateStr, status: 'completed' });
-      } else if (finalLevel > 0) {
-        history.push({ date: dateStr, status: 'partial' });
-      } else if (skipped > 0) {
-        history.push({ date: dateStr, status: 'hibernation' });
-      } else {
-        history.push({ date: dateStr, status: 'none' });
+      let status = 'none';
+      if (totalMins >= 480) {
+        status = 'completed'; // 8h+ (울창)
+      } else if (totalMins >= 360) {
+        status = 'partial'; // 6h+ (성장)
+      } else if (totalMins >= 240) {
+        status = 'sprout'; // 4h+ (새싹)
+      } else if (isVac) {
+        status = 'hibernation';
       }
+      
+      history.push({ date: dateStr, status, totalMinutes: totalMins });
     }
     
     return history;
   },
 
   getMonthlyHistory(year, month) {
-    const rawData = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const data = safeParse(rawData, {});
-    
     const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const pomoData = safeParse(pomoRaw, {});
     
-    // month is 0-indexed (0 = Jan, 11 = Dec)
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const history = [];
     
     for (let day = 1; day <= daysInMonth; day++) {
-      // Create date string YYYY-MM-DD
       const d = new Date(year, month, day);
-      // Adjust for local timezone offset to get correct YYYY-MM-DD
       const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       
-      const dayQuests = data[dateStr] || [];
-      const mainQuests = dayQuests.filter(q => q.type === 'main' || !q.type);
-      const completed = mainQuests.filter(q => q.isCompleted).length;
-      const skipped = mainQuests.filter(q => q.skippedReason).length;
-      
       const pomo = pomoData[dateStr] || { count: 0, totalMinutes: 0, timestamps: [] };
-      const validPomoCount2 = (pomo.timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length;
-      const pomoLevel = validPomoCount2 >= 5 ? 3 : validPomoCount2 >= 3 ? 2 : validPomoCount2 >= 1 ? 1 : 0;
-      const finalLevel = Math.max(completed, pomoLevel);
+      const totalMins = pomo.totalMinutes || 0;
+      const isVac = this.isVacationDate(dateStr);
       
-      const dayResult = {
+      let status = 'none';
+      if (totalMins >= 480) {
+        status = 'completed'; // 8h+ (울창 🌲)
+      } else if (totalMins >= 360) {
+        status = 'partial'; // 6h+ (성장 🌿)
+      } else if (totalMins >= 240) {
+        status = 'sprout'; // 4h+ (새싹 🌱)
+      } else if (isVac) {
+        status = 'hibernation';
+      }
+      
+      history.push({
         date: dateStr, 
         day, 
-        quests: dayQuests, 
-        pomoCount: validPomoCount2,
-        totalMinutes: pomo.totalMinutes || 0
-      };
-
-      if (finalLevel >= 3) {
-        history.push({ ...dayResult, status: 'completed' });
-      } else if (finalLevel > 0) {
-        history.push({ ...dayResult, status: 'partial' });
-      } else if (skipped > 0) {
-        history.push({ ...dayResult, status: 'hibernation' });
-      } else {
-        history.push({ ...dayResult, status: 'none' });
-      }
+        status,
+        totalMinutes: totalMins
+      });
     }
     
     return history;
