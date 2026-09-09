@@ -318,14 +318,14 @@ function App() {
         ) : currentPhase === 2 ? (
           <EbbinghausPlanner />
         ) : (
-        <div className="hud-bottom-split">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.5rem', alignItems: 'stretch', width: '100%' }}>
           {/* Left Column: Pomodoro Timer */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
             <PomodoroTracker selectedDate={selectedDate} onUpdate={triggerRefresh} />
           </div>
           
           {/* Right Column: Calendar Forest (4h/6h/8h Study Goal Pixel Map) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
             <ForestPixelMap refreshTrigger={refreshTrigger} selectedDate={selectedDate} onDateSelect={handleDateSelect} />
           </div>
         </div>

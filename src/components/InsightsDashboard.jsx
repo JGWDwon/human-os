@@ -184,9 +184,9 @@ export default function InsightsDashboard({ onClose }) {
 
         <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <CheckCircle size={16} color="#3b82f6" /> 누적 퀘스트 완료
+            <Zap size={16} color="#3b82f6" /> 누적 총 공부 시간
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{stats.totalCompletedQuests}회</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{formatTime(stats.totalFocusMins || 0)}</div>
         </div>
 
         <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>

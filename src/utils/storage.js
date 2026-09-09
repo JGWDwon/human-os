@@ -526,15 +526,6 @@ export const storage = {
   },
 
   getAllTimeStats() {
-    // Total Quests
-    const questsRaw = localStorage.getItem(STORAGE_KEYS.QUESTS);
-    const questsData = safeParse(questsRaw, {});
-    let totalCompletedQuests = 0;
-    
-    Object.values(questsData).forEach(dayQuests => {
-      totalCompletedQuests += dayQuests.filter(q => q.isCompleted).length;
-    });
-
     // Total Pomodoro
     const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const pomoData = safeParse(pomoRaw, {});
@@ -544,19 +535,29 @@ export const storage = {
       totalPomodoroMins += day.totalMinutes || 0;
     });
     
+    // Total Quests
+    const questsRaw = localStorage.getItem(STORAGE_KEYS.QUESTS);
+    const questsData = safeParse(questsRaw, {});
+    let totalCompletedQuests = 0;
+    
+    Object.values(questsData).forEach(dayQuests => {
+      totalCompletedQuests += dayQuests.filter(q => q.isCompleted).length;
+    });
+    
     // Total Diary Entries
     const diaryRaw = localStorage.getItem(STORAGE_KEYS.DIARY);
     const diaryData = safeParse(diaryRaw, []);
     const totalDiaryEntries = diaryData.length;
 
-    // Active days (days with at least one quest completed or pomodoro or diary)
+    // Active days (days with at least pomodoro or quest or diary)
     const activeDaysSet = new Set([
+      ...Object.keys(pomoData).filter(d => (pomoData[d].totalMinutes || 0) > 0),
       ...Object.keys(questsData).filter(d => questsData[d].some(q => q.isCompleted || q.skippedReason)),
-      ...Object.keys(pomoData).filter(d => (pomoData[d].timestamps || []).filter(ts => (typeof ts === 'string' ? 25 : (ts.minutes || 25)) >= 15).length > 0),
       ...diaryData.map(e => e.dateStr)
     ]);
 
     return {
+      totalFocusMins: totalPomodoroMins,
       totalCompletedQuests,
       totalPomodoroMins,
       totalDiaryEntries,
