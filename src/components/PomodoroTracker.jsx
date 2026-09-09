@@ -31,6 +31,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const sessionStartTsRef = useRef(null);
   const pauseStartTsRef = useRef(null);
 
+  // Helper for current date in YYYY-MM-DD
+  const getTodayStr = () => {
+    const now = new Date();
+    return new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+  };
+
   // Persistent Timer State
   const [timerState, setTimerState] = useState(() => {
     const saved = localStorage.getItem('human_os_timer_state_v1');
@@ -45,10 +51,21 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       }
       if (parsed.isRunning) {
         const remaining = Math.max(0, Math.round((parsed.endTime - Date.now()) / 1000));
+        if (remaining <= 0) {
+          // Timer finished while app was closed / suspended
+          return {
+            ...parsed,
+            timeLeft: 0,
+            isRunning: false,
+            isPaused: false,
+            pendingAutoLog: true,
+            autoLogMins: Math.max(1, Math.round(parsed.duration / 60))
+          };
+        }
         return {
           ...parsed,
           timeLeft: remaining,
-          isRunning: remaining > 0 ? parsed.isRunning : false
+          isRunning: true
         };
       }
       return parsed;
@@ -64,7 +81,33 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const [notifPermission, setNotifPermission] = useState('default');
 
-  // 플랫폼별 실제 알림 권한 상태 확인 (마운트 시)
+  // Handle pending auto-log when timer completed in background/while app was closed
+  useEffect(() => {
+    if (timerState.pendingAutoLog) {
+      const now = new Date();
+      const actualToday = getTodayStr();
+      const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
+      const mins = timerState.autoLogMins || 25;
+
+      storage.addCustomPomodoroWithMinutes(actualToday, timeStr, mins);
+      refreshData();
+      window.dispatchEvent(new CustomEvent('xp-updated'));
+      if (onUpdate) onUpdate();
+
+      const nextDuration = timerState.duration || 1500;
+      const nextState = {
+        isRunning: false,
+        isPaused: false,
+        endTime: 0,
+        duration: nextDuration,
+        timeLeft: nextDuration
+      };
+      setTimerState(nextState);
+      localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
+    }
+  }, []);
+
+  // Check notification permission on mount
   useEffect(() => {
     const checkNotifPermission = async () => {
       try {
@@ -115,11 +158,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       if (document.visibilityState === 'visible' && timerState.isRunning) {
         requestWakeLock();
         
-        // Instant catch-up if timer expired while suspended in background
+        // Catch-up if timer expired while backgrounded
         const remaining = Math.max(0, Math.round((timerState.endTime - Date.now()) / 1000));
         if (remaining <= 0) {
           if (intervalRef.current) clearInterval(intervalRef.current);
-          handleTimerComplete(true); // Pass true: background notification already sounded
+          handleTimerComplete(true);
         }
       }
     };
@@ -181,7 +224,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const requestNotificationPermission = async () => {
     try {
       if (Capacitor.isNativePlatform()) {
-        // 네이티브 앱: Capacitor LocalNotifications 권한 요청
         const result = await LocalNotifications.requestPermissions();
         const granted = result.display === 'granted';
         setNotifPermission(granted ? 'granted' : 'denied');
@@ -200,7 +242,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           alert('알림을 허용하려면:\n설정 > Human OS > 알림 에서 직접 활성화해주세요.');
         }
       } else if ('Notification' in window) {
-        // 웹 브라우저: 기존 Web Notification API
         const permission = await Notification.requestPermission();
         setNotifPermission(permission);
         if (permission === 'granted') {
@@ -213,12 +254,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       }
     } catch (e) {
       console.error('Notification permission error:', e);
-    }
-  };
-
-  const sendSwTimerMessage = (type, extraData = {}) => {
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type, ...extraData });
     }
   };
 
@@ -244,7 +279,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           source.connect(audioCtx.destination);
           source.start(0);
         } else {
-          // Fallback to HTML5 audio if decoding failed
           const audio = new Audio(bell2Sound);
           audio.volume = 1.0;
           audio.play().catch(e => console.log('Bell audio play failed:', e));
@@ -255,7 +289,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       return;
     }
 
-    // Click sound via Web Audio API
     try {
       if (!globalAudioCtx && typeof window !== 'undefined') {
         globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -290,8 +323,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const handleTimerComplete = (isFromCatchUp = false) => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
-    // 네이티브 앱에서 백그라운드 완료 후 앱에 복귀(catch-up)한 경우에는
-    // 이미 안드로이드 OS 알림이 소리를 울렸으므로 앱 내부 소리 중복 재생을 방지합니다.
     if (!Capacitor.isNativePlatform() || !isFromCatchUp) {
       playSound('complete');
     }
@@ -327,15 +358,16 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       }
     }
 
-    // Auto log study record
+    // Always log study record to actual today date
     const now = new Date();
+    const actualToday = getTodayStr();
     const timeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
-    storage.addCustomPomodoroWithMinutes(selectedDate, timeStr, minutesCompleted);
+    storage.addCustomPomodoroWithMinutes(actualToday, timeStr, minutesCompleted);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
 
-    // Reset back to selected study time (No breaks)
+    // Reset back to selected study time
     const nextDuration = (customDuration ? parseInt(customDuration, 10) : selectedDuration) * 60;
     const nextState = {
       isRunning: false,
@@ -351,7 +383,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const startTimer = async () => {
     playSound('click');
     
-    // Pre-create AudioContext and preload bell sound on user interaction
     try {
       if (!globalAudioCtx && typeof window !== 'undefined') {
         globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -376,6 +407,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const duration = timerState.timeLeft;
     const endTime = Date.now() + duration * 1000;
     const now = new Date();
+    const actualToday = getTodayStr();
     const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
 
     // If resuming from pause, log pause duration
@@ -383,12 +415,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       const pauseSecs = Math.round((Date.now() - pauseStartTsRef.current) / 1000);
       const pauseMins = Math.max(1, Math.round(pauseSecs / 60));
       const pauseStartStr = new Date(pauseStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(selectedDate, 'pause', pauseStartStr, timeStr, pauseMins);
+      storage.logStudySession(actualToday, 'pause', pauseStartStr, timeStr, pauseMins);
       pauseStartTsRef.current = null;
     }
 
     sessionStartTsRef.current = Date.now();
-
     const minutesLeft = Math.ceil(duration / 60);
 
     // Schedule native local notification
@@ -403,7 +434,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   title: '성장의 숲 🍅',
                   body: `🎉 ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
                   schedule: { at: new Date(endTime), allowWhileIdle: true },
-                  channelId: 'pomodoro-alarm-v4', // ← USAGE_ALARM 강제 알람 채널 연결
+                  channelId: 'pomodoro-alarm-v4',
                   sound: 'bell2',
                   vibrationPattern: [200, 100, 200, 100, 400],
                   actionTypeId: 'OPEN_APP',
@@ -431,19 +462,18 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const pauseTimer = () => {
     playSound('click');
     
-    // Log focus session up to pause
     const now = new Date();
+    const actualToday = getTodayStr();
     const nowStr = now.toTimeString().split(' ')[0].substring(0, 5);
     if (sessionStartTsRef.current) {
       const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
       const focusMins = Math.max(1, Math.round(focusSecs / 60));
       const startStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(selectedDate, 'focus', startStr, nowStr, focusMins);
+      storage.logStudySession(actualToday, 'focus', startStr, nowStr, focusMins);
       sessionStartTsRef.current = null;
     }
     pauseStartTsRef.current = Date.now();
 
-    // Cancel native local notification
     if (Capacitor.isNativePlatform()) {
       try {
         LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
@@ -453,24 +483,25 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const nextState = {
       ...timerState,
       isRunning: false,
-      isPaused: true,
+      isPaused: true
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
   };
 
   const handleEarlyComplete = () => {
-    playSound('click');
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    
-    // Cancel native local notification
+    if (!window.confirm("지금까지 집중한 시간을 저장하고 조기 완료하시겠습니까?")) {
+      return;
+    }
+
+    playSound('complete');
+
     if (Capacitor.isNativePlatform()) {
       try {
         LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
       } catch (e) {}
     }
     
-    // Calculate elapsed minutes
     const elapsedSeconds = timerState.duration - timerState.timeLeft;
     const minutesCompleted = Math.floor(elapsedSeconds / 60);
 
@@ -479,15 +510,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       return;
     }
 
-    // Auto log study record
     const now = new Date();
+    const actualToday = getTodayStr();
     const timeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
-    storage.addCustomPomodoroWithMinutes(selectedDate, timeStr, minutesCompleted);
+    storage.addCustomPomodoroWithMinutes(actualToday, timeStr, minutesCompleted);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
 
-    // Reset back to selected study time
     const nextDuration = (customDuration ? parseInt(customDuration, 10) : selectedDuration) * 60;
     const nextState = {
       isRunning: false,
@@ -529,309 +559,297 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
   };
 
-  const handleAddCustom = () => {
-    if (!customTime) return;
-    const mins = parseInt(customMinutes, 10) || 25;
-    storage.addCustomPomodoro(selectedDate, customTime, mins);
+  const handleManualSubmit = (e) => {
+    e.preventDefault();
+    if (!customTime) {
+      alert("시작 시간을 선택해주세요.");
+      return;
+    }
+    const mins = parseInt(customMinutes, 10);
+    if (isNaN(mins) || mins <= 0) {
+      alert("올바른 수동 입력 시간을 입력해주세요.");
+      return;
+    }
+
+    storage.addCustomPomodoroWithMinutes(selectedDate, customTime, mins);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
     setCustomTime('');
-    setCustomMinutes('25');
-    playSound('click');
+    alert(`🍅 ${selectedDate} ${customTime}에 ${mins}분 공부 기록이 추가되었습니다!`);
   };
 
-
-
-  const trigger5sTest = async () => {
-    playSound('click');
-    
-    // 플랫폼별 권한 확인
-    let isGranted = false;
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const result = await LocalNotifications.checkPermissions();
-        isGranted = result.display === 'granted';
-      } catch (e) {}
-    } else {
-      isGranted = ('Notification' in window && Notification.permission === 'granted');
-    }
-
-    if (isGranted) {
-      if (Capacitor.isNativePlatform()) {
-        // 네이티브: 5초 후 LocalNotification 예약
-        alert('확인 버튼 누르고 5초 안에 화면을 잠그거나 홈으로 나가보세요!');
-        await LocalNotifications.schedule({
-          notifications: [{
-            id: 8888,
-            title: '성장의 숲 🍅',
-            body: '🎉 5초 백그라운드 테스트 알림이 정상 작동합니다!',
-            schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true },
-            channelId: 'pomodoro-alarm-v4',
-            sound: 'bell2'
-          }]
-        });
-      } else {
-        // 웹: Service Worker 메시지
-        alert('확인 버튼을 누르고 5초 안에 화면을 잠그거나 홈 화면으로 나가보세요!');
-        try {
-          if (!globalAudioCtx && typeof window !== 'undefined') {
-            globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          }
-          if (globalAudioCtx && globalAudioCtx.state === 'suspended') globalAudioCtx.resume();
-          loadBellSound(globalAudioCtx);
-        } catch(e) {}
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: 'testNotification',
-            title: '성장의 숲 🍅',
-            body: '🎉 5초 백그라운드 테스트 알림이 정상 작동합니다!'
-          });
-        }
-      }
-    } else {
-      const msg = Capacitor.isNativePlatform()
-        ? '알림 권한이 없습니다.\n설정 > Human OS > 알림 에서 활성화해주세요!'
-        : '알림 권한을 먼저 허용해주세요!';
-      alert(msg);
+  const handleDeleteTimestamp = (index) => {
+    if (window.confirm("이 기록을 삭제하시겠습니까? (XP도 차감됩니다)")) {
+      storage.deletePomodoroTimestamp(selectedDate, index);
+      refreshData();
+      window.dispatchEvent(new CustomEvent('xp-updated'));
+      if (onUpdate) onUpdate();
     }
   };
 
-  const formatSecs = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+  const formatTimeDisplay = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatTime = (minutes) => {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (h > 0) return `${h}시간 ${m > 0 ? m + '분' : ''}`;
-    return `${m}분`;
-  };
-
-  const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
+  const activeMinutes = customDuration ? parseInt(customDuration, 10) : selectedDuration;
 
   return (
-    <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', borderTop: '3px solid #ef4444', padding: '0.85rem', justifyContent: 'space-between' }}>
-      
-      {/* Title & Stats Summary (Sleek minimalist header) */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: '700' }}>
-          <img src={mushroomImg} alt="Mushroom" style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #ef4444' }} />
-          공부 사냥터
+    <div className="glass-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+        <h2 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, color: 'var(--text-primary)' }}>
+          <span>🎯</span> 공부 사냥터
         </h2>
-        
-        {/* Right Header Controls (Notif Bell + Today Total) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {notifPermission !== 'granted' && (
-            <button 
-              onClick={requestNotificationPermission}
-              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }} 
-              title="백그라운드 알림 허용"
-            >
-              <Bell size={15} style={{ animation: 'bounce 2s infinite' }} />
-            </button>
-          )}
-          <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', background: 'rgba(239, 68, 68, 0.1)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-            오늘 집중: {formatTime(todayData.totalMinutes)}
-          </span>
+        <div style={{ fontSize: '0.9rem', color: 'var(--accent-primary)', fontWeight: 'bold' }}>
+          오늘 집중: {Math.floor(todayData.totalMinutes / 60)}시간 {todayData.totalMinutes % 60}분
         </div>
       </div>
 
-      {/* Unified Timer Panel */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.15)', padding: '0.75rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
-        
-        {/* Digital Clock Display */}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0.1rem 0' }}>
-          <div style={{ fontSize: '3.2rem', fontWeight: '800', fontFamily: 'monospace', color: 'var(--text-primary)', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-            {timerState.isRunning && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />}
-            {formatSecs(timerState.timeLeft)}
+      {/* Notification Banner */}
+      {notifPermission !== 'granted' && (
+        <div style={{
+          background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)',
+          borderRadius: '8px', padding: '0.6rem 0.85rem', marginBottom: '1rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem'
+        }}>
+          <div style={{ fontSize: '0.8rem', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Bell size={15} color="#fbbf24" />
+            <span>집중 완료 시 알림 팝업을 받으려면 알림 허용이 필요합니다.</span>
           </div>
-        </div>
-
-        {/* Preset & Custom Setting Row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: (timerState.isRunning || timerState.isPaused) ? 0.3 : 1, transition: 'opacity 0.2s' }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>집중 시간:</span>
-          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-            {[25, 50].map(mins => (
-              <button 
-                key={mins}
-                disabled={timerState.isRunning || timerState.isPaused}
-                onClick={() => { setSelectedDuration(mins); setCustomDuration(''); applyDuration(mins); }}
-                style={{ border: 'none', background: (selectedDuration === mins && !customDuration) ? '#ef4444' : 'rgba(255,255,255,0.05)', color: 'white', fontSize: '0.65rem', padding: '0.15rem 0.35rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                {mins}분
-              </button>
-            ))}
-            <input 
-              type="number"
-              disabled={timerState.isRunning || timerState.isPaused}
-              placeholder="직접"
-              value={customDuration}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                setCustomDuration(e.target.value);
-                if (val > 0) applyDuration(val);
-              }}
-              style={{ width: '38px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', fontSize: '0.65rem', padding: '0.1rem 0.2rem', borderRadius: '4px', textAlign: 'center' }}
-            />
-          </div>
-        </div>
-
-        {/* Timer Control Buttons */}
-        <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.2rem' }}>
-          {!timerState.isRunning ? (
-            <button 
-              onClick={startTimer}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: '#ef4444', border: 'none', color: 'white', padding: '0.4rem 0', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}
-            >
-              <Play size={12} /> 시작
-            </button>
-          ) : (
-            <button 
-              onClick={pauseTimer}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: '#eab308', border: 'none', color: 'white', padding: '0.4rem 0', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}
-            >
-              <Pause size={12} /> 일시정지
-            </button>
-          )}
-
-          {(timerState.duration > timerState.timeLeft) && (
-            <button
-              onClick={handleEarlyComplete}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', background: '#10b981', border: 'none', color: 'white', padding: '0.4rem 0', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem', cursor: 'pointer' }}
-              title="지금까지의 시간 기록"
-            >
-              <Check size={12} /> 완료
-            </button>
-          )}
-
-          <button 
-            onClick={resetTimer}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'white', borderRadius: '4px', cursor: 'pointer' }}
-            title="리셋"
+          <button
+            onClick={requestNotificationPermission}
+            className="btn btn-secondary"
+            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', background: '#f59e0b', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
-            <RotateCcw size={12} />
+            알림 허용하기
           </button>
         </div>
+      )}
 
+      {/* Main Timer Display */}
+      <div style={{
+        background: 'rgba(0,0,0,0.3)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '1.5rem',
+        textAlign: 'center',
+        marginBottom: '1.5rem',
+        border: '1px solid rgba(255,255,255,0.08)'
+      }}>
+        <div style={{ fontSize: '4rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '2px', textShadow: '0 0 20px rgba(16, 185, 129, 0.3)' }}>
+          {formatTimeDisplay(timerState.timeLeft)}
+        </div>
+
+        {/* Preset Selector */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.25rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>집중 시간:</span>
+          {[25, 50].map(mins => (
+            <button
+              key={mins}
+              onClick={() => {
+                if (timerState.isRunning || timerState.isPaused) return;
+                setSelectedDuration(mins);
+                setCustomDuration('');
+                applyDuration(mins);
+              }}
+              disabled={timerState.isRunning || timerState.isPaused}
+              style={{
+                padding: '0.3rem 0.75rem',
+                borderRadius: '20px',
+                border: selectedDuration === mins && !customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                background: selectedDuration === mins && !customDuration ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)',
+                color: selectedDuration === mins && !customDuration ? '#000' : 'var(--text-secondary)',
+                fontWeight: selectedDuration === mins && !customDuration ? 'bold' : 'normal',
+                fontSize: '0.85rem',
+                cursor: timerState.isRunning || timerState.isPaused ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {mins}분
+            </button>
+          ))}
+
+          {/* Custom Duration Input */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+            <input
+              type="number"
+              min="1"
+              max="180"
+              placeholder="직접"
+              value={customDuration}
+              disabled={timerState.isRunning || timerState.isPaused}
+              onChange={(e) => {
+                const val = e.target.value;
+                setCustomDuration(val);
+                const parsed = parseInt(val, 10);
+                if (!isNaN(parsed) && parsed > 0) {
+                  applyDuration(parsed);
+                }
+              }}
+              style={{
+                width: '60px',
+                padding: '0.3rem 0.5rem',
+                borderRadius: '4px',
+                border: customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(0,0,0,0.4)',
+                color: '#fff',
+                fontSize: '0.85rem',
+                textAlign: 'center'
+              }}
+            />
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>분</span>
+          </div>
+        </div>
+
+        {/* Control Buttons */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {!timerState.isRunning ? (
+            <button
+              onClick={startTimer}
+              className="btn btn-primary"
+              style={{ padding: '0.65rem 2rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Play size={20} /> {timerState.isPaused ? '재개' : '시작'}
+            </button>
+          ) : (
+            <button
+              onClick={pauseTimer}
+              className="btn btn-secondary"
+              style={{ padding: '0.65rem 1.5rem', fontSize: '1rem', background: '#f59e0b', color: '#000', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Pause size={18} /> 일시정지
+            </button>
+          )}
+
+          {(timerState.isRunning || timerState.isPaused) && (
+            <button
+              onClick={handleEarlyComplete}
+              className="btn btn-primary"
+              style={{ padding: '0.65rem 1.25rem', fontSize: '0.9rem', background: 'var(--accent-secondary)' }}
+            >
+              <Check size={18} /> 조기 완료
+            </button>
+          )}
+
+          <button
+            onClick={resetTimer}
+            className="btn btn-secondary"
+            style={{ padding: '0.65rem', borderRadius: '8px' }}
+            title="타이머 리셋"
+          >
+            <RotateCcw size={18} />
+          </button>
+        </div>
       </div>
 
-      {/* Bottom Timeline and Statistics */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
-        
-        {/* Timeline Log List */}
-        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.2rem', fontWeight: 'bold' }}>
-            <Clock size={11} /> {selectedDate === new Date().toISOString().split('T')[0] ? '오늘' : '선택일'} 상세 공부 타임라인
-          </div>
-          
-          <div style={{ maxHeight: '75px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.15rem' }}>
-            {todayData.timestamps && todayData.timestamps.length > 0 ? todayData.timestamps.map((ts, idx) => {
-              const target = ts;
-              const timeVal = typeof target === 'string' ? target : (target.time || new Date().toISOString());
-              const minutesVal = typeof target === 'string' ? 25 : (target.minutes || 25);
-              const dateObj = new Date(timeVal);
-              const timeString = dateObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-              return (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.01)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-primary)' }}>{timeString} ({minutesVal}분 완료)</span>
-                  <button 
-                    onClick={() => {
-                      storage.removePomodoro(selectedDate, idx);
-                      refreshData();
-                      window.dispatchEvent(new CustomEvent('xp-updated'));
-                      if (onUpdate) onUpdate();
-                      playSound('click');
-                    }}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '1px' }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
-                    title="삭제"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              );
-            }) : (
-              <div style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', padding: '0.4rem 0' }}>
-                기록이 없습니다.
+      {/* Daily Timestamped Log & Manual Input */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
+        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+          <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: '0 0 0.75rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Clock size={16} /> 오늘 상세 공부 타임라인
+          </h3>
+
+          {/* Timestamps List */}
+          <div style={{ maxHeight: '140px', overflowY: 'auto', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {todayData.timestamps && todayData.timestamps.length > 0 ? (
+              todayData.timestamps.map((ts, idx) => {
+                const timeLabel = typeof ts === 'string' ? ts : ts.time;
+                const minutesVal = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
+                const timeOnly = timeLabel.includes('T') ? timeLabel.split('T')[1].substring(0, 5) : timeLabel.substring(0, 5);
+                const [hStr, mStr] = timeOnly.split(':');
+                const hourNum = parseInt(hStr, 10);
+                const ampm = hourNum >= 12 ? '오후' : '오전';
+                const formattedHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
+                const formattedTime = `${ampm} ${formattedHour.toString().padStart(2, '0')}:${mStr}`;
+
+                return (
+                  <div key={idx} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: 'rgba(255,255,255,0.04)', padding: '0.4rem 0.75rem', borderRadius: '4px', fontSize: '0.85rem'
+                  }}>
+                    <span style={{ color: 'var(--text-primary)' }}>
+                      {formattedTime} <span style={{ color: 'var(--accent-primary)', fontSize: '0.8rem' }}>({minutesVal}분 완료)</span>
+                    </span>
+                    <button
+                      onClick={() => handleDeleteTimestamp(idx)}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
+                      title="삭제"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                );
+              })
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', padding: '0.75rem 0' }}>
+                아직 오늘 완료된 집중 기록이 없습니다. 타이머를 시작해보세요!
               </div>
             )}
           </div>
-          
-          {/* Unified Compact Manual Add Controls */}
-          <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', marginTop: '0.1rem' }}>
-            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>누락 추가:</span>
-            <input 
-              type="time" 
+
+          {/* Manual Entry Form */}
+          <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>누락 추가:</span>
+            <input
+              type="time"
               value={customTime}
               onChange={(e) => setCustomTime(e.target.value)}
-              style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', color: 'white', borderRadius: '4px', padding: '0.2rem', fontSize: '0.68rem', width: '70px' }}
+              style={{
+                background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)',
+                padding: '0.3rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem'
+              }}
             />
-            <input 
+            <input
               type="number"
+              min="1"
+              max="180"
               value={customMinutes}
               onChange={(e) => setCustomMinutes(e.target.value)}
-              placeholder="분"
-              style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)', color: 'white', borderRadius: '4px', padding: '0.2rem', fontSize: '0.68rem', width: '45px', textAlign: 'center' }}
+              style={{
+                width: '50px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)',
+                padding: '0.3rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', textAlign: 'center'
+              }}
             />
-            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>분</span>
-            <button 
-              onClick={handleAddCustom}
-              style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.68rem' }}
-            >
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>분</span>
+            <button type="submit" className="btn btn-primary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}>
               추가
             </button>
-          </div>
+          </form>
         </div>
 
-        {/* Weekly Bar Chart */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '0.4rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-              <CalendarDays size={10} /> 이번 주 주간 통계
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-primary)' }}>
-              총 <span style={{ fontWeight: 'bold', color: '#ef4444' }}>{formatTime(weeklyData.weeklyMinutes)}</span>
-            </div>
+        {/* Weekly Stats Bar */}
+        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <CalendarDays size={15} /> 이번 주 주간 통계
+            </span>
+            <span style={{ fontSize: '0.9rem', color: 'var(--accent-secondary)', fontWeight: 'bold' }}>
+              총 {Math.floor(weeklyData.weeklyMinutes / 60)}시간 {weeklyData.weeklyMinutes % 60}분
+            </span>
           </div>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', height: '44px', background: 'rgba(0,0,0,0.2)', padding: '0.25rem', borderRadius: '6px' }}>
-            {weeklyData.weekData.map((day, idx) => {
-              const maxMinutes = Math.max(...weeklyData.weekData.map(d => d.totalMinutes), 120); 
-              const heightPct = Math.min((day.totalMinutes / maxMinutes) * 100, 100);
-              
-              const h = Math.floor((day.totalMinutes || 0) / 60);
-              const m = (day.totalMinutes || 0) % 60;
-              const compactTimeLabel = day.totalMinutes > 0 ? (h > 0 ? (m > 0 ? `${h}h${m}m` : `${h}h`) : `${m}m`) : '';
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.3rem', textAlign: 'center', marginTop: '0.5rem' }}>
+            {['월', '화', '수', '목', '금', '토', '일'].map((dayLabel, idx) => {
+              const dayObj = weeklyData.weekData[idx] || { minutes: 0 };
+              const hasStudy = dayObj.minutes > 0;
               return (
-                <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.1rem', flex: 1 }}>
-                  <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', height: '10px', fontWeight: 600 }}>
-                    {compactTimeLabel}
-                  </div>
-                  <div style={{ 
-                    width: '100%', 
-                    maxWidth: '10px', 
-                    height: `${heightPct}%`, 
-                    minHeight: day.totalMinutes > 0 ? '2px' : '0',
-                    background: day.date === new Date().toISOString().split('T')[0] ? '#ef4444' : 'rgba(239, 68, 68, 0.35)',
-                    borderRadius: '1px 1px 0 0',
-                    transition: 'height 0.3s ease'
-                  }} />
-                  <div style={{ fontSize: '0.62rem', color: day.date === new Date().toISOString().split('T')[0] ? 'var(--text-primary)' : 'var(--text-muted)', scale: '0.85' }}>
-                    {dayNames[idx]}
+                <div key={dayLabel} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{dayLabel}</div>
+                  <div style={{
+                    width: '100%', height: '32px', borderRadius: '4px',
+                    background: hasStudy ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.04)',
+                    border: hasStudy ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255,255,255,0.06)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.7rem', color: hasStudy ? '#34d399' : 'var(--text-muted)', fontWeight: hasStudy ? 'bold' : 'normal'
+                  }}>
+                    {hasStudy ? `${Math.floor(dayObj.minutes / 60)}h${dayObj.minutes % 60}m` : '-'}
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-
       </div>
-
     </div>
   );
 }

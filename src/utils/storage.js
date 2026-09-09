@@ -1507,5 +1507,23 @@ export const storage = {
 
     this._dispatchSync();
     return { days, count };
+  },
+
+  reset30DaysHibernationAndFreshStart() {
+    const now = new Date();
+    const todayStr = this._dateToStr(now);
+    
+    const d30 = new Date(now);
+    d30.setDate(d30.getDate() - 30);
+    const startStr = this._dateToStr(d30);
+    
+    const dYesterday = new Date(now);
+    dYesterday.setDate(dYesterday.getDate() - 1);
+    const endStr = this._dateToStr(dYesterday);
+
+    this.addVacation(startStr, endStr);
+    const resetCount = this.smartEbbinghausRedistribute(3);
+
+    return { days: 30, resetCount };
   }
 };

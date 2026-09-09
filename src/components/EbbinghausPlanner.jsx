@@ -195,6 +195,14 @@ export default function EbbinghausPlanner() {
     }
   };
 
+  const handleFreshStart30Days = () => {
+    if (window.confirm("지난 30일간의 방황 기간을 '공식 휴식/휴면 기간'으로 자동 전환하고 오늘부터 가볍게 새출발하시겠습니까?\n\n• 지난 30일이 휴면 기간으로 보호됩니다.\n• 밀린 복습이 14714 간격을 유지하며 오늘부터 하루 최대 3개씩 부드럽게 재배치됩니다.\n• 과거 자책 없이 오늘부터 다시 사냥을 즐겨보세요! 🔥")) {
+      const result = storage.reset30DaysHibernationAndFreshStart();
+      alert(`🎉 30일 방황 케어 & 새출발 완료!\n\n지난 30일간이 공식 휴면 기간으로 마킹되었습니다.\n복습 일정 ${result.resetCount}개가 오늘부터 하루 최대 3개씩 예쁘게 재정렬되었습니다.\n\n오늘부터 새로운 마음으로 즐겁게 열공해봐요! 💪`);
+      refreshData();
+    }
+  };
+
   // Calculate overdue review count
   const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && r.targetDate < todayStr).length;
 
@@ -249,6 +257,15 @@ export default function EbbinghausPlanner() {
 
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button 
+            onClick={handleFreshStart30Days}
+            className="btn btn-primary"
+            style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}
+            title="30일 방황 기간을 휴식 모드로 등록하고 오늘부터 새출발"
+          >
+            🌱 30일 방황 케어 & 새출발
+          </button>
+
           <button 
             onClick={handleMoveOverdueClick}
             className="btn btn-secondary"
