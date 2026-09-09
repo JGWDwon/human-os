@@ -120,31 +120,12 @@ export default function EbbinghausPlanner() {
     refreshData();
   };
 
-  const handleMoveOverdueClick = () => {
-    const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && r.targetDate < todayStr).length;
-    if (overdueCount === 0) {
-      alert("밀린 복습이 없습니다! 아주 훌륭합니다 🎉");
-      return;
-    }
-    setShowOverdueModal(true);
-  };
-
-  const handleDistributeOverdue = (maxPerDay) => {
-    const count = storage.distributeOverdueReviews(maxPerDay);
-    if (count > 0) {
-      alert(`🌱 밀린 복습 ${count}개를 오늘부터 하루 ${maxPerDay}개씩 나누어 균등하게 재배치했습니다!`);
+  const handleFullResetAll14714 = () => {
+    if (window.confirm("모든 강의의 복습 기록(완료 항목 포함)을 초기화하고, 오늘부터 하루 최대 3개씩 14714(5회) 복습 스케줄로 다시 새출발하시겠습니까?\n\n• 완료/미완료된 모든 복습이 초기화됩니다.\n• 1, 4, 7, 14, 30일 간격으로 5회 복습이 재설정됩니다.\n• 하루에 복습이 최대 3개를 넘지 않도록 예쁘게 분배됩니다.")) {
+      const count = storage.resetAllLectures14714FromToday(3);
+      alert(`🎉 복습 전면 초기화 완료!\n총 ${count}개 강의의 복습 일정이 오늘부터 하루 최대 3개씩 14714 주기로 다시 설정되었습니다! 🔥`);
       refreshData();
     }
-    setShowOverdueModal(false);
-  };
-
-  const handleMoveOverdueToTodayModal = () => {
-    const count = storage.moveAllOverdueToToday();
-    if (count > 0) {
-      alert(`⚡ 밀린 복습 ${count}개를 오늘 날짜로 모두 이동했습니다! 💪`);
-      refreshData();
-    }
-    setShowOverdueModal(false);
   };
 
   const handleApplyVacation = (e) => {
@@ -158,12 +139,12 @@ export default function EbbinghausPlanner() {
       return;
     }
     const result = storage.addVacation(vacStartDate, vacEndDate);
-    alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n\n휴가 기간은 "없는 날"로 처리됩니다.\n미완료 복습 ${result.count}개가 휴가일을 건너뛰어 재배치되었습니다.\n(완료된 복습은 그대로 유지됩니다)\n\n즐거운 여행 되세요! 🎉`);
+    alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n\n휴가 기간은 "없는 날"로 처리됩니다.\n미완료 복습 ${result.count}개가 휴가일을 건너뛰어 재배치되었습니다.\n\n즐거운 여행 되세요! 🎉`);
     refreshData();
   };
 
   const handleRevertVacation = (vacationId) => {
-    if (window.confirm("이 휴가 일정을 취소하시겠습니까?\n휴가 기간이 삭제되고, 미완료 복습이 원래 14714 간격으로 재계산됩니다.\n(완료된 복습은 그대로 유지됩니다)")) {
+    if (window.confirm("이 휴가 일정을 취소하시겠습니까?\n휴가 기간이 삭제되고, 미완료 복습이 원래 14714 간격으로 재계산됩니다.")) {
       const result = storage.revertVacation(vacationId);
       alert(`↩️ 휴가 취소 완료!\n${result.count}개의 미완료 복습이 원래 간격으로 재배치되었습니다.`);
       refreshData();
@@ -171,51 +152,10 @@ export default function EbbinghausPlanner() {
   };
 
   const handleDeleteLecture = (lectureId) => {
-    if (window.confirm("이 강의와 모든 복습 일정을 삭제하시겠습니까? (완료된 복습으로 얻은 XP도 회수됩니다)")) {
+    if (window.confirm("이 강의와 모든 복습 일정을 삭제하시겠습니까?")) {
       storage.deleteLecture(lectureId);
       refreshData();
       window.dispatchEvent(new CustomEvent('xp-updated'));
-    }
-  };
-
-  const handleSmartRedistribute = (maxPerDay = 3) => {
-    const count = storage.smartEbbinghausRedistribute(maxPerDay);
-    if (count > 0) {
-      alert(`✨ 복습 재배치 완료!\n\n• 밀린 복습을 당겨오되 회차 간 14714 원래 상대 간격(+3일, +7일 등)을 100% 보수 유지했습니다.\n• 휴가 기간은 "없는 날"로 계산하여 건너뜁니다.\n• 하루 최대 ${maxPerDay}개까지 균등 분배됩니다.\n• 이미 완료한 복습은 그대로 보존됩니다! ✅`);
-      refreshData();
-    } else {
-      alert("이미 모든 복습 일정이 정확하게 배치되어 있습니다! 👍");
-    }
-    setShowOverdueModal(false);
-  };
-
-  const handleRecalculateReviews = () => {
-    if (window.confirm("복습 일정을 당겨오며 재배치하시겠습니까?\n\n• 14714 회차 간 본래 상대 간격(+3일, +7일 등) 엄격 유지\n• 휴가 기간은 없는 날로 계산하여 건너뜀\n• 하루 최대 3개까지 균등 배분\n• 이미 완료한 복습은 보존")) {
-      handleSmartRedistribute(3);
-    }
-  };
-
-  const handleClearOverduePure = () => {
-    if (window.confirm("과거의 밀린 복습 찌꺼기들을 싹 삭제(밀어버리고), 오늘부터 완전 깨끗한 상태로 다시 시작하시겠습니까?\n\n• 오늘 이전의 미완료 복습들이 완전히 삭제됩니다.\n• 이미 완료한 복습은 안전하게 보존됩니다.\n• 오늘 새로 배우거나 등록하는 강의부터 깨끗하게 14714 새출발을 할 수 있습니다! 🔥")) {
-      const removedCount = storage.clearAllOverdueReviewsAndStartPure();
-      alert(`🔥 과거 밀린 복습 ${removedCount}개가 싹 삭제되었습니다!\n\n오늘부터 깨끗한 상태로 다시 시~작합니다! 파이팅! 💪`);
-      refreshData();
-    }
-  };
-
-  const handleStartFreshFromToday = () => {
-    if (window.confirm("그동안 밀려있던 과거 복습 일정의 부담을 깔끔하게 비우고, 오늘부터 하루 2개씩 가볍게 따라잡기를 시작하시겠습니까?\n\n• 과거 밀려있던 복습들이 오늘부터 하루 2개씩 아주 편안한 속도로 순차 재배치됩니다.\n• 14714 원래 회차 간격(+3일, +7일 등)도 그대로 보존됩니다.\n• 오늘 공부하는 강의부터 부담 없이 시작할 수 있습니다! 💪")) {
-      const count = storage.resetOverdueAndStartFreshFromToday();
-      alert(`⚡ 오늘부터 부담 없이 복습 시작 완료!\n\n밀려있던 복습 ${count}개가 오늘부터 하루 2개씩 아주 편안한 속도로 예쁘게 재정렬되었습니다.\n오늘 배운 공부부터 가벼운 마음으로 시작해봅시다! 🔥`);
-      refreshData();
-    }
-  };
-
-  const handleFreshStart30Days = () => {
-    if (window.confirm("지난 30일간의 방황 기간을 '공식 휴식/휴면 기간'으로 자동 전환하고 오늘부터 가볍게 새출발하시겠습니까?\n\n• 지난 30일이 휴면 기간으로 보호됩니다.\n• 밀린 복습이 14714 간격을 유지하며 오늘부터 하루 최대 3개씩 부드럽게 재배치됩니다.\n• 과거 자책 없이 오늘부터 다시 사냥을 즐겨보세요! 🔥")) {
-      const result = storage.reset30DaysHibernationAndFreshStart();
-      alert(`🎉 30일 방황 케어 & 새출발 완료!\n\n지난 30일간이 공식 휴면 기간으로 마킹되었습니다.\n복습 일정 ${result.resetCount}개가 오늘부터 하루 최대 3개씩 예쁘게 재정렬되었습니다.\n\n오늘부터 새로운 마음으로 즐겁게 열공해봐요! 💪`);
-      refreshData();
     }
   };
 
@@ -274,72 +214,29 @@ export default function EbbinghausPlanner() {
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <button 
-            onClick={handleClearOverduePure}
+            onClick={handleFullResetAll14714}
             className="btn btn-primary"
-            style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: '#fff', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}
-            title="과거 밀린 복습을 싹 삭제(밀어버리고) 오늘부터 깨끗하게 새로 시작"
+            style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: '#fff', fontSize: '0.8rem', padding: '0.42rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 'bold' }}
+            title="모든 복습(완료 항목 포함) 초기화 후 오늘부터 하루 최대 3개씩 14714 새출발"
           >
-            🔥 과거 밀린 복습 싹 삭제하고 새로 시작!
-          </button>
-          <button 
-            onClick={handleStartFreshFromToday}
-            className="btn btn-primary"
-            style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}
-            title="밀린 복습 부담을 없애고 오늘부터 하루 2개씩 편안하게 재배치"
-          >
-            ⚡ 오늘부터 부담 없이 복습 시작
-          </button>
-          <button 
-            onClick={handleFreshStart30Days}
-            className="btn btn-primary"
-            style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}
-            title="30일 방황 기간을 휴식 모드로 등록하고 오늘부터 새출발"
-          >
-            🌱 30일 방황 케어 & 새출발
-          </button>
-
-          <button 
-            onClick={handleMoveOverdueClick}
-            className="btn btn-secondary"
-            style={{ 
-              background: overdueCount > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)', 
-              border: `1px solid ${overdueCount > 0 ? '#ef4444' : 'rgba(255,255,255,0.1)'}`, 
-              color: overdueCount > 0 ? '#f87171' : 'var(--text-secondary)', 
-              fontSize: '0.8rem', 
-              padding: '0.4rem 0.75rem', 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.3rem' 
-            }}
-            title="밀린 복습 처리 및 균등 분배"
-          >
-            <RotateCcw size={14} /> 밀린 복습 정리 {overdueCount > 0 ? `(${overdueCount}개)` : ''}
-          </button>
-
-          <button 
-            onClick={handleRecalculateReviews}
-            className="btn btn-secondary"
-            style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid #fbbf24', color: '#fbbf24', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-            title="모든 미완료 복습 일정을 원래 1/4/7/14/30일 간격으로 재배치"
-          >
-            <Wand2 size={14} /> 복습 일정 초기화 (1·4·7·14·30)
+            <RotateCcw size={14} /> 복습 전면 초기화 & 14714 새출발 (하루 최대 3개)
           </button>
 
           <button 
             onClick={() => setShowVacationModal(true)}
             className="btn btn-secondary"
-            style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+            style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', fontSize: '0.8rem', padding: '0.42rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
             title="휴가/여행 기간 동안 모든 복습 일정 연기 및 취소 관리"
           >
-            <Palmtree size={14} /> 여행/휴가 모드 (날짜 지정 & 취소)
+            <Palmtree size={14} /> 여행/휴가 모드
           </button>
 
           <button 
             onClick={() => setShowAddForm(!showAddForm)}
             className="btn btn-primary"
-            style={{ background: '#8b5cf6', borderColor: '#7c3aed', fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}
+            style={{ background: '#8b5cf6', borderColor: '#7c3aed', fontSize: '0.85rem', padding: '0.42rem 0.8rem' }}
           >
-            {showAddForm ? '취소' : <><Plus size={16} /> 강의 추가 (날짜 지정)</>}
+            {showAddForm ? '취소' : <><Plus size={16} /> 강의 추가</>}
           </button>
         </div>
       </div>

@@ -1584,5 +1584,53 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
     this._dispatchSync();
     return removedCount;
+  },
+
+  resetAllLectures14714FromToday(maxPerDay = 3) {
+    const todayStr = this._dateToStr(new Date());
+    const lectures = this.getLectures();
+    if (lectures.length === 0) return 0;
+
+    const intervals = [1, 4, 7, 14, 30];
+    const dateCounts = {};
+
+    lectures.forEach(lec => {
+      let startDateStr = todayStr;
+
+      while (true) {
+        let isValid = true;
+        for (const offset of intervals) {
+          const target = this.getDateAfterNonVacationDays(startDateStr, offset);
+          if ((dateCounts[target] || 0) >= maxPerDay) {
+            isValid = false;
+            break;
+          }
+        }
+
+        if (isValid) {
+          break;
+        } else {
+          startDateStr = this.getDateAfterNonVacationDays(startDateStr, 1);
+        }
+      }
+
+      lec.dateAdded = startDateStr;
+      lec.reviews = intervals.map(offset => {
+        const targetDateStr = this.getDateAfterNonVacationDays(startDateStr, offset);
+        dateCounts[targetDateStr] = (dateCounts[targetDateStr] || 0) + 1;
+
+        return {
+          id: `rev_${Date.now()}_${offset}_${Math.random().toString(36).substring(2, 6)}`,
+          dayOffset: offset,
+          targetDate: targetDateStr,
+          isCompleted: false,
+          completedAt: null
+        };
+      });
+    });
+
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    this._dispatchSync();
+    return lectures.length;
   }
 };
