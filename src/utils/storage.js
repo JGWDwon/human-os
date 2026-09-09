@@ -1550,5 +1550,23 @@ export const storage = {
     const resetCount = this.smartEbbinghausRedistribute(3);
 
     return { days: 30, resetCount };
+  },
+
+  resetOverdueAndStartFreshFromToday() {
+    const todayStr = this._dateToStr(new Date());
+    const lectures = this.getLectures();
+    let resetCount = 0;
+
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted && rev.targetDate < todayStr) {
+          rev.targetDate = todayStr;
+          resetCount++;
+        }
+      });
+    });
+
+    this.smartEbbinghausRedistribute(2);
+    return resetCount;
   }
 };

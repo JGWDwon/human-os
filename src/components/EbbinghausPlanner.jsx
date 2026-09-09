@@ -195,6 +195,14 @@ export default function EbbinghausPlanner() {
     }
   };
 
+  const handleStartFreshFromToday = () => {
+    if (window.confirm("그동안 밀려있던 과거 복습 일정의 부담을 깔끔하게 비우고, 오늘부터 하루 2개씩 가볍게 따라잡기를 시작하시겠습니까?\n\n• 과거 밀려있던 복습들이 오늘부터 하루 2개씩 아주 편안한 속도로 순차 재배치됩니다.\n• 14714 원래 회차 간격(+3일, +7일 등)도 그대로 보존됩니다.\n• 오늘 공부하는 강의부터 부담 없이 시작할 수 있습니다! 💪")) {
+      const count = storage.resetOverdueAndStartFreshFromToday();
+      alert(`⚡ 오늘부터 부담 없이 복습 시작 완료!\n\n밀려있던 복습 ${count}개가 오늘부터 하루 2개씩 아주 편안한 속도로 예쁘게 재정렬되었습니다.\n오늘 배운 공부부터 가벼운 마음으로 시작해봅시다! 🔥`);
+      refreshData();
+    }
+  };
+
   const handleFreshStart30Days = () => {
     if (window.confirm("지난 30일간의 방황 기간을 '공식 휴식/휴면 기간'으로 자동 전환하고 오늘부터 가볍게 새출발하시겠습니까?\n\n• 지난 30일이 휴면 기간으로 보호됩니다.\n• 밀린 복습이 14714 간격을 유지하며 오늘부터 하루 최대 3개씩 부드럽게 재배치됩니다.\n• 과거 자책 없이 오늘부터 다시 사냥을 즐겨보세요! 🔥")) {
       const result = storage.reset30DaysHibernationAndFreshStart();
@@ -257,6 +265,14 @@ export default function EbbinghausPlanner() {
 
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button 
+            onClick={handleStartFreshFromToday}
+            className="btn btn-primary"
+            style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: '#fff', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}
+            title="밀린 복습 부담을 없애고 오늘부터 하루 2개씩 편안하게 재배치"
+          >
+            ⚡ 오늘부터 부담 없이 복습 시작
+          </button>
           <button 
             onClick={handleFreshStart30Days}
             className="btn btn-primary"
