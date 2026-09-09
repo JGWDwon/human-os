@@ -195,6 +195,14 @@ export default function EbbinghausPlanner() {
     }
   };
 
+  const handleClearOverduePure = () => {
+    if (window.confirm("과거의 밀린 복습 찌꺼기들을 싹 삭제(밀어버리고), 오늘부터 완전 깨끗한 상태로 다시 시작하시겠습니까?\n\n• 오늘 이전의 미완료 복습들이 완전히 삭제됩니다.\n• 이미 완료한 복습은 안전하게 보존됩니다.\n• 오늘 새로 배우거나 등록하는 강의부터 깨끗하게 14714 새출발을 할 수 있습니다! 🔥")) {
+      const removedCount = storage.clearAllOverdueReviewsAndStartPure();
+      alert(`🔥 과거 밀린 복습 ${removedCount}개가 싹 삭제되었습니다!\n\n오늘부터 깨끗한 상태로 다시 시~작합니다! 파이팅! 💪`);
+      refreshData();
+    }
+  };
+
   const handleStartFreshFromToday = () => {
     if (window.confirm("그동안 밀려있던 과거 복습 일정의 부담을 깔끔하게 비우고, 오늘부터 하루 2개씩 가볍게 따라잡기를 시작하시겠습니까?\n\n• 과거 밀려있던 복습들이 오늘부터 하루 2개씩 아주 편안한 속도로 순차 재배치됩니다.\n• 14714 원래 회차 간격(+3일, +7일 등)도 그대로 보존됩니다.\n• 오늘 공부하는 강의부터 부담 없이 시작할 수 있습니다! 💪")) {
       const count = storage.resetOverdueAndStartFreshFromToday();
@@ -265,6 +273,14 @@ export default function EbbinghausPlanner() {
 
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button 
+            onClick={handleClearOverduePure}
+            className="btn btn-primary"
+            style={{ background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', color: '#fff', fontSize: '0.8rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 'bold' }}
+            title="과거 밀린 복습을 싹 삭제(밀어버리고) 오늘부터 깨끗하게 새로 시작"
+          >
+            🔥 과거 밀린 복습 싹 삭제하고 새로 시작!
+          </button>
           <button 
             onClick={handleStartFreshFromToday}
             className="btn btn-primary"

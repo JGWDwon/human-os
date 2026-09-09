@@ -1568,5 +1568,21 @@ export const storage = {
 
     this.smartEbbinghausRedistribute(2);
     return resetCount;
+  },
+
+  clearAllOverdueReviewsAndStartPure() {
+    const todayStr = this._dateToStr(new Date());
+    const lectures = this.getLectures();
+    let removedCount = 0;
+
+    lectures.forEach(lec => {
+      const beforeCount = lec.reviews.length;
+      lec.reviews = lec.reviews.filter(rev => rev.isCompleted || rev.targetDate >= todayStr);
+      removedCount += (beforeCount - lec.reviews.length);
+    });
+
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    this._dispatchSync();
+    return removedCount;
   }
 };
