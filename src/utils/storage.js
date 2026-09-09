@@ -352,6 +352,48 @@ export const storage = {
     return this.addCustomPomodoro(dateStr, timeStr, minutes);
   },
 
+  deletePomodoroTimestamp(dateStr, index) {
+    const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
+    const data = safeParse(rawData, {});
+
+    if (!data[dateStr] || !data[dateStr].timestamps || !data[dateStr].timestamps[index]) {
+      return null;
+    }
+
+    const removedItem = data[dateStr].timestamps.splice(index, 1)[0];
+    const minutesToRemove = typeof removedItem === 'object' && removedItem.minutes ? removedItem.minutes : 25;
+    
+    let countToRemove = 0;
+    if (minutesToRemove >= 15) {
+      countToRemove = Math.max(1, Math.round(minutesToRemove / 25));
+    }
+
+    data[dateStr].totalMinutes = Math.max(0, (data[dateStr].totalMinutes || 0) - minutesToRemove);
+    data[dateStr].count = Math.max(0, (data[dateStr].count || 0) - countToRemove);
+
+    localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
+
+    // Revert XP
+    this.addXP(-minutesToRemove);
+
+    // Remove matching session log if present
+    const rawSessions = localStorage.getItem(STORAGE_KEYS.STUDY_SESSIONS);
+    const studySessions = safeParse(rawSessions, {});
+    if (studySessions[dateStr] && Array.isArray(studySessions[dateStr])) {
+      const timeStr = typeof removedItem === 'string' ? removedItem : (removedItem.time || '');
+      const timeOnly = timeStr.includes('T') ? timeStr.split('T')[1].substring(0, 5) : timeStr.substring(0, 5);
+      
+      const sIdx = studySessions[dateStr].findIndex(s => s.startTime === timeOnly || s.endTime === timeOnly);
+      if (sIdx !== -1) {
+        studySessions[dateStr].splice(sIdx, 1);
+        localStorage.setItem(STORAGE_KEYS.STUDY_SESSIONS, JSON.stringify(studySessions));
+      }
+    }
+
+    this._dispatchSync();
+    return data[dateStr];
+  },
+
   getPomodoroTimeDistribution(days = 30) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
