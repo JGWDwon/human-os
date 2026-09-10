@@ -7,22 +7,10 @@ import InsightsDashboard from './components/InsightsDashboard';
 import PhaseRoadmap from './components/PhaseRoadmap';
 import EbbinghausPlanner from './components/EbbinghausPlanner';
 import { storage } from './utils/storage';
-import adventurerImg from './assets/adventurer.png';
-import rank1Img from './assets/rank1.jpg';
-import rank2Img from './assets/rank2.jpg';
-import rank3Img from './assets/rank3.jpg';
-import rank4Img from './assets/rank4.jpg';
+import TierBadge from './components/TierBadge';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-
-const getAvatarImage = (level) => {
-  if (level >= 120) return rank4Img;     // 4차 전직 (왕관 & 붉은 망토 그랜드마스터)
-  if (level >= 70) return rank3Img;      // 3차 전직 (골드 장식 커맨더 기사)
-  if (level >= 30) return rank2Img;      // 2차 전직 (실버 갑옷 정예 기사)
-  if (level >= 10) return rank1Img;      // 1차 전직 (가죽 갑옷 초급 전사)
-  return adventurerImg;                  // 0차 초보자 (목검 모험가)
-};
 
 function App() {
   const [activeView, setActiveView] = useState('main'); // 'main' | 'ebbinghaus' | 'insights' | 'settings' | 'roadmap'
@@ -39,6 +27,7 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [levelUpModal, setLevelUpModal] = useState(null);
   const [milestoneToast, setMilestoneToast] = useState(null);
+  const [showTierModal, setShowTierModal] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -234,32 +223,26 @@ function App() {
             )}
           </div>
 
-          {/* Slim RPG Level Widget */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            background: 'rgba(0, 0, 0, 0.35)',
-            border: `1px solid ${xpInfo.tierColor || 'rgba(16, 185, 129, 0.3)'}`,
-            borderRadius: '24px',
-            padding: '0.3rem 0.85rem',
-            flex: '1 1 260px',
-            maxWidth: '380px',
-            minWidth: '220px'
-          }}>
-            <img
-              src={getAvatarImage(xpInfo.level)}
-              alt="Avatar"
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '50%',
-                objectFit: 'cover',
-                border: `2px solid ${xpInfo.tierColor || '#34d399'}`,
-                background: '#0f172a',
-                flexShrink: 0
-              }}
-            />
+          {/* Slim RPG Level & Tier Badge Widget */}
+          <div 
+            onClick={() => setShowTierModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+              background: 'rgba(0, 0, 0, 0.35)',
+              border: `1px solid ${xpInfo.tierColor || 'rgba(16, 185, 129, 0.3)'}`,
+              borderRadius: '24px',
+              padding: '0.25rem 0.85rem',
+              flex: '1 1 260px',
+              maxWidth: '380px',
+              minWidth: '220px',
+              cursor: 'pointer',
+              transition: 'transform 0.15s, border-color 0.2s'
+            }}
+            title="클릭하여 랭크 배지 도감 확인"
+          >
+            <TierBadge level={xpInfo.level} size={34} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{
@@ -402,22 +385,12 @@ function App() {
               animation: 'popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
             }}>
               <div style={{
-                width: '80px',
-                height: '80px',
-                margin: '0 auto 1rem auto',
-                borderRadius: '50%',
-                background: 'rgba(255,255,255,0.05)',
-                border: `3px solid ${levelUpModal.tierColor || '#f59e0b'}`,
+                margin: '0 auto 1.25rem auto',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 0 25px rgba(245, 158, 11, 0.5)'
+                justifyContent: 'center'
               }}>
-                <img
-                  src={getAvatarImage(levelUpModal.newLevel)}
-                  alt="New Rank"
-                  style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                />
+                <TierBadge level={levelUpModal.newLevel} size={88} showGlow={true} />
               </div>
 
               <span style={{
@@ -462,6 +435,77 @@ function App() {
               >
                 계속해서 집중하기 ✨
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tier Badge Guide Modal */}
+        {showTierModal && (
+          <div style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '1rem'
+          }}>
+            <div className="glass-panel animate-fade-in" style={{
+              maxWidth: '480px', width: '100%', background: '#0f172a', border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '20px', padding: '1.75rem', boxShadow: '0 15px 35px rgba(0,0,0,0.6)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Sparkles size={20} color="var(--accent-primary)" /> 랭크 배지 도감
+                </h3>
+                <button onClick={() => setShowTierModal(false)} className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem' }}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0', lineHeight: 1.4 }}>
+                공부 시간을 쌓아 레벨업하면 상위 랭크 배지가 자동으로 승급됩니다.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                {[
+                  { level: 2, name: '브론즈 (Bronze)', range: 'Lv.1 ~ Lv.9', desc: '시작하는 도전자 · 습관 형성', color: '#cd7f32' },
+                  { level: 15, name: '실버 (Silver)', range: 'Lv.10 ~ Lv.29', desc: '열정 수험생 · 흔들림 없는 러너', color: '#94a3b8' },
+                  { level: 45, name: '골드 (Gold)', range: 'Lv.30 ~ Lv.69', desc: '정예 합격권 · 고수 회독러', color: '#f59e0b' },
+                  { level: 85, name: '플래티넘 (Platinum)', range: 'Lv.70 ~ Lv.119', desc: '절대 집중자 · 회독 장인', color: '#06b6d4' },
+                  { level: 120, name: '그랜드 마스터 (Master)', range: 'Lv.120+', desc: '최종 합격 · 예비 세무사', color: '#c084fc' }
+                ].map(t => {
+                  const isCurrent = (t.name.includes('브론즈') && xpInfo.level < 10) ||
+                                    (t.name.includes('실버') && xpInfo.level >= 10 && xpInfo.level < 30) ||
+                                    (t.name.includes('골드') && xpInfo.level >= 30 && xpInfo.level < 70) ||
+                                    (t.name.includes('플래티넘') && xpInfo.level >= 70 && xpInfo.level < 120) ||
+                                    (t.name.includes('마스터') && xpInfo.level >= 120);
+
+                  return (
+                    <div
+                      key={t.name}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.85rem',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: '10px',
+                        background: isCurrent ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                        border: isCurrent ? `1.5px solid ${t.color}` : '1px solid rgba(255, 255, 255, 0.06)'
+                      }}
+                    >
+                      <TierBadge level={t.level} size={42} showGlow={isCurrent} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: t.color }}>
+                            {t.name} {isCurrent && <span style={{ fontSize: '0.72rem', background: t.color, color: '#000', padding: '0.05rem 0.4rem', borderRadius: '8px', marginLeft: '0.4rem' }}>내 랭크</span>}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.range}</span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                          {t.desc}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
