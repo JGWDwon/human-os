@@ -59,7 +59,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
             isRunning: false,
             isPaused: false,
             pendingAutoLog: true,
-            autoLogMins: Math.max(1, Math.round(parsed.duration / 60))
+            autoLogMins: Math.max(1, Math.round(parsed.duration / 60)),
+            autoLogEndTime: parsed.endTime
           };
         }
         return {
@@ -84,12 +85,16 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   // Handle pending auto-log when timer completed in background/while app was closed
   useEffect(() => {
     if (timerState.pendingAutoLog) {
-      const now = new Date();
-      const actualToday = getTodayStr();
-      const timeStr = now.toTimeString().split(' ')[0].substring(0, 5);
+      const targetEndTimeMs = timerState.autoLogEndTime || Date.now();
+      const endObj = new Date(targetEndTimeMs);
+      const actualToday = new Date(endObj.getTime() - (endObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const endTimeStr = endObj.toTimeString().split(' ')[0].substring(0, 5);
       const mins = timerState.autoLogMins || 25;
 
-      storage.addCustomPomodoroWithMinutes(actualToday, timeStr, mins);
+      const startObj = new Date(targetEndTimeMs - mins * 60 * 1000);
+      const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
+
+      storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, mins, startTimeStr);
       refreshData();
       window.dispatchEvent(new CustomEvent('xp-updated'));
       if (onUpdate) onUpdate();
@@ -370,11 +375,16 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       }
     }
 
-    // Always log study record to actual today date
-    const now = new Date();
-    const actualToday = getTodayStr();
-    const timeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
-    storage.addCustomPomodoroWithMinutes(actualToday, timeStr, minutesCompleted);
+    // Always log study record to the exact time when the timer bell rang
+    const targetEndTimeMs = (timerState.endTime && timerState.endTime > 0) ? timerState.endTime : Date.now();
+    const endObj = new Date(targetEndTimeMs);
+    const actualToday = new Date(endObj.getTime() - (endObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const endTimeStr = endObj.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
+
+    const startObj = new Date(targetEndTimeMs - minutesCompleted * 60 * 1000);
+    const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
+
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -526,8 +536,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
     const now = new Date();
     const actualToday = getTodayStr();
-    const timeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
-    storage.addCustomPomodoroWithMinutes(actualToday, timeStr, minutesCompleted);
+    const endTimeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
+    const startObj = new Date(now.getTime() - minutesCompleted * 60 * 1000);
+    const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -586,12 +598,18 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       return;
     }
 
-    storage.addCustomPomodoroWithMinutes(selectedDate, customTime, mins);
+    const [hours, minutesVal] = customTime.split(':').map(Number);
+    const endTotalMins = (hours * 60 + minutesVal + mins) % 1440;
+    const endH = Math.floor(endTotalMins / 60);
+    const endM = endTotalMins % 60;
+    const endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+
+    storage.addCustomPomodoroWithMinutes(selectedDate, endTimeStr, mins, customTime);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
     setCustomTime('');
-    alert(`🍅 ${selectedDate} ${customTime}에 ${mins}분 공부 기록이 추가되었습니다!`);
+    alert(`🍅 ${selectedDate} [${format12H(customTime)} ~ ${format12H(endTimeStr)}] (${mins}분) 공부 기록이 추가되었습니다!`);
   };
 
   const handleDeleteTimestamp = (index) => {
@@ -601,6 +619,43 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       window.dispatchEvent(new CustomEvent('xp-updated'));
       if (onUpdate) onUpdate();
     }
+  };
+
+  const getSessionTimeRange = (ts) => {
+    const timeLabel = typeof ts === 'string' ? ts : (ts.time || '');
+    const minutesVal = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
+    const timeOnly = timeLabel.includes('T') ? timeLabel.split('T')[1].substring(0, 5) : timeLabel.substring(0, 5);
+
+    if (typeof ts === 'object' && ts.startTime && ts.endTime) {
+      return {
+        startTime: ts.startTime,
+        endTime: ts.endTime,
+        minutes: minutesVal
+      };
+    }
+
+    // Fallback: calculate startTime from endTime - minutesVal
+    const [endH, endM] = timeOnly.split(':').map(Number);
+    const endTotalMins = (isNaN(endH) ? 0 : endH) * 60 + (isNaN(endM) ? 0 : endM);
+    const startTotalMins = (endTotalMins - minutesVal + 1440) % 1440;
+    const startH = Math.floor(startTotalMins / 60);
+    const startM = startTotalMins % 60;
+    const startStr = `${startH.toString().padStart(2, '0')}:${startM.toString().padStart(2, '0')}`;
+
+    return {
+      startTime: startStr,
+      endTime: timeOnly,
+      minutes: minutesVal
+    };
+  };
+
+  const format12H = (hhmm) => {
+    if (!hhmm) return '';
+    const [hStr, mStr] = hhmm.split(':');
+    const h = parseInt(hStr, 10);
+    const ampm = h >= 12 ? '오후' : '오전';
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${ampm} ${hour12.toString().padStart(2, '0')}:${mStr}`;
   };
 
   const formatTimeDisplay = (totalSeconds) => {
@@ -759,59 +814,74 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
       {/* Daily Timestamped Log & Manual Input */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
-        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
-          <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: '0 0 0.75rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Clock size={16} /> 오늘 상세 공부 타임라인
-          </h3>
+        <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.2rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+            <h3 style={{ fontSize: '0.95rem', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 'bold' }}>
+              <Clock size={17} color="var(--accent-primary)" /> 오늘 상세 공부 타임라인
+            </h3>
+            <span style={{ fontSize: '0.78rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.12)', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+              총 {todayData.timestamps?.length || 0}회차 집중 완료
+            </span>
+          </div>
 
           {/* Timestamps List */}
-          <div style={{ maxHeight: '140px', overflowY: 'auto', marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <div style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingRight: '0.2rem' }}>
             {todayData.timestamps && todayData.timestamps.length > 0 ? (
               todayData.timestamps.map((ts, idx) => {
-                const timeLabel = typeof ts === 'string' ? ts : ts.time;
-                const minutesVal = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
-                const timeOnly = timeLabel.includes('T') ? timeLabel.split('T')[1].substring(0, 5) : timeLabel.substring(0, 5);
-                const [hStr, mStr] = timeOnly.split(':');
-                const hourNum = parseInt(hStr, 10);
-                const ampm = hourNum >= 12 ? '오후' : '오전';
-                const formattedHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
-                const formattedTime = `${ampm} ${formattedHour.toString().padStart(2, '0')}:${mStr}`;
+                const sessionInfo = getSessionTimeRange(ts);
 
                 return (
                   <div key={idx} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    background: 'rgba(255,255,255,0.04)', padding: '0.4rem 0.75rem', borderRadius: '4px', fontSize: '0.85rem'
+                    background: 'rgba(255,255,255,0.04)', padding: '0.55rem 0.85rem', borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.06)', transition: 'all 0.2s'
                   }}>
-                    <span style={{ color: 'var(--text-primary)' }}>
-                      {formattedTime} <span style={{ color: 'var(--accent-primary)', fontSize: '0.8rem' }}>({minutesVal}분 완료)</span>
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                      <span style={{
+                        background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', fontSize: '0.72rem',
+                        fontWeight: 'bold', padding: '0.15rem 0.45rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)'
+                      }}>
+                        {idx + 1}회차
+                      </span>
+                      <span style={{ fontWeight: '600', fontSize: '0.88rem', color: 'var(--text-primary)', letterSpacing: '0.3px' }}>
+                        {format12H(sessionInfo.startTime)} ~ {format12H(sessionInfo.endTime)}
+                      </span>
+                      <span style={{
+                        fontSize: '0.75rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.1)',
+                        padding: '0.1rem 0.45rem', borderRadius: '4px', fontWeight: 'bold'
+                      }}>
+                        {sessionInfo.minutes}분 집중
+                      </span>
+                    </div>
+
                     <button
                       onClick={() => handleDeleteTimestamp(idx)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
-                      title="삭제"
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.25rem', borderRadius: '4px', display: 'flex', alignItems: 'center' }}
+                      title="기록 삭제"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 );
               })
             ) : (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', padding: '0.75rem 0' }}>
-                아직 오늘 완료된 집중 기록이 없습니다. 타이머를 시작해보세요!
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', padding: '1.25rem 0', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+                🌱 아직 오늘 완료된 집중 기록이 없습니다. 타이머를 시작해보세요!
               </div>
             )}
           </div>
 
           {/* Manual Entry Form */}
-          <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>누락 추가:</span>
+          <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>누락 시간 직접 추가:</span>
             <input
               type="time"
               value={customTime}
               onChange={(e) => setCustomTime(e.target.value)}
+              title="시작 시간"
               style={{
-                background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)',
-                padding: '0.3rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem'
+                background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)',
+                padding: '0.3rem 0.5rem', borderRadius: '6px', fontSize: '0.8rem'
               }}
             />
             <input
@@ -820,13 +890,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               max="180"
               value={customMinutes}
               onChange={(e) => setCustomMinutes(e.target.value)}
+              title="집중 시간(분)"
               style={{
-                width: '50px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)',
-                padding: '0.3rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', textAlign: 'center'
+                width: '50px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)',
+                padding: '0.3rem 0.5rem', borderRadius: '6px', fontSize: '0.8rem', textAlign: 'center'
               }}
             />
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>분</span>
-            <button type="submit" className="btn btn-primary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>분</span>
+            <button type="submit" className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#34d399', fontWeight: 'bold' }}>
               추가
             </button>
           </form>

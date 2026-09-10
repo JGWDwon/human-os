@@ -291,7 +291,7 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoro(dateStr, timeStr, minutes = 25) {
+  addCustomPomodoro(dateStr, timeStr, minutes = 25, startTimeStr = null) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
     
@@ -320,6 +320,16 @@ export const storage = {
     const [hours, minutesVal] = timeStr.split(':');
     const d = new Date(dateStr);
     d.setHours(parseInt(hours, 10), parseInt(minutesVal, 10), 0, 0);
+
+    // Calculate start time if not provided
+    let calculatedStart = startTimeStr;
+    if (!calculatedStart) {
+      const endTotalMins = parseInt(hours, 10) * 60 + parseInt(minutesVal, 10);
+      const startTotalMins = (endTotalMins - minutes + 1440) % 1440;
+      const startH = Math.floor(startTotalMins / 60);
+      const startM = startTotalMins % 60;
+      calculatedStart = `${startH.toString().padStart(2, '0')}:${startM.toString().padStart(2, '0')}`;
+    }
     
     let countToAdd = 0;
     if (minutes >= 15) {
@@ -327,7 +337,12 @@ export const storage = {
     }
     data[dateStr].count += countToAdd;
     data[dateStr].totalMinutes += minutes;
-    data[dateStr].timestamps.push({ time: fullTimeStr, minutes: minutes });
+    data[dateStr].timestamps.push({
+      time: fullTimeStr,
+      minutes: minutes,
+      startTime: calculatedStart,
+      endTime: timeStr
+    });
     
     // Sort timestamps chronologically
     data[dateStr].timestamps.sort((a, b) => {
@@ -343,8 +358,8 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes) {
-    return this.addCustomPomodoro(dateStr, timeStr, minutes);
+  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes, startTimeStr = null) {
+    return this.addCustomPomodoro(dateStr, timeStr, minutes, startTimeStr);
   },
 
   deletePomodoroTimestamp(dateStr, index) {
