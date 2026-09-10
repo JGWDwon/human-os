@@ -28,6 +28,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const [customMinutes, setCustomMinutes] = useState('25');
   const [selectedDuration, setSelectedDuration] = useState(25); // minutes
   const [customDuration, setCustomDuration] = useState('');
+  const [showManualForm, setShowManualForm] = useState(false);
   const sessionStartTsRef = useRef(null);
   const pauseStartTsRef = useRef(null);
 
@@ -812,20 +813,43 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         </div>
       </div>
 
-      {/* Daily Timestamped Log & Manual Input */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1 }}>
-        <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.2rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-            <h3 style={{ fontSize: '0.95rem', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 'bold' }}>
-              <Clock size={17} color="var(--accent-primary)" /> 오늘 상세 공부 타임라인
-            </h3>
-            <span style={{ fontSize: '0.78rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.12)', padding: '0.2rem 0.6rem', borderRadius: '12px', fontWeight: 'bold', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
-              총 {todayData.timestamps?.length || 0}회차 집중 완료
-            </span>
+      {/* Daily Timestamped Log & Collapsible Manual Input */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1 }}>
+        <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem 1.1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <Clock size={16} color="var(--accent-primary)" />
+              <h3 style={{ fontSize: '0.92rem', color: 'var(--text-primary)', margin: 0, fontWeight: 'bold' }}>
+                오늘 집중 타임라인
+              </h3>
+              <span style={{ fontSize: '0.72rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.12)', padding: '0.15rem 0.5rem', borderRadius: '10px', fontWeight: 'bold' }}>
+                {todayData.timestamps?.length || 0}회 완료
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowManualForm(!showManualForm)}
+              style={{
+                background: showManualForm ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: showManualForm ? '#34d399' : 'var(--text-muted)',
+                fontSize: '0.75rem',
+                padding: '0.2rem 0.55rem',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                transition: 'all 0.15s'
+              }}
+            >
+              <Plus size={13} /> {showManualForm ? '접기' : '수동 추가'}
+            </button>
           </div>
 
           {/* Timestamps List */}
-          <div style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingRight: '0.2rem' }}>
+          <div style={{ maxHeight: '190px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingRight: '0.2rem' }}>
             {todayData.timestamps && todayData.timestamps.length > 0 ? (
               todayData.timestamps.map((ts, idx) => {
                 const sessionInfo = getSessionTimeRange(ts);
@@ -833,84 +857,76 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 return (
                   <div key={idx} style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    background: 'rgba(255,255,255,0.04)', padding: '0.55rem 0.85rem', borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.06)', transition: 'all 0.2s'
+                    background: 'rgba(255,255,255,0.03)', padding: '0.45rem 0.75rem', borderRadius: '6px',
+                    border: '1px solid rgba(255,255,255,0.05)', transition: 'all 0.2s'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <span style={{
-                        background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', fontSize: '0.72rem',
-                        fontWeight: 'bold', padding: '0.15rem 0.45rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)'
+                        background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', fontSize: '0.7rem',
+                        fontWeight: 'bold', padding: '0.1rem 0.4rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)'
                       }}>
-                        {idx + 1}회차
+                        {idx + 1}회
                       </span>
-                      <span style={{ fontWeight: '600', fontSize: '0.88rem', color: 'var(--text-primary)', letterSpacing: '0.3px' }}>
+                      <span style={{ fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                         {format12H(sessionInfo.startTime)} ~ {format12H(sessionInfo.endTime)}
                       </span>
                       <span style={{
-                        fontSize: '0.75rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.1)',
-                        padding: '0.1rem 0.45rem', borderRadius: '4px', fontWeight: 'bold'
+                        fontSize: '0.72rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.1)',
+                        padding: '0.08rem 0.4rem', borderRadius: '4px', fontWeight: 'bold'
                       }}>
-                        {sessionInfo.minutes}분 집중
+                        {sessionInfo.minutes}분
                       </span>
                     </div>
 
                     <button
                       onClick={() => handleDeleteTimestamp(idx)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.25rem', borderRadius: '4px', display: 'flex', alignItems: 'center' }}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem', borderRadius: '4px', display: 'flex', alignItems: 'center' }}
                       title="기록 삭제"
                     >
-                      <Trash2 size={15} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 );
               })
             ) : (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center', padding: '1.25rem 0', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-                🌱 아직 오늘 완료된 집중 기록이 없습니다. 타이머를 시작해보세요!
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'center', padding: '1rem 0', background: 'rgba(255,255,255,0.02)', borderRadius: '6px' }}>
+                🌱 오늘 완료된 집중 기록이 없습니다.
               </div>
             )}
           </div>
 
-          {/* Manual Entry Form */}
-          <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>누락 시간 직접 추가:</span>
-            <input
-              type="time"
-              value={customTime}
-              onChange={(e) => setCustomTime(e.target.value)}
-              title="시작 시간"
-              style={{
-                background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)',
-                padding: '0.3rem 0.5rem', borderRadius: '6px', fontSize: '0.8rem'
-              }}
-            />
-            <input
-              type="number"
-              min="1"
-              max="180"
-              value={customMinutes}
-              onChange={(e) => setCustomMinutes(e.target.value)}
-              title="집중 시간(분)"
-              style={{
-                width: '50px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)',
-                padding: '0.3rem 0.5rem', borderRadius: '6px', fontSize: '0.8rem', textAlign: 'center'
-              }}
-            />
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>분</span>
-            <button type="submit" className="btn btn-secondary" style={{ padding: '0.3rem 0.75rem', fontSize: '0.8rem', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#34d399', fontWeight: 'bold' }}>
-              추가
-            </button>
-          </form>
-        </div>
-
-        {/* Weekly Stats Summary */}
-        <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem 1.25rem', borderRadius: 'var(--radius-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}>
-            <CalendarDays size={18} color="var(--accent-secondary)" /> 이번 주 누적 공부시간
-          </span>
-          <span style={{ fontSize: '1.15rem', color: 'var(--accent-secondary)', fontWeight: 'bold', textShadow: '0 0 10px rgba(59, 130, 246, 0.3)' }}>
-            총 {Math.floor(weeklyData.weeklyMinutes / 60)}시간 {weeklyData.weeklyMinutes % 60}분
-          </span>
+          {/* Collapsible Manual Entry Form */}
+          {showManualForm && (
+            <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)', animation: 'fadeIn 0.2s ease' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>시작:</span>
+              <input
+                type="time"
+                value={customTime}
+                onChange={(e) => setCustomTime(e.target.value)}
+                title="시작 시간"
+                style={{
+                  background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)',
+                  padding: '0.25rem 0.45rem', borderRadius: '4px', fontSize: '0.78rem'
+                }}
+              />
+              <input
+                type="number"
+                min="1"
+                max="180"
+                value={customMinutes}
+                onChange={(e) => setCustomMinutes(e.target.value)}
+                title="집중 시간(분)"
+                style={{
+                  width: '45px', background: 'rgba(0,0,0,0.4)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)',
+                  padding: '0.25rem 0.4rem', borderRadius: '4px', fontSize: '0.78rem', textAlign: 'center'
+                }}
+              />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>분</span>
+              <button type="submit" className="btn btn-secondary" style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#34d399', fontWeight: 'bold' }}>
+                추가
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

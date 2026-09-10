@@ -353,6 +353,37 @@ export const storage = {
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
     this.addXP(minutes);
+
+    // Check for daily goal milestones bonus XP (4h: +50XP, 6h: +100XP, 8h: +150XP)
+    const currentDayTotal = data[dateStr].totalMinutes;
+    const prevDayTotal = currentDayTotal - minutes;
+    const milestonesRaw = localStorage.getItem('human_os_daily_milestones_awarded');
+    const milestonesAwarded = safeParse(milestonesRaw, {});
+    if (!milestonesAwarded[dateStr]) milestonesAwarded[dateStr] = {};
+
+    const milestoneChecks = [
+      { threshold: 240, bonus: 50, icon: '🌱', label: '새싹 (4시간 집중) 달성' },
+      { threshold: 360, bonus: 100, icon: '🌿', label: '성장 (6시간 집중) 달성' },
+      { threshold: 480, bonus: 150, icon: '🌲', label: '울창 (8시간 집중) 달성' },
+    ];
+
+    milestoneChecks.forEach(m => {
+      if (prevDayTotal < m.threshold && currentDayTotal >= m.threshold && !milestonesAwarded[dateStr][m.threshold]) {
+        milestonesAwarded[dateStr][m.threshold] = true;
+        localStorage.setItem('human_os_daily_milestones_awarded', JSON.stringify(milestonesAwarded));
+        this.addXP(m.bonus);
+        window.dispatchEvent(new CustomEvent('milestone-achieved', {
+          detail: {
+            threshold: m.threshold,
+            bonus: m.bonus,
+            icon: m.icon,
+            label: m.label,
+            totalMinutes: currentDayTotal
+          }
+        }));
+      }
+    });
+
     this._dispatchSync();
     
     return data[dateStr];
@@ -1016,10 +1047,31 @@ export const storage = {
 
   addXP(points) {
     const profile = this.getUserProfile();
+    const oldLevelInfo = this.getLevelInfo(profile.totalXP);
+    
     profile.totalXP += points;
     if (profile.totalXP < 0) profile.totalXP = 0; // 마이너스 방지
     localStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(profile));
     this._dispatchSync();
+
+    if (points > 0) {
+      const newLevelInfo = this.getLevelInfo(profile.totalXP);
+      if (newLevelInfo.level > oldLevelInfo.level) {
+        // Dispatch level-up event for celebration fanfare
+        window.dispatchEvent(new CustomEvent('level-up', {
+          detail: {
+            oldLevel: oldLevelInfo.level,
+            newLevel: newLevelInfo.level,
+            title: newLevelInfo.title,
+            tier: newLevelInfo.tier,
+            tierName: newLevelInfo.tierName,
+            tierColor: newLevelInfo.tierColor,
+            avatarRank: newLevelInfo.avatarRank
+          }
+        }));
+      }
+    }
+
     return profile.totalXP;
   },
 
@@ -1031,11 +1083,6 @@ export const storage = {
     
     while (true) {
       // RPG Curve: Fast early game, slow late game.
-      // Total XP for Level L = 7.5 * L^2.05
-      // Lv 10 (1차 전직) needs ~840 XP (can be reached in 3-4 days)
-      // Lv 30 (2차 전직) needs ~7,950 XP (can be reached in ~3 weeks)
-      // Lv 70 (3차 전직) needs ~45,345 XP (can be reached in ~4.5 months)
-      // Lv 120 (4차 전직) needs ~135,982 XP (can be reached in ~1 year)
       let currentTotal = Math.floor(7.5 * Math.pow(level, 2.05));
       let nextTotal = Math.floor(7.5 * Math.pow(level + 1, 2.05));
       let requiredForNext = nextTotal - currentTotal;
@@ -1050,17 +1097,50 @@ export const storage = {
       }
     }
     
-    let title = '🥚 초보자';
-    if (level >= 10 && level < 30) title = '🗡️ 1차 전직: 세린이';
-    else if (level >= 30 && level < 70) title = '⚔️ 2차 전직: 세청년';
-    else if (level >= 70 && level < 120) title = '🛡️ 3차 전직: 회독돌이';
-    else if (level >= 120) title = '👑 4차 전직: 예비 세무사';
+    // 5 Tiers with Divisions
+    let tier = 'bronze';
+    let tierName = '브론즈';
+    let tierColor = '#cd7f32';
+    let title = '🥉 브론즈 III (시작하는 도전자)';
+    let avatarRank = 0; // 0: adventurer, 1: rank1, 2: rank2, 3: rank3, 4: rank4
+
+    if (level < 4) {
+      tier = 'bronze'; tierName = '브론즈 III'; tierColor = '#cd7f32'; title = '🥉 브론즈 III (시작하는 도전자)'; avatarRank = 0;
+    } else if (level < 7) {
+      tier = 'bronze'; tierName = '브론즈 II'; tierColor = '#cd7f32'; title = '🥉 브론즈 II (습관 형성러)'; avatarRank = 0;
+    } else if (level < 10) {
+      tier = 'bronze'; tierName = '브론즈 I'; tierColor = '#cd7f32'; title = '🥉 브론즈 I (집중 루키)'; avatarRank = 0;
+    } else if (level < 16) {
+      tier = 'silver'; tierName = '실버 III'; tierColor = '#94a3b8'; title = '🥈 실버 III (열정 수험생)'; avatarRank = 1;
+    } else if (level < 23) {
+      tier = 'silver'; tierName = '실버 II'; tierColor = '#94a3b8'; title = '🥈 실버 II (지식 탐구자)'; avatarRank = 1;
+    } else if (level < 30) {
+      tier = 'silver'; tierName = '실버 I'; tierColor = '#94a3b8'; title = '🥈 실버 I (흔들림 없는 러너)'; avatarRank = 1;
+    } else if (level < 43) {
+      tier = 'gold'; tierName = '골드 III'; tierColor = '#f59e0b'; title = '🥇 골드 III (정예 수험생)'; avatarRank = 2;
+    } else if (level < 56) {
+      tier = 'gold'; tierName = '골드 II'; tierColor = '#f59e0b'; title = '🥇 골드 II (고수 회독러)'; avatarRank = 2;
+    } else if (level < 70) {
+      tier = 'gold'; tierName = '골드 I'; tierColor = '#f59e0b'; title = '🥇 골드 I (합격 안정권)'; avatarRank = 2;
+    } else if (level < 86) {
+      tier = 'platinum'; tierName = '플래티넘 III'; tierColor = '#06b6d4'; title = '💎 플래티넘 III (회독 장인)'; avatarRank = 3;
+    } else if (level < 103) {
+      tier = 'platinum'; tierName = '플래티넘 II'; tierColor = '#06b6d4'; title = '💎 플래티넘 II (절대 집중자)'; avatarRank = 3;
+    } else if (level < 120) {
+      tier = 'platinum'; tierName = '플래티넘 I'; tierColor = '#06b6d4'; title = '💎 플래티넘 I (합격 수석권)'; avatarRank = 3;
+    } else {
+      tier = 'master'; tierName = '그랜드 마스터'; tierColor = '#a855f7'; title = '👑 그랜드 마스터 (최종 합격 · 예비 세무사)'; avatarRank = 4;
+    }
 
     const progressPercent = Math.min(100, Math.floor((xpIntoLevel / xpForNextLevel) * 100));
 
     return {
       level,
+      tier,
+      tierName,
+      tierColor,
       title,
+      avatarRank,
       totalXP,
       xpIntoLevel,
       xpNeededForLevel: xpForNextLevel,
