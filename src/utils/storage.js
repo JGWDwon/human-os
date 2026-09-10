@@ -301,6 +301,20 @@ export const storage = {
     if (!data[dateStr].timestamps) {
       data[dateStr].timestamps = [];
     }
+
+    const fullTimeStr = `${dateStr}T${timeStr}:00`;
+
+    // Deduplication safety check: Prevent logging duplicate session at the exact same minute
+    const isDuplicate = data[dateStr].timestamps.some(ts => {
+      const tsTime = typeof ts === 'string' ? ts : (ts.time || '');
+      const tsMins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
+      return tsTime === fullTimeStr && tsMins === minutes;
+    });
+
+    if (isDuplicate) {
+      console.warn("Prevented duplicate pomodoro logging for:", fullTimeStr);
+      return data[dateStr];
+    }
     
     // Create Date object assuming local time
     const [hours, minutesVal] = timeStr.split(':');
@@ -313,7 +327,6 @@ export const storage = {
     }
     data[dateStr].count += countToAdd;
     data[dateStr].totalMinutes += minutes;
-    const fullTimeStr = `${dateStr}T${timeStr}:00`;
     data[dateStr].timestamps.push({ time: fullTimeStr, minutes: minutes });
     
     // Sort timestamps chronologically

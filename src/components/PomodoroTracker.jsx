@@ -125,6 +125,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const intervalRef = useRef(null);
   const wakeLockRef = useRef(null);
   const bgAudioRef = useRef(null);
+  const isCompletingRef = useRef(false);
+  const lastBellPlayTsRef = useRef(0);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -259,6 +261,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const playSound = async (type = 'complete') => {
     if (type === 'complete') {
+      const now = Date.now();
+      if (now - lastBellPlayTsRef.current < 2500) {
+        console.log("Prevented duplicate bell sound playback within 2.5s");
+        return;
+      }
+      lastBellPlayTsRef.current = now;
+
       try {
         if (!globalAudioCtx && typeof window !== 'undefined') {
           globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -321,6 +330,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   };
 
   const handleTimerComplete = (isFromCatchUp = false) => {
+    if (isCompletingRef.current) return;
+    isCompletingRef.current = true;
+
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     if (!Capacitor.isNativePlatform() || !isFromCatchUp) {
@@ -381,6 +393,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   };
 
   const startTimer = async () => {
+    if (timerState.isRunning) return;
+    isCompletingRef.current = false;
     playSound('click');
     
     try {
@@ -531,6 +545,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   };
 
   const resetTimer = () => {
+    isCompletingRef.current = false;
     playSound('click');
     const targetMins = customDuration ? parseInt(customDuration, 10) : selectedDuration;
     const secs = targetMins * 60;
