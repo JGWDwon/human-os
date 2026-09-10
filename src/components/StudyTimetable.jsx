@@ -48,13 +48,16 @@ const getSessionRange = (ts) => {
   };
 };
 
-// Build 24x6 active matrix for a given date
+// Build 24x6 active matrix for a given date with 5-minute half-block resolution
+// Each block contains { left: boolean, right: boolean } representing two 5-min intervals
 const buildActiveMatrixForDate = (dateStr) => {
   const dayData = storage.getPomodoroByDate(dateStr);
   const timestamps = dayData?.timestamps || [];
 
-  // matrix[hour_0_to_23][block_0_to_5]
-  const matrix = Array.from({ length: 24 }, () => Array(6).fill(false));
+  // matrix[hour_0_to_23][block_0_to_5] = { left: boolean, right: boolean }
+  const matrix = Array.from({ length: 24 }, () =>
+    Array.from({ length: 6 }, () => ({ left: false, right: false }))
+  );
 
   timestamps.forEach(ts => {
     const { startTime, endTime } = getSessionRange(ts);
@@ -72,13 +75,29 @@ const buildActiveMatrixForDate = (dateStr) => {
     for (let h = 0; h < 24; h++) {
       for (let b = 0; b < 6; b++) {
         const blockStart = h * 60 + b * 10;
-        const blockEnd = blockStart + 10;
 
-        const hasOverlap = Math.max(startTotal, blockStart) < Math.min(endTotal, blockEnd);
-        const hasWrappedOverlap = endTotal > 1440 && Math.max(startTotal - 1440, blockStart) < Math.min(endTotal - 1440, blockEnd);
+        // Left half (:00 ~ :05 of this 10-minute block)
+        const leftStart = blockStart;
+        const leftEnd = blockStart + 5;
+        const leftOverlap = Math.max(0, Math.min(endTotal, leftEnd) - Math.max(startTotal, leftStart));
+        const leftWrapped = endTotal > 1440
+          ? Math.max(0, Math.min(endTotal - 1440, leftEnd) - Math.max(startTotal - 1440, leftStart))
+          : 0;
 
-        if (hasOverlap || hasWrappedOverlap) {
-          matrix[h][b] = true;
+        if (leftOverlap >= 2.5 || leftWrapped >= 2.5) {
+          matrix[h][b].left = true;
+        }
+
+        // Right half (:05 ~ :10 of this 10-minute block)
+        const rightStart = blockStart + 5;
+        const rightEnd = blockStart + 10;
+        const rightOverlap = Math.max(0, Math.min(endTotal, rightEnd) - Math.max(startTotal, rightStart));
+        const rightWrapped = endTotal > 1440
+          ? Math.max(0, Math.min(endTotal - 1440, rightEnd) - Math.max(startTotal - 1440, rightStart))
+          : 0;
+
+        if (rightOverlap >= 2.5 || rightWrapped >= 2.5) {
+          matrix[h][b].right = true;
         }
       }
     }
@@ -90,6 +109,73 @@ const buildActiveMatrixForDate = (dateStr) => {
     matrix
   };
 };
+
+// Generate informative tooltip for each block
+const getBlockTooltip = (prefix, h, b, cell) => {
+  const startMin = b * 10;
+  const endMin = (b + 1) * 10;
+  const startStr = `${h}:${startMin.toString().padStart(2, '0')}`;
+  const endStr = `${h}:${endMin.toString().padStart(2, '0')}`;
+
+  if (cell.left && cell.right) {
+    return `${prefix} ${startStr} ~ ${endStr} (10분 집중)`;
+  }
+  if (cell.left && !cell.right) {
+    const halfEnd = `${h}:${(startMin + 5).toString().padStart(2, '0')}`;
+    return `${prefix} ${startStr} ~ ${halfEnd} (반 칸 / 5분 집중)`;
+  }
+  if (!cell.left && cell.right) {
+    const halfStart = `${h}:${(startMin + 5).toString().padStart(2, '0')}`;
+    return `${prefix} ${halfStart} ~ ${endStr} (반 칸 / 5분 집중)`;
+  }
+  return `${prefix} ${startStr} ~ ${endStr} (휴식)`;
+};
+
+// Subcomponent for rendering a 10-minute block with 5-minute half-block capability
+function TimetableBlock({ cell, activeColor, inactiveBg = 'rgba(255,255,255,0.04)', tooltip = '' }) {
+  const left = !!cell?.left;
+  const right = !!cell?.right;
+  const isFull = left && right;
+  const hasActive = left || right;
+
+  return (
+    <div
+      title={tooltip}
+      style={{
+        flex: 1,
+        height: '100%',
+        display: 'flex',
+        background: inactiveBg,
+        border: hasActive
+          ? `1px solid ${isFull ? activeColor : 'rgba(255,255,255,0.25)'}`
+          : '1px solid rgba(255,255,255,0.05)',
+        borderRadius: '2px',
+        overflow: 'hidden',
+        position: 'relative'
+      }}
+    >
+      {/* Left 5-min half */}
+      <div
+        style={{
+          width: '50%',
+          height: '100%',
+          background: left ? activeColor : 'transparent',
+          borderRight: isFull ? '1px solid rgba(0,0,0,0.1)' : '1px dashed rgba(255,255,255,0.12)',
+          transition: 'background 0.15s'
+        }}
+      />
+      {/* Right 5-min half */}
+      <div
+        style={{
+          width: '50%',
+          height: '100%',
+          background: right ? activeColor : 'transparent',
+          transition: 'background 0.15s'
+        }}
+      />
+    </div>
+  );
+}
 
 export default function StudyTimetable() {
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'tier1' | 'tier2' | 'tier3'
@@ -229,27 +315,41 @@ export default function StudyTimetable() {
       {/* ========================================================================= */}
       {(activeTab === 'all' || activeTab === 'tier1') && (
         <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.25rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ background: 'var(--accent-primary)', color: '#000', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
                 1단
               </span>
               <h3 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)', fontWeight: 'bold' }}>
-                월~일 주간 타임테이블 (10분 단위 색칠)
+                월~일 주간 타임테이블 (10분 그리드 · 5분 반칸 지원)
               </h3>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '10px', height: '10px', background: '#34d399', borderRadius: '2px', display: 'inline-block' }}></span> 집중 시간
+            {/* Legend showing Full, Half (25m/50m), and Break */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ width: '12px', height: '11px', background: '#34d399', borderRadius: '2px', display: 'inline-block' }}></span>
+                10분 (풀칸)
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '10px', height: '10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', display: 'inline-block' }}></span> 휴식
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{
+                  width: '12px',
+                  height: '11px',
+                  background: 'linear-gradient(to right, #34d399 50%, rgba(255,255,255,0.06) 50%)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: '2px',
+                  display: 'inline-block'
+                }}></span>
+                5분 (반칸 · 25/50분)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ width: '12px', height: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', display: 'inline-block' }}></span>
+                휴식 (빈칸)
               </span>
             </div>
           </div>
 
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1rem 0' }}>
-            이번 주 월요일부터 일요일까지 10분 단위 집중 기록이 스터디 플래너 양식으로 자동 색칠됩니다.
+            이번 주 월요일부터 일요일까지 10분 그리드 및 5분 반칸(25분/50분 집중)으로 스터디 플래너 양식에 맞춰 자동 색칠됩니다.
           </p>
 
           {/* Timetable Grid Container */}
@@ -297,25 +397,17 @@ export default function StudyTimetable() {
 
                     {/* 7 Days 6-block tracks */}
                     {weekDays.map(day => (
-                      <div key={day.dateStr} style={{ flex: 1, display: 'flex', gap: '1px', padding: '0 3px', height: '100%' }}>
+                      <div key={day.dateStr} style={{ flex: 1, display: 'flex', gap: '2px', padding: '0 3px', height: '100%' }}>
                         {[0, 1, 2, 3, 4, 5].map(b => {
-                          const isActive = day.data.matrix[h]?.[b];
+                          const cell = day.data.matrix[h]?.[b] || { left: false, right: false };
+                          const activeColor = day.isToday ? '#34d399' : 'rgba(52, 211, 153, 0.75)';
+                          const tooltip = getBlockTooltip(`${day.dayName}요일`, h, b, cell);
                           return (
-                            <div
+                            <TimetableBlock
                               key={b}
-                              title={`${day.dayName}요일 ${h}:${b * 10} ~ ${h}:${(b + 1) * 10}`}
-                              style={{
-                                flex: 1,
-                                height: '100%',
-                                background: isActive
-                                  ? (day.isToday ? '#34d399' : 'rgba(52, 211, 153, 0.75)')
-                                  : 'rgba(255,255,255,0.04)',
-                                border: isActive
-                                  ? '1px solid #10b981'
-                                  : '1px solid rgba(255,255,255,0.05)',
-                                borderRadius: '1.5px',
-                                transition: 'background 0.2s'
-                              }}
+                              cell={cell}
+                              activeColor={activeColor}
+                              tooltip={tooltip}
                             />
                           );
                         })}
@@ -335,7 +427,7 @@ export default function StudyTimetable() {
       {/* ========================================================================= */}
       {(activeTab === 'all' || activeTab === 'tier2') && (
         <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.25rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'gap', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ background: '#3b82f6', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
                 2단
@@ -404,18 +496,14 @@ export default function StudyTimetable() {
                   {/* Yesterday 6 Blocks */}
                   <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginRight: '0.5rem' }}>
                     {[0, 1, 2, 3, 4, 5].map(b => {
-                      const isActive = yesterdayData.matrix[h]?.[b];
+                      const cell = yesterdayData.matrix[h]?.[b] || { left: false, right: false };
+                      const tooltip = getBlockTooltip('어제', h, b, cell);
                       return (
-                        <div
+                        <TimetableBlock
                           key={b}
-                          title={`어제 ${h}:${b * 10} ~ ${h}:${(b + 1) * 10}`}
-                          style={{
-                            flex: 1,
-                            height: '100%',
-                            background: isActive ? '#3b82f6' : 'rgba(255,255,255,0.04)',
-                            border: isActive ? '1px solid #60a5fa' : '1px solid rgba(255,255,255,0.05)',
-                            borderRadius: '2px'
-                          }}
+                          cell={cell}
+                          activeColor="#3b82f6"
+                          tooltip={tooltip}
                         />
                       );
                     })}
@@ -427,18 +515,14 @@ export default function StudyTimetable() {
                   {/* Today 6 Blocks */}
                   <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginLeft: '0.5rem' }}>
                     {[0, 1, 2, 3, 4, 5].map(b => {
-                      const isActive = todayData.matrix[h]?.[b];
+                      const cell = todayData.matrix[h]?.[b] || { left: false, right: false };
+                      const tooltip = getBlockTooltip('오늘', h, b, cell);
                       return (
-                        <div
+                        <TimetableBlock
                           key={b}
-                          title={`오늘 ${h}:${b * 10} ~ ${h}:${(b + 1) * 10}`}
-                          style={{
-                            flex: 1,
-                            height: '100%',
-                            background: isActive ? '#10b981' : 'rgba(255,255,255,0.04)',
-                            border: isActive ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.05)',
-                            borderRadius: '2px'
-                          }}
+                          cell={cell}
+                          activeColor="#10b981"
+                          tooltip={tooltip}
                         />
                       );
                     })}
@@ -525,18 +609,14 @@ export default function StudyTimetable() {
                   {/* Last Week 6 Blocks */}
                   <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginRight: '0.5rem' }}>
                     {[0, 1, 2, 3, 4, 5].map(b => {
-                      const isActive = lastWeekData.matrix[h]?.[b];
+                      const cell = lastWeekData.matrix[h]?.[b] || { left: false, right: false };
+                      const tooltip = getBlockTooltip('저번주', h, b, cell);
                       return (
-                        <div
+                        <TimetableBlock
                           key={b}
-                          title={`저번주 ${h}:${b * 10} ~ ${h}:${(b + 1) * 10}`}
-                          style={{
-                            flex: 1,
-                            height: '100%',
-                            background: isActive ? '#8b5cf6' : 'rgba(255,255,255,0.04)',
-                            border: isActive ? '1px solid #c084fc' : '1px solid rgba(255,255,255,0.05)',
-                            borderRadius: '2px'
-                          }}
+                          cell={cell}
+                          activeColor="#8b5cf6"
+                          tooltip={tooltip}
                         />
                       );
                     })}
@@ -548,18 +628,14 @@ export default function StudyTimetable() {
                   {/* Today 6 Blocks */}
                   <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginLeft: '0.5rem' }}>
                     {[0, 1, 2, 3, 4, 5].map(b => {
-                      const isActive = todayData.matrix[h]?.[b];
+                      const cell = todayData.matrix[h]?.[b] || { left: false, right: false };
+                      const tooltip = getBlockTooltip('오늘', h, b, cell);
                       return (
-                        <div
+                        <TimetableBlock
                           key={b}
-                          title={`오늘 ${h}:${b * 10} ~ ${h}:${(b + 1) * 10}`}
-                          style={{
-                            flex: 1,
-                            height: '100%',
-                            background: isActive ? '#10b981' : 'rgba(255,255,255,0.04)',
-                            border: isActive ? '1px solid #34d399' : '1px solid rgba(255,255,255,0.05)',
-                            borderRadius: '2px'
-                          }}
+                          cell={cell}
+                          activeColor="#10b981"
+                          tooltip={tooltip}
                         />
                       );
                     })}
