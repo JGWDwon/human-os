@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { BarChart2, Download, Upload, Trophy, Timer, Zap, Calendar, Flame } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { storage } from '../utils/storage';
+import StudyTimetable from './StudyTimetable';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -235,6 +236,9 @@ export default function InsightsDashboard({ onClose }) {
           })}
         </div>
       </div>
+
+      {/* 3-Tier Study Planner Timetables (1단: 월~일, 2단: 어제 vs 오늘, 3단: 저번주 vs 오늘) */}
+      <StudyTimetable />
     </div>
   );
 }
