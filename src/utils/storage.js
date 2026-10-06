@@ -1740,5 +1740,91 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
     this._dispatchSync();
     return lectures.length;
+  },
+
+  getNonVacationDayBefore(dateStr, days = 1) {
+    const current = new Date(dateStr + 'T00:00:00');
+    let counted = 0;
+    let safety = 0;
+    while (counted < days && safety < 730) {
+      current.setDate(current.getDate() - 1);
+      const str = this._dateToStr(current);
+      if (!this.isVacationDate(str)) {
+        counted++;
+      }
+      safety++;
+    }
+    return this._dateToStr(current);
+  },
+
+  initializeCurriculumReview({
+    subject = '재무',
+    totalLectures = 54,
+    chunkSize = 3,
+    perDay = 2,
+    intervals = [1, 4, 7, 14, 30],
+    startToday = true,
+    mode = 'replace_all'
+  } = {}) {
+    const todayStr = this._dateToStr(new Date());
+    let lectures = this.getLectures();
+
+    if (mode === 'replace_all') {
+      lectures = [];
+    } else if (mode === 'replace_subject') {
+      lectures = lectures.filter(l => l.subject !== subject);
+    }
+
+    // Build chunks/units
+    const units = [];
+    for (let i = 1; i <= totalLectures; i += chunkSize) {
+      const end = Math.min(i + chunkSize - 1, totalLectures);
+      const title = i === end ? `${i}강` : `${i}~${end}강`;
+      units.push({ start: i, end, title });
+    }
+
+    // If starting today's review immediately, baseDate for day 0 is 1 non-vacation day before today
+    // so that offset 1 becomes today!
+    const baseTodayOrYesterday = startToday 
+      ? this.getNonVacationDayBefore(todayStr, 1) 
+      : todayStr;
+
+    const newLectures = units.map((unit, index) => {
+      const dayOffsetFromStart = Math.floor(index / perDay);
+      // Study base date for this unit
+      const baseDate = dayOffsetFromStart === 0
+        ? baseTodayOrYesterday
+        : this.getDateAfterNonVacationDays(baseTodayOrYesterday, dayOffsetFromStart);
+
+      // Display study date (for user display)
+      const displayStudyDate = startToday
+        ? (dayOffsetFromStart === 0 ? todayStr : this.getDateAfterNonVacationDays(todayStr, dayOffsetFromStart))
+        : baseDate;
+
+      const reviews = intervals.map(offset => {
+        const targetDateStr = this.getDateAfterNonVacationDays(baseDate, offset);
+        return {
+          id: `rev_${Date.now()}_${index}_${offset}_${Math.random().toString(36).substring(2, 6)}`,
+          dayOffset: offset,
+          targetDate: targetDateStr,
+          isCompleted: false,
+          completedAt: null
+        };
+      });
+
+      return {
+        id: `lec_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 6)}`,
+        dateAdded: displayStudyDate,
+        subject: subject,
+        title: unit.title,
+        reviews: reviews
+      };
+    });
+
+    const combined = [...lectures, ...newLectures];
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(combined));
+    this._dispatchSync();
+    return newLectures.length;
   }
 };
+
