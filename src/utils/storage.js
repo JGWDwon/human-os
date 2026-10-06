@@ -1757,23 +1757,19 @@ export const storage = {
     return this._dateToStr(current);
   },
 
-  initializeCurriculumReview({
+  /**
+   * Generates a curriculum review schedule with intelligent smoothing and daily review cap
+   */
+  generateCurriculumSchedule({
     subject = '재무',
     totalLectures = 54,
     chunkSize = 3,
     perDay = 2,
     intervals = [1, 4, 7, 14, 30],
     startToday = true,
-    mode = 'replace_all'
+    maxReviewsPerDay = 2
   } = {}) {
     const todayStr = this._dateToStr(new Date());
-    let lectures = this.getLectures();
-
-    if (mode === 'replace_all') {
-      lectures = [];
-    } else if (mode === 'replace_subject') {
-      lectures = lectures.filter(l => l.subject !== subject);
-    }
 
     // Build chunks/units
     const units = [];
@@ -1783,44 +1779,121 @@ export const storage = {
       units.push({ start: i, end, title });
     }
 
-    // If starting today's review immediately, baseDate for day 0 is 1 non-vacation day before today
-    // so that offset 1 becomes today!
-    const baseTodayOrYesterday = startToday 
-      ? this.getNonVacationDayBefore(todayStr, 1) 
+    const baseRef = startToday
+      ? this.getNonVacationDayBefore(todayStr, 1)
       : todayStr;
 
-    const newLectures = units.map((unit, index) => {
-      const dayOffsetFromStart = Math.floor(index / perDay);
-      // Study base date for this unit
-      const baseDate = dayOffsetFromStart === 0
-        ? baseTodayOrYesterday
-        : this.getDateAfterNonVacationDays(baseTodayOrYesterday, dayOffsetFromStart);
+    // Create tasks for all units and milestones
+    const allTasks = [];
+    units.forEach((unit, unitIdx) => {
+      const studyDayOffset = Math.floor(unitIdx / perDay);
+      intervals.forEach((intervalOffset, mIdx) => {
+        const idealDayOffset = studyDayOffset + intervalOffset;
+        allTasks.push({
+          unitIdx,
+          unitTitle: unit.title,
+          milestone: mIdx + 1,
+          intervalOffset,
+          studyDayOffset,
+          idealDayOffset
+        });
+      });
+    });
 
-      // Display study date (for user display)
-      const displayStudyDate = startToday
-        ? (dayOffsetFromStart === 0 ? todayStr : this.getDateAfterNonVacationDays(todayStr, dayOffsetFromStart))
-        : baseDate;
+    // Sort tasks: prioritize ideal day, then milestone (1st round first), then unit index
+    allTasks.sort((a, b) => {
+      if (a.idealDayOffset !== b.idealDayOffset) return a.idealDayOffset - b.idealDayOffset;
+      if (a.milestone !== b.milestone) return a.milestone - b.milestone;
+      return a.unitIdx - b.unitIdx;
+    });
 
-      const reviews = intervals.map(offset => {
-        const targetDateStr = this.getDateAfterNonVacationDays(baseDate, offset);
-        return {
-          id: `rev_${Date.now()}_${index}_${offset}_${Math.random().toString(36).substring(2, 6)}`,
-          dayOffset: offset,
-          targetDate: targetDateStr,
-          isCompleted: false,
-          completedAt: null
-        };
+    const dayCounts = {};
+    const lastUnitAssignedDay = {};
+    const assignedReviews = {};
+    const scheduleByDate = {}; // dateStr -> array of { title, milestone, dayOffset }
+
+    allTasks.forEach(task => {
+      let candidateDayOffset = Math.max(task.idealDayOffset, 1);
+      const prevMilestoneDay = lastUnitAssignedDay[task.unitIdx];
+      if (prevMilestoneDay !== undefined && candidateDayOffset <= prevMilestoneDay) {
+        candidateDayOffset = prevMilestoneDay + 1;
+      }
+
+      // Smooth forward while count >= maxReviewsPerDay
+      while ((dayCounts[candidateDayOffset] || 0) >= maxReviewsPerDay) {
+        candidateDayOffset++;
+      }
+
+      dayCounts[candidateDayOffset] = (dayCounts[candidateDayOffset] || 0) + 1;
+      lastUnitAssignedDay[task.unitIdx] = candidateDayOffset;
+
+      const targetDateStr = this.getDateAfterNonVacationDays(baseRef, candidateDayOffset);
+
+      if (!assignedReviews[task.unitIdx]) {
+        assignedReviews[task.unitIdx] = [];
+      }
+
+      assignedReviews[task.unitIdx].push({
+        id: `rev_${Date.now()}_${task.unitIdx}_${task.milestone}_${Math.random().toString(36).substring(2, 6)}`,
+        dayOffset: task.intervalOffset,
+        milestone: task.milestone,
+        targetDate: targetDateStr,
+        isCompleted: false,
+        completedAt: null
       });
 
+      if (!scheduleByDate[targetDateStr]) {
+        scheduleByDate[targetDateStr] = [];
+      }
+      scheduleByDate[targetDateStr].push({
+        subject: subject,
+        unitTitle: task.unitTitle,
+        milestone: task.milestone,
+        dayOffset: task.intervalOffset
+      });
+    });
+
+    const newLectures = units.map((unit, unitIdx) => {
+      const studyDayOffset = Math.floor(unitIdx / perDay);
+      const displayDateStr = startToday
+        ? (studyDayOffset === 0 ? todayStr : this.getDateAfterNonVacationDays(todayStr, studyDayOffset))
+        : this.getDateAfterNonVacationDays(baseRef, studyDayOffset);
+
+      const unitReviews = (assignedReviews[unitIdx] || []).sort((a, b) => a.milestone - b.milestone);
+
       return {
-        id: `lec_${Date.now()}_${index}_${Math.random().toString(36).substring(2, 6)}`,
-        dateAdded: displayStudyDate,
+        id: `lec_${Date.now()}_${unitIdx}_${Math.random().toString(36).substring(2, 6)}`,
+        dateAdded: displayDateStr,
         subject: subject,
         title: unit.title,
-        reviews: reviews
+        reviews: unitReviews
       };
     });
 
+    const dates = Object.keys(scheduleByDate).sort();
+
+    return {
+      units,
+      newLectures,
+      scheduleByDate,
+      dates,
+      totalUnits: units.length,
+      totalReviews: allTasks.length,
+      totalDays: dates.length
+    };
+  },
+
+  initializeCurriculumReview(options = {}) {
+    const { mode = 'replace_all', subject = '재무' } = options;
+    let lectures = this.getLectures();
+
+    if (mode === 'replace_all') {
+      lectures = [];
+    } else if (mode === 'replace_subject') {
+      lectures = lectures.filter(l => l.subject !== subject);
+    }
+
+    const { newLectures } = this.generateCurriculumSchedule(options);
     const combined = [...lectures, ...newLectures];
     localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(combined));
     this._dispatchSync();

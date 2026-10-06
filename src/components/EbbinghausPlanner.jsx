@@ -26,6 +26,8 @@ export default function EbbinghausPlanner({ onClose }) {
   const [currTotal, setCurrTotal] = useState(54);
   const [currChunk, setCurrChunk] = useState(3);
   const [currPerDay, setCurrPerDay] = useState(2);
+  const [currMaxReviewsPerDay, setCurrMaxReviewsPerDay] = useState(2); // Strict limit: at most 2 reviews per day
+  const [currIntervalPreset, setCurrIntervalPreset] = useState('standard'); // 'standard' | 'compact'
   const [currStartToday, setCurrStartToday] = useState(true);
   const [currMode, setCurrMode] = useState('replace_all'); // 'replace_all' | 'replace_subject' | 'append'
 
@@ -128,28 +130,37 @@ export default function EbbinghausPlanner({ onClose }) {
     refreshData();
   };
 
+  const selectedIntervals = useMemo(() => {
+    return currIntervalPreset === 'compact' ? [1, 7, 30] : [1, 4, 7, 14, 30];
+  }, [currIntervalPreset]);
+
   const previewSchedule = useMemo(() => {
     const total = Math.max(1, Number(currTotal) || 54);
     const chunk = Math.max(1, Number(currChunk) || 3);
     const perDay = Math.max(1, Number(currPerDay) || 2);
+    const maxReviews = Math.max(1, Number(currMaxReviewsPerDay) || 2);
     const sub = currSubject.trim() || '재무';
-    const units = [];
-    for (let i = 1; i <= total; i += chunk) {
-      const end = Math.min(i + chunk - 1, total);
-      units.push(i === end ? `${i}강` : `${i}~${end}강`);
-    }
-    const days = [];
-    const totalDays = Math.ceil(units.length / perDay);
-    for (let d = 0; d < totalDays; d++) {
-      const assignedUnits = units.slice(d * perDay, (d + 1) * perDay);
-      days.push({
-        dayNumber: d + 1,
-        dayOffset: d,
-        units: assignedUnits
-      });
-    }
-    return { sub, units, days, totalUnits: units.length, totalDays };
-  }, [currSubject, currTotal, currChunk, currPerDay]);
+
+    const res = storage.generateCurriculumSchedule({
+      subject: sub,
+      totalLectures: total,
+      chunkSize: chunk,
+      perDay: perDay,
+      intervals: selectedIntervals,
+      startToday: currStartToday,
+      maxReviewsPerDay: maxReviews
+    });
+
+    return {
+      sub,
+      units: res.units,
+      dates: res.dates,
+      scheduleByDate: res.scheduleByDate,
+      totalUnits: res.totalUnits,
+      totalReviews: res.totalReviews,
+      totalDays: res.totalDays
+    };
+  }, [currSubject, currTotal, currChunk, currPerDay, currStartToday, currMaxReviewsPerDay, selectedIntervals]);
 
   const handleCreateCurriculum = (e) => {
     if (e) e.preventDefault();
@@ -157,6 +168,7 @@ export default function EbbinghausPlanner({ onClose }) {
     const total = Math.max(1, Number(currTotal) || 54);
     const chunk = Math.max(1, Number(currChunk) || 3);
     const perDay = Math.max(1, Number(currPerDay) || 2);
+    const maxReviews = Math.max(1, Number(currMaxReviewsPerDay) || 2);
 
     const modeMsg = currMode === 'replace_all'
       ? "기존의 모든 강의를 초기화하고"
@@ -165,10 +177,12 @@ export default function EbbinghausPlanner({ onClose }) {
         : "기존 강의를 유지한 채";
 
     const startMsg = currStartToday
-      ? "오늘부터 즉시 1차 복습(1~3강, 4~6강)을 시작합니다."
+      ? "오늘부터 즉시 1차 복습을 시작합니다."
       : "오늘을 진도 학습일로 등록하고 내일부터 1차 복습이 시작됩니다.";
 
-    if (!window.confirm(`[${sub}] 총 ${total}강 (${chunk}강씩 하루 ${perDay}개 묶음) 1471430 복습 플랜을 생성하시겠습니까?\n\n• ${modeMsg} 새 스케줄을 세팅합니다.\n• ${startMsg}\n• 망각주기: 1, 4, 7, 14, 30일차 총 5회 복습`)) {
+    const intervalsLabel = currIntervalPreset === 'compact' ? '3회 쾌속 (1·7·30일)' : '5회 표준 (1·4·7·14·30일)';
+
+    if (!window.confirm(`[${sub}] 총 ${total}강 (${chunk}강씩) 복습 플랜을 생성하시겠습니까?\n\n• ${modeMsg} 새 스케줄을 세팅합니다.\n• ${startMsg}\n• ✨ 지능형 자동 스무딩: 하루 최대 ${maxReviews}개로 엄격 제한 (절대 2개 초과 안 함)\n• 복습 주기: ${intervalsLabel}`)) {
       return;
     }
 
@@ -177,9 +191,10 @@ export default function EbbinghausPlanner({ onClose }) {
       totalLectures: total,
       chunkSize: chunk,
       perDay: perDay,
-      intervals: [1, 4, 7, 14, 30],
+      intervals: selectedIntervals,
       startToday: currStartToday,
-      mode: currMode
+      mode: currMode,
+      maxReviewsPerDay: maxReviews
     });
 
     confetti({
@@ -188,7 +203,7 @@ export default function EbbinghausPlanner({ onClose }) {
       origin: { y: 0.6 }
     });
 
-    alert(`🎉 [${sub}] 1471430 복습 플랜 생성 완료!\n총 ${count}개 묶음(${total}강)의 복습 일정이 성공적으로 생성되었습니다.\n\n오늘의 복습 체크리스트에서 바로 확인해보세요! 🔥`);
+    alert(`🎉 [${sub}] 자동 스무딩 복습 플랜 생성 완료!\n총 ${count}개 묶음(${total}강)의 복습이 하루 최대 ${maxReviews}개를 넘지 않도록 균등 분배되었습니다.\n\n오늘의 복습 체크리스트에서 바로 확인해보세요! 🔥`);
     setShowCurriculumModal(false);
     setShowManageModal(false);
     refreshData();
@@ -774,7 +789,7 @@ export default function EbbinghausPlanner({ onClose }) {
             </div>
 
             <form onSubmit={handleCreateCurriculum} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Preset Quick Banner */}
+              {/* Preset Quick Banner with Smoothing Note */}
               <div style={{
                 background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(249, 115, 22, 0.15) 100%)',
                 border: '1px solid rgba(168, 85, 247, 0.35)',
@@ -783,20 +798,20 @@ export default function EbbinghausPlanner({ onClose }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#e9d5ff', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Sparkles size={14} color="#f59e0b" /> 자동 계산 요약
+                    <Sparkles size={14} color="#f59e0b" /> 지능형 자동 스무딩 활성화
                   </span>
-                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 'bold' }}>
-                    {previewSchedule.totalUnits}개 묶음 · {previewSchedule.totalDays}일 플랜
+                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 'bold', background: 'rgba(56, 189, 248, 0.15)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+                    하루 최대 {currMaxReviewsPerDay}개 절대 엄수
                   </span>
                 </div>
                 <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  총 <b style={{ color: '#fff' }}>{currTotal}강</b>을 <b style={{ color: '#c084fc' }}>{currChunk}강씩</b> 묶어 총 <b style={{ color: '#fff' }}>{previewSchedule.totalUnits}개 단위</b>를 생성합니다.<br />
-                  하루 최대 <b style={{ color: '#f97316' }}>{currPerDay}개</b>씩 진도를 나가며, 각 묶음마다 <b style={{ color: '#34d399' }}>1·4·7·14·30일차(5회)</b> 복습이 자동 배치됩니다.
+                  총 <b style={{ color: '#fff' }}>{currTotal}강</b>({previewSchedule.totalUnits}개 묶음) 복습이 겹치지 않도록, 특정 날짜에 몰리는 복습을 뒤로 자동 분산합니다.<br />
+                  어떤 날도 <b style={{ color: '#f97316' }}>하루 최대 {currMaxReviewsPerDay}개</b>를 넘지 않아, 다른 과목을 추가하셔도 부담 없이 쾌적하게 복습할 수 있습니다!
                 </div>
               </div>
 
               {/* Basic Settings Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '0.6rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '0.6rem' }}>
                 <div>
                   <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>과목명</label>
                   <input
@@ -832,16 +847,65 @@ export default function EbbinghausPlanner({ onClose }) {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>하루 진도 (개씩)</label>
+                  <label style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 'bold', display: 'block', marginBottom: '0.2rem' }}>하루 복습 상한 (개)</label>
                   <input
                     type="number"
                     min="1"
-                    max="20"
-                    value={currPerDay}
-                    onChange={(e) => setCurrPerDay(e.target.value)}
+                    max="10"
+                    value={currMaxReviewsPerDay}
+                    onChange={(e) => setCurrMaxReviewsPerDay(e.target.value)}
                     required
-                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }}
+                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#38bdf8', border: '1px solid #38bdf8', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 'bold' }}
+                    title="하루에 이 과목의 복습이 절대 이 개수를 넘지 않도록 자동 스무딩됩니다"
                   />
+                </div>
+              </div>
+
+              {/* Interval Preset Selector */}
+              <div style={{ background: '#1e293b', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#cbd5e1', display: 'block', marginBottom: '0.45rem' }}>
+                  🔁 복습 주기 선택
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCurrIntervalPreset('standard')}
+                    className="btn"
+                    style={{
+                      flex: 1,
+                      minWidth: '140px',
+                      padding: '0.45rem 0.6rem',
+                      background: currIntervalPreset === 'standard' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(255,255,255,0.05)',
+                      border: currIntervalPreset === 'standard' ? '1px solid #8b5cf6' : '1px solid rgba(255,255,255,0.1)',
+                      color: currIntervalPreset === 'standard' ? '#c084fc' : 'var(--text-muted)',
+                      fontSize: '0.75rem',
+                      fontWeight: currIntervalPreset === 'standard' ? 'bold' : 'normal',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div>🔥 5회 표준 주기 (기본)</div>
+                    <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>1·4·7·14·30일차 (총 5회)</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrIntervalPreset('compact')}
+                    className="btn"
+                    style={{
+                      flex: 1,
+                      minWidth: '140px',
+                      padding: '0.45rem 0.6rem',
+                      background: currIntervalPreset === 'compact' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.05)',
+                      border: currIntervalPreset === 'compact' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                      color: currIntervalPreset === 'compact' ? '#34d399' : 'var(--text-muted)',
+                      fontSize: '0.75rem',
+                      fontWeight: currIntervalPreset === 'compact' ? 'bold' : 'normal',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div>⚡ 3회 쾌속 주기</div>
+                    <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>1·7·30일차 (총 3회)</div>
+                  </button>
                 </div>
               </div>
 
@@ -925,27 +989,31 @@ export default function EbbinghausPlanner({ onClose }) {
                 </div>
               </div>
 
-              {/* 9-Day Progression Preview */}
+              {/* Intelligent Smoothed Preview */}
               <div style={{ background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#c084fc' }}>
-                    📅 진도 스케줄 미리보기 ({previewSchedule.totalDays}일)
+                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    📅 스무딩 적용 스케줄 미리보기 ({previewSchedule.totalDays}일간)
                   </span>
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                    총 {previewSchedule.totalUnits}개 묶음 1471430 배치
+                  <span style={{ fontSize: '0.68rem', color: '#38bdf8', fontWeight: 'bold' }}>
+                    하루 최대 {currMaxReviewsPerDay}개 절대 엄수
                   </span>
                 </div>
-                <div style={{ maxHeight: '130px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem', paddingRight: '0.2rem' }}>
-                  {previewSchedule.days.map(d => (
-                    <div key={d.dayNumber} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.35rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem' }}>
-                      <span style={{ color: d.dayNumber === 1 ? '#34d399' : '#94a3b8', fontWeight: 'bold' }}>
-                        {d.dayNumber === 1 ? '1일차 (오늘)' : `${d.dayNumber}일차`}
-                      </span>
-                      <span style={{ color: '#fff', fontWeight: '500' }}>
-                        {d.units.map(u => `[${currSubject}] ${u}`).join(' · ')}
-                      </span>
-                    </div>
-                  ))}
+                <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem', paddingRight: '0.2rem' }}>
+                  {previewSchedule.dates.map((dateStr) => {
+                    const items = previewSchedule.scheduleByDate[dateStr] || [];
+                    const isToday = dateStr === todayStr;
+                    return (
+                      <div key={dateStr} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.35rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem' }}>
+                        <span style={{ color: isToday ? '#34d399' : '#94a3b8', fontWeight: isToday ? 'bold' : 'normal' }}>
+                          {dateStr} {isToday ? '(오늘)' : ''} <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>({items.length}개)</span>
+                        </span>
+                        <span style={{ color: '#fff', fontWeight: '500' }}>
+                          {items.map(it => `[${currSubject}] ${it.unitTitle} (${it.milestone}회차)`).join(' · ')}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
