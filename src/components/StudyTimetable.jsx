@@ -339,7 +339,7 @@ export default function StudyTimetable() {
                   borderRadius: '2px',
                   display: 'inline-block'
                 }}></span>
-                5분 (반칸 · 25/50분)
+                5분 (반칸)
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <span style={{ width: '12px', height: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', display: 'inline-block' }}></span>
@@ -349,7 +349,7 @@ export default function StudyTimetable() {
           </div>
 
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1rem 0' }}>
-            이번 주 월요일부터 일요일까지 10분 그리드 및 5분 반칸(25분/50분 집중)으로 스터디 플래너 양식에 맞춰 자동 색칠됩니다.
+            이번 주 월요일부터 일요일까지 10분 그리드 및 5분 반칸으로 스터디 플래너 양식에 맞춰 자동 색칠됩니다.
           </p>
 
           {/* Timetable Grid Container */}

@@ -25,8 +25,22 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const [todayData, setTodayData] = useState({ count: 0, totalMinutes: 0, timestamps: [] });
   const [weeklyData, setWeeklyData] = useState({ weeklyCount: 0, weeklyMinutes: 0, weekData: [] });
   const [customTime, setCustomTime] = useState('');
-  const [customMinutes, setCustomMinutes] = useState('25');
-  const [selectedDuration, setSelectedDuration] = useState(25); // minutes
+  const [customMinutes, setCustomMinutes] = useState('30');
+  const [selectedDuration, setSelectedDuration] = useState(() => {
+    try {
+      const saved = localStorage.getItem('human_os_timer_state_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.duration) {
+          const m = Math.round(parsed.duration / 60);
+          if (m === 25) return 30;
+          if (m === 50) return 60;
+          return m;
+        }
+      }
+    } catch (e) {}
+    return 30;
+  }); // minutes
   const [customDuration, setCustomDuration] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
   const sessionStartTsRef = useRef(null);
@@ -45,10 +59,20 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       const parsed = JSON.parse(saved);
       if (parsed.mode === 'break') {
         parsed.mode = 'focus';
-        parsed.duration = 1500;
-        parsed.timeLeft = 1500;
+        parsed.duration = 1800;
+        parsed.timeLeft = 1800;
         parsed.isRunning = false;
         parsed.isPaused = false;
+      }
+      // Migrate legacy 25m or 50m when idle
+      if (!parsed.isRunning && !parsed.isPaused) {
+        if (parsed.duration === 1500 || !parsed.duration) {
+          parsed.duration = 1800;
+          parsed.timeLeft = 1800;
+        } else if (parsed.duration === 3000) {
+          parsed.duration = 3600;
+          parsed.timeLeft = 3600;
+        }
       }
       if (parsed.isRunning) {
         const remaining = Math.max(0, Math.round((parsed.endTime - Date.now()) / 1000));
@@ -76,8 +100,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       isRunning: false,
       isPaused: false,
       endTime: 0,
-      duration: 1500, // 25 min default
-      timeLeft: 1500,
+      duration: 1800, // 30 min default
+      timeLeft: 1800,
     };
   });
 
@@ -90,7 +114,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       const endObj = new Date(targetEndTimeMs);
       const actualToday = new Date(endObj.getTime() - (endObj.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       const endTimeStr = endObj.toTimeString().split(' ')[0].substring(0, 5);
-      const mins = timerState.autoLogMins || 25;
+      const mins = timerState.autoLogMins || 30;
 
       const startObj = new Date(targetEndTimeMs - mins * 60 * 1000);
       const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
@@ -100,7 +124,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       window.dispatchEvent(new CustomEvent('xp-updated'));
       if (onUpdate) onUpdate();
 
-      const nextDuration = timerState.duration || 1500;
+      const nextDuration = timerState.duration || 1800;
       const nextState = {
         isRunning: false,
         isPaused: false,
@@ -715,7 +739,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         {/* Preset Selector */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.25rem', alignItems: 'center' }}>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>집중 시간:</span>
-          {[25, 50].map(mins => (
+          {[30, 60].map(mins => (
             <button
               key={mins}
               onClick={() => {
