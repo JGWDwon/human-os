@@ -52,6 +52,7 @@ export default function EbbinghausPlanner({ onClose }) {
   };
 
   useEffect(() => {
+    storage.migrateReviewsToSameDay();
     refreshData();
     window.addEventListener('cloud-sync-needed', refreshData);
     return () => window.removeEventListener('cloud-sync-needed', refreshData);
@@ -943,10 +944,10 @@ export default function EbbinghausPlanner({ onClose }) {
                     />
                     <div>
                       <span style={{ fontWeight: !currStartToday ? 'bold' : 'normal' }}>
-                        📖 오늘 진도 시작 (내일부터 1차 복습 등장)
+                        📖 내일부터 진도 및 1차 복습 시작
                       </span>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        오늘을 진도 학습일로 등록하고, 첫 복습(1회차)은 내일 체크리스트에 나타납니다.
+                        내일부터 1~3강, 4~6강 진도 및 1일차 당일 복습을 시작합니다.
                       </div>
                     </div>
                   </label>

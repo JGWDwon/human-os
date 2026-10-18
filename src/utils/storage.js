@@ -1196,6 +1196,15 @@ export const storage = {
     return this._dateToStr(current);
   },
 
+  // Get target review date: 1일차 is same day (당일 시작), 4/7/14/30 are spaced by non-vacation days
+  getTargetDateForReview(baseDateStr, offset) {
+    if (offset === 1) {
+      // 1일차 복습: 공부한 당일 시작
+      return this.getAdjustedTargetDate(baseDateStr);
+    }
+    return this.getDateAfterNonVacationDays(baseDateStr, offset);
+  },
+
   addLecture(subject, title, dateStr) {
     if (!dateStr) {
       const d = new Date();
@@ -1204,12 +1213,12 @@ export const storage = {
     
     const lectures = this.getLectures();
     
-    // Ebbinghaus intervals: 1, 4, 7, 14, 30 days (vacation days are invisible/skipped)
+    // Ebbinghaus intervals: 1(당일), 4, 7, 14, 30 days (vacation days are invisible/skipped)
     const intervals = [1, 4, 7, 14, 30];
     
     const reviews = intervals.map(offset => {
-      // Count `offset` non-vacation days from study date
-      const targetDateStr = this.getDateAfterNonVacationDays(dateStr, offset);
+      // 1일차는 공부한 당일(0일 뒤), 이후 4, 7, 14, 30은 해당 일수 뒤
+      const targetDateStr = this.getTargetDateForReview(dateStr, offset);
 
       return {
         id: `rev_${Date.now()}_${offset}`,
@@ -1457,12 +1466,15 @@ export const storage = {
       const firstUncompleted = uncompleted[0];
 
       // Calculate ideal vacation-aware date for first uncompleted review
-      let idealFirstDate = this.getDateAfterNonVacationDays(lec.dateAdded, firstUncompleted.dayOffset);
+      let idealFirstDate = this.getTargetDateForReview(lec.dateAdded, firstUncompleted.dayOffset);
       let anchorDate = idealFirstDate < todayStr ? this.getAdjustedTargetDate(todayStr) : idealFirstDate;
+
+      const effFirst = firstUncompleted.dayOffset === 1 ? 0 : firstUncompleted.dayOffset;
 
       uncompleted.forEach(rev => {
         // Gap in 14714 offset days from the first uncompleted review
-        const gapOffset = rev.dayOffset - firstUncompleted.dayOffset;
+        const effRev = rev.dayOffset === 1 ? 0 : rev.dayOffset;
+        const gapOffset = effRev - effFirst;
 
         // Target date is `anchorDate` + `gapOffset` non-vacation days!
         // This guarantees that relative 14714 intervals (e.g. 7d -> 14d gap = 7 days) are 100% PRESERVED even when pulled forward!
@@ -1547,8 +1559,8 @@ export const storage = {
         const offset = rev.dayOffset;
         if (!intervals.includes(offset)) return;
 
-        // Calculate exact target date: `offset` non-vacation days from the lecture start date (lec.dateAdded)
-        const pureTargetDate = this.getDateAfterNonVacationDays(lec.dateAdded, offset);
+        // Calculate exact target date: 1일차 is 당일, 4/7/14/30 are non-vacation days from start date
+        const pureTargetDate = this.getTargetDateForReview(lec.dateAdded, offset);
 
         if (rev.targetDate !== pureTargetDate) {
           rev.targetDate = pureTargetDate;
@@ -1562,6 +1574,31 @@ export const storage = {
       this._dispatchSync();
     }
     return resetCount;
+  },
+
+  // Auto-migrate uncompleted 1일차 reviews that were scheduled on next day to same day (당일 시작)
+  migrateReviewsToSameDay() {
+    const lectures = this.getLectures();
+    let updated = false;
+
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        // Only uncompleted 1일차 reviews that were scheduled on dateAdded + 1
+        if (!rev.isCompleted && rev.dayOffset === 1) {
+          const nextDayTarget = this.getDateAfterNonVacationDays(lec.dateAdded, 1);
+          if (rev.targetDate === nextDayTarget) {
+            rev.targetDate = this.getAdjustedTargetDate(lec.dateAdded);
+            updated = true;
+          }
+        }
+      });
+    });
+
+    if (updated) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return updated;
   },
 
   shiftAllUpcomingReviews(days) {
@@ -1708,7 +1745,7 @@ export const storage = {
       while (true) {
         let isValid = true;
         for (const offset of intervals) {
-          const target = this.getDateAfterNonVacationDays(startDateStr, offset);
+          const target = this.getTargetDateForReview(startDateStr, offset);
           if ((dateCounts[target] || 0) >= maxPerDay) {
             isValid = false;
             break;
@@ -1724,7 +1761,7 @@ export const storage = {
 
       lec.dateAdded = startDateStr;
       lec.reviews = intervals.map(offset => {
-        const targetDateStr = this.getDateAfterNonVacationDays(startDateStr, offset);
+        const targetDateStr = this.getTargetDateForReview(startDateStr, offset);
         dateCounts[targetDateStr] = (dateCounts[targetDateStr] || 0) + 1;
 
         return {
@@ -1779,16 +1816,17 @@ export const storage = {
       units.push({ start: i, end, title });
     }
 
-    const baseRef = startToday
-      ? this.getNonVacationDayBefore(todayStr, 1)
-      : todayStr;
+    const startDayBaseOffset = startToday ? 0 : 1;
+    const baseRef = todayStr;
 
     // Create tasks for all units and milestones
     const allTasks = [];
     units.forEach((unit, unitIdx) => {
-      const studyDayOffset = Math.floor(unitIdx / perDay);
+      const studyDayOffset = startDayBaseOffset + Math.floor(unitIdx / perDay);
       intervals.forEach((intervalOffset, mIdx) => {
-        const idealDayOffset = studyDayOffset + intervalOffset;
+        // 1일차 복습 (intervalOffset === 1) is same day as study (idealDayOffset = studyDayOffset)
+        // Subsequent reviews (4, 7, 14, 30) are studyDayOffset + intervalOffset
+        const idealDayOffset = intervalOffset === 1 ? studyDayOffset : studyDayOffset + intervalOffset;
         allTasks.push({
           unitIdx,
           unitTitle: unit.title,
@@ -1813,7 +1851,7 @@ export const storage = {
     const scheduleByDate = {}; // dateStr -> array of { title, milestone, dayOffset }
 
     allTasks.forEach(task => {
-      let candidateDayOffset = Math.max(task.idealDayOffset, 1);
+      let candidateDayOffset = Math.max(task.idealDayOffset, 0);
       const prevMilestoneDay = lastUnitAssignedDay[task.unitIdx];
       if (prevMilestoneDay !== undefined && candidateDayOffset <= prevMilestoneDay) {
         candidateDayOffset = prevMilestoneDay + 1;
@@ -1827,7 +1865,9 @@ export const storage = {
       dayCounts[candidateDayOffset] = (dayCounts[candidateDayOffset] || 0) + 1;
       lastUnitAssignedDay[task.unitIdx] = candidateDayOffset;
 
-      const targetDateStr = this.getDateAfterNonVacationDays(baseRef, candidateDayOffset);
+      const targetDateStr = candidateDayOffset === 0
+        ? this.getAdjustedTargetDate(baseRef)
+        : this.getDateAfterNonVacationDays(baseRef, candidateDayOffset);
 
       if (!assignedReviews[task.unitIdx]) {
         assignedReviews[task.unitIdx] = [];
@@ -1854,10 +1894,10 @@ export const storage = {
     });
 
     const newLectures = units.map((unit, unitIdx) => {
-      const studyDayOffset = Math.floor(unitIdx / perDay);
-      const displayDateStr = startToday
-        ? (studyDayOffset === 0 ? todayStr : this.getDateAfterNonVacationDays(todayStr, studyDayOffset))
-        : this.getDateAfterNonVacationDays(baseRef, studyDayOffset);
+      const studyDayOffset = startDayBaseOffset + Math.floor(unitIdx / perDay);
+      const displayDateStr = studyDayOffset === 0
+        ? this.getAdjustedTargetDate(todayStr)
+        : this.getDateAfterNonVacationDays(todayStr, studyDayOffset);
 
       const unitReviews = (assignedReviews[unitIdx] || []).sort((a, b) => a.milestone - b.milestone);
 
