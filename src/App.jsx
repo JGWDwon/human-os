@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, BarChart2, Target, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen } from 'lucide-react';
+import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import PomodoroTracker from './components/PomodoroTracker';
 import ForestPixelMap from './components/ForestPixelMap';
 import InsightsDashboard from './components/InsightsDashboard';
-import PhaseRoadmap from './components/PhaseRoadmap';
 import EbbinghausPlanner from './components/EbbinghausPlanner';
 import { storage } from './utils/storage';
 import TierBadge from './components/TierBadge';
@@ -13,7 +12,7 @@ import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 function App() {
-  const [activeView, setActiveView] = useState('main'); // 'main' | 'ebbinghaus' | 'insights' | 'settings' | 'roadmap'
+  const [activeView, setActiveView] = useState('main'); // 'main' | 'ebbinghaus' | 'insights' | 'settings'
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
@@ -513,9 +512,7 @@ function App() {
         {/* ========================================================================= */}
         {/* MAIN VIEWS & CONTENT AREA */}
         {/* ========================================================================= */}
-        {activeView === 'roadmap' ? (
-          <PhaseRoadmap onClose={() => setActiveView('main')} />
-        ) : activeView === 'insights' ? (
+        {activeView === 'insights' ? (
           <InsightsDashboard onClose={() => setActiveView('main')} />
         ) : activeView === 'ebbinghaus' ? (
           <EbbinghausPlanner onClose={() => setActiveView('main')} />
@@ -526,21 +523,6 @@ function App() {
                 <Settings size={20} color="var(--accent-secondary)" /> 환경 설정
               </h3>
               <button onClick={() => setActiveView('main')} className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem' }}>닫기</button>
-            </div>
-
-            {/* 전체 로드맵 바로가기 버튼 */}
-            <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem' }}>공부 시스템 전체 로드맵</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Phase 1(집중)부터 Phase 4(실전 모의고사)까지 마일스톤 확인</div>
-              </div>
-              <button 
-                onClick={() => setActiveView('roadmap')}
-                className="btn btn-secondary" 
-                style={{ padding: '0.4rem 0.8rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-              >
-                <Target size={15} /> 로드맵 열기
-              </button>
             </div>
 
             {/* 백업 및 복구 영역 (리포트에서 설정으로 깔끔하게 이동) */}

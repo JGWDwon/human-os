@@ -20,17 +20,6 @@ export default function EbbinghausPlanner({ onClose }) {
   const [showManageModal, setShowManageModal] = useState(false);
   const [showLectureList, setShowLectureList] = useState(false);
 
-  // Curriculum Preset state (e.g. Finance 54 lectures)
-  const [showCurriculumModal, setShowCurriculumModal] = useState(false);
-  const [currSubject, setCurrSubject] = useState('재무');
-  const [currTotal, setCurrTotal] = useState(54);
-  const [currChunk, setCurrChunk] = useState(3);
-  const [currPerDay, setCurrPerDay] = useState(2);
-  const [currMaxReviewsPerDay, setCurrMaxReviewsPerDay] = useState(2); // Strict limit: at most 2 reviews per day
-  const [currIntervalPreset, setCurrIntervalPreset] = useState('standard'); // 'standard' | 'compact'
-  const [currStartToday, setCurrStartToday] = useState(true);
-  const [currMode, setCurrMode] = useState('replace_all'); // 'replace_all' | 'replace_subject' | 'append'
-
   const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const [selectedDateForAdd, setSelectedDateForAdd] = useState(todayStr);
 
@@ -131,85 +120,6 @@ export default function EbbinghausPlanner({ onClose }) {
     refreshData();
   };
 
-  const selectedIntervals = useMemo(() => {
-    return currIntervalPreset === 'compact' ? [1, 7, 30] : [1, 4, 7, 14, 30];
-  }, [currIntervalPreset]);
-
-  const previewSchedule = useMemo(() => {
-    const total = Math.max(1, Number(currTotal) || 54);
-    const chunk = Math.max(1, Number(currChunk) || 3);
-    const perDay = Math.max(1, Number(currPerDay) || 2);
-    const maxReviews = Math.max(1, Number(currMaxReviewsPerDay) || 2);
-    const sub = currSubject.trim() || '재무';
-
-    const res = storage.generateCurriculumSchedule({
-      subject: sub,
-      totalLectures: total,
-      chunkSize: chunk,
-      perDay: perDay,
-      intervals: selectedIntervals,
-      startToday: currStartToday,
-      maxReviewsPerDay: maxReviews
-    });
-
-    return {
-      sub,
-      units: res.units,
-      dates: res.dates,
-      scheduleByDate: res.scheduleByDate,
-      totalUnits: res.totalUnits,
-      totalReviews: res.totalReviews,
-      totalDays: res.totalDays
-    };
-  }, [currSubject, currTotal, currChunk, currPerDay, currStartToday, currMaxReviewsPerDay, selectedIntervals]);
-
-  const handleCreateCurriculum = (e) => {
-    if (e) e.preventDefault();
-    const sub = currSubject.trim() || '재무';
-    const total = Math.max(1, Number(currTotal) || 54);
-    const chunk = Math.max(1, Number(currChunk) || 3);
-    const perDay = Math.max(1, Number(currPerDay) || 2);
-    const maxReviews = Math.max(1, Number(currMaxReviewsPerDay) || 2);
-
-    const modeMsg = currMode === 'replace_all'
-      ? "기존의 모든 강의를 초기화하고"
-      : currMode === 'replace_subject'
-        ? `기존 [${sub}] 관련 강의만 삭제하고`
-        : "기존 강의를 유지한 채";
-
-    const startMsg = currStartToday
-      ? "오늘부터 즉시 1차 복습을 시작합니다."
-      : "오늘을 진도 학습일로 등록하고 내일부터 1차 복습이 시작됩니다.";
-
-    const intervalsLabel = currIntervalPreset === 'compact' ? '3회 쾌속 (1·7·30일)' : '5회 표준 (1·4·7·14·30일)';
-
-    if (!window.confirm(`[${sub}] 총 ${total}강 (${chunk}강씩) 복습 플랜을 생성하시겠습니까?\n\n• ${modeMsg} 새 스케줄을 세팅합니다.\n• ${startMsg}\n• ✨ 지능형 자동 스무딩: 하루 최대 ${maxReviews}개로 엄격 제한 (절대 2개 초과 안 함)\n• 복습 주기: ${intervalsLabel}`)) {
-      return;
-    }
-
-    const count = storage.initializeCurriculumReview({
-      subject: sub,
-      totalLectures: total,
-      chunkSize: chunk,
-      perDay: perDay,
-      intervals: selectedIntervals,
-      startToday: currStartToday,
-      mode: currMode,
-      maxReviewsPerDay: maxReviews
-    });
-
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
-
-    alert(`🎉 [${sub}] 자동 스무딩 복습 플랜 생성 완료!\n총 ${count}개 묶음(${total}강)의 복습이 하루 최대 ${maxReviews}개를 넘지 않도록 균등 분배되었습니다.\n\n오늘의 복습 체크리스트에서 바로 확인해보세요! 🔥`);
-    setShowCurriculumModal(false);
-    setShowManageModal(false);
-    refreshData();
-  };
-
   const handleFullResetAll14714 = () => {
     if (window.confirm("모든 강의의 복습 기록(완료 항목 포함)을 초기화하고, 오늘부터 하루 최대 3개씩 14714(5회) 복습 스케줄로 다시 새출발하시겠습니까?\n\n• 완료/미완료된 모든 복습이 초기화됩니다.\n• 1, 4, 7, 14, 30일 간격으로 5회 복습이 재설정됩니다.\n• 하루에 복습이 최대 3개를 넘지 않도록 예쁘게 분배됩니다.")) {
       const count = storage.resetAllLectures14714FromToday(3);
@@ -244,21 +154,21 @@ export default function EbbinghausPlanner({ onClose }) {
   };
 
   const handleDistributeOverdue = (maxPerDay = 3) => {
-    const count = storage.redistributeOverdueReviews(maxPerDay);
+    const count = storage.distributeOverdueReviews(maxPerDay);
     alert(`✨ 밀린 복습 재배치 완료!\n총 ${count}개의 밀린 복습이 하루 최대 ${maxPerDay}개씩 균등하게 재배치되었습니다.`);
     setShowOverdueModal(false);
     refreshData();
   };
 
   const handleSmartRedistribute = (maxPerDay = 3) => {
-    const count = storage.redistributeOverdueReviewsSmart(maxPerDay);
+    const count = storage.smartEbbinghausRedistribute(maxPerDay);
     alert(`✨ 회차 간격 보존 재배치 완료!\n총 ${count}개의 밀린 복습이 오늘부터 하루 최대 ${maxPerDay}개씩 배정되었으며, 이후 회차 간격(+3일, +7일 등)도 100% 보존되었습니다.`);
     setShowOverdueModal(false);
     refreshData();
   };
 
   const handleMoveOverdueToTodayModal = () => {
-    const count = storage.moveOverdueReviewsToDate(todayStr);
+    const count = storage.moveAllOverdueToToday();
     alert(`⚡ 완료: 총 ${count}개의 밀린 복습이 오늘(${todayStr})로 이동되었습니다.`);
     setShowOverdueModal(false);
     refreshData();
@@ -343,25 +253,6 @@ export default function EbbinghausPlanner({ onClose }) {
 
         {/* Action Controls */}
         <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button 
-            onClick={() => setShowCurriculumModal(true)}
-            className="btn btn-secondary"
-            style={{ 
-              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(249, 115, 22, 0.25) 100%)', 
-              border: '1px solid #a855f7', 
-              color: '#f3e8ff', 
-              fontSize: '0.82rem', 
-              padding: '0.4rem 0.75rem', 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.35rem',
-              fontWeight: 'bold'
-            }}
-            title="재무 54강 1471430 원클릭 복습 초기화 및 생성"
-          >
-            <Sparkles size={15} color="#c084fc" /> 🔥 재무 54강 새출발
-          </button>
-
           <button 
             onClick={() => setShowAddForm(!showAddForm)}
             className="btn btn-primary"
@@ -760,298 +651,12 @@ export default function EbbinghausPlanner({ onClose }) {
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* 재무 54강 1471430 맞춤 복습 초기화 & 플랜 생성 모달 (ShowCurriculumModal) */}
-      {/* ========================================================================= */}
-      {showCurriculumModal && (
-        <div style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0, 0, 0, 0.82)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1002, padding: '1rem'
-        }}>
-          <div className="glass-panel animate-fade-in" style={{
-            maxWidth: '520px', width: '100%', background: '#0f172a', border: '1px solid #a855f7',
-            borderRadius: '16px', padding: '1.5rem', boxShadow: '0 15px 35px rgba(0,0,0,0.7)',
-            maxHeight: '92vh', overflowY: 'auto'
-          }}>
-            {/* Modal Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.75rem' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.45rem', fontWeight: 'bold' }}>
-                  <Flame size={20} color="#f97316" /> 재무 54강 1471430 복습 새출발
-                </h3>
-                <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                  3강씩 18개 묶음 · 하루 최대 2개씩 순차 진도 · 5회 망각곡선 자동 생성
-                </p>
-              </div>
-              <button onClick={() => setShowCurriculumModal(false)} className="btn btn-secondary" style={{ padding: '0.25rem 0.5rem' }}>
-                <X size={16} />
-              </button>
-            </div>
+      {/* Curriculum Modal Removed */}
 
-            <form onSubmit={handleCreateCurriculum} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {/* Preset Quick Banner with Smoothing Note */}
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(249, 115, 22, 0.15) 100%)',
-                border: '1px solid rgba(168, 85, 247, 0.35)',
-                borderRadius: '10px',
-                padding: '0.85rem'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#e9d5ff', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Sparkles size={14} color="#f59e0b" /> 지능형 자동 스무딩 활성화
-                  </span>
-                  <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 'bold', background: 'rgba(56, 189, 248, 0.15)', padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
-                    하루 최대 {currMaxReviewsPerDay}개 절대 엄수
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  총 <b style={{ color: '#fff' }}>{currTotal}강</b>({previewSchedule.totalUnits}개 묶음) 복습이 겹치지 않도록, 특정 날짜에 몰리는 복습을 뒤로 자동 분산합니다.<br />
-                  어떤 날도 <b style={{ color: '#f97316' }}>하루 최대 {currMaxReviewsPerDay}개</b>를 넘지 않아, 다른 과목을 추가하셔도 부담 없이 쾌적하게 복습할 수 있습니다!
-                </div>
-              </div>
 
-              {/* Basic Settings Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '0.6rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>과목명</label>
-                  <input
-                    type="text"
-                    value={currSubject}
-                    onChange={(e) => setCurrSubject(e.target.value)}
-                    required
-                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>총 강의 수</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="500"
-                    value={currTotal}
-                    onChange={(e) => setCurrTotal(e.target.value)}
-                    required
-                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>1회 분량 (강씩)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={currChunk}
-                    onChange={(e) => setCurrChunk(e.target.value)}
-                    required
-                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 'bold', display: 'block', marginBottom: '0.2rem' }}>하루 복습 상한 (개)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={currMaxReviewsPerDay}
-                    onChange={(e) => setCurrMaxReviewsPerDay(e.target.value)}
-                    required
-                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#38bdf8', border: '1px solid #38bdf8', borderRadius: '6px', fontSize: '0.82rem', fontWeight: 'bold' }}
-                    title="하루에 이 과목의 복습이 절대 이 개수를 넘지 않도록 자동 스무딩됩니다"
-                  />
-                </div>
-              </div>
 
-              {/* Interval Preset Selector */}
-              <div style={{ background: '#1e293b', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#cbd5e1', display: 'block', marginBottom: '0.45rem' }}>
-                  🔁 복습 주기 선택
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => setCurrIntervalPreset('standard')}
-                    className="btn"
-                    style={{
-                      flex: 1,
-                      minWidth: '140px',
-                      padding: '0.45rem 0.6rem',
-                      background: currIntervalPreset === 'standard' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(255,255,255,0.05)',
-                      border: currIntervalPreset === 'standard' ? '1px solid #8b5cf6' : '1px solid rgba(255,255,255,0.1)',
-                      color: currIntervalPreset === 'standard' ? '#c084fc' : 'var(--text-muted)',
-                      fontSize: '0.75rem',
-                      fontWeight: currIntervalPreset === 'standard' ? 'bold' : 'normal',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <div>🔥 5회 표준 주기 (기본)</div>
-                    <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>1·4·7·14·30일차 (총 5회)</div>
-                  </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setCurrIntervalPreset('compact')}
-                    className="btn"
-                    style={{
-                      flex: 1,
-                      minWidth: '140px',
-                      padding: '0.45rem 0.6rem',
-                      background: currIntervalPreset === 'compact' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.05)',
-                      border: currIntervalPreset === 'compact' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
-                      color: currIntervalPreset === 'compact' ? '#34d399' : 'var(--text-muted)',
-                      fontSize: '0.75rem',
-                      fontWeight: currIntervalPreset === 'compact' ? 'bold' : 'normal',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <div>⚡ 3회 쾌속 주기</div>
-                    <div style={{ fontSize: '0.68rem', opacity: 0.8 }}>1·7·30일차 (총 3회)</div>
-                  </button>
-                </div>
-              </div>
 
-              {/* Start Mode Options */}
-              <div style={{ background: '#1e293b', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#cbd5e1', display: 'block', marginBottom: '0.45rem' }}>
-                  🎯 복습 시작 기준일 설정
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer', fontSize: '0.78rem', color: currStartToday ? '#c084fc' : 'var(--text-muted)' }}>
-                    <input
-                      type="radio"
-                      name="currStartToday"
-                      checked={currStartToday === true}
-                      onChange={() => setCurrStartToday(true)}
-                      style={{ marginTop: '0.15rem' }}
-                    />
-                    <div>
-                      <span style={{ fontWeight: currStartToday ? 'bold' : 'normal' }}>
-                        🔥 오늘부터 1차 복습 바로 시작 (권장)
-                      </span>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        오늘의 복습 체크리스트에 1~3강, 4~6강(1회차)이 즉시 등장합니다.
-                      </div>
-                    </div>
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer', fontSize: '0.78rem', color: !currStartToday ? '#c084fc' : 'var(--text-muted)' }}>
-                    <input
-                      type="radio"
-                      name="currStartToday"
-                      checked={currStartToday === false}
-                      onChange={() => setCurrStartToday(false)}
-                      style={{ marginTop: '0.15rem' }}
-                    />
-                    <div>
-                      <span style={{ fontWeight: !currStartToday ? 'bold' : 'normal' }}>
-                        📖 내일부터 진도 및 1차 복습 시작
-                      </span>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                        내일부터 1~3강, 4~6강 진도 및 1일차 당일 복습을 시작합니다.
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Overwrite Mode */}
-              <div style={{ background: '#1e293b', padding: '0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#cbd5e1', display: 'block', marginBottom: '0.45rem' }}>
-                  ⚙️ 기존 강의 데이터 처리
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.78rem', color: currMode === 'replace_all' ? '#f87171' : 'var(--text-muted)' }}>
-                    <input
-                      type="radio"
-                      name="currMode"
-                      checked={currMode === 'replace_all'}
-                      onChange={() => setCurrMode('replace_all')}
-                    />
-                    <span><b>전면 초기화 후 새출발</b> (기존 모든 강의/복습 삭제 후 깔끔히 시작)</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.78rem', color: currMode === 'replace_subject' ? '#38bdf8' : 'var(--text-muted)' }}>
-                    <input
-                      type="radio"
-                      name="currMode"
-                      checked={currMode === 'replace_subject'}
-                      onChange={() => setCurrMode('replace_subject')}
-                    />
-                    <span><b>[{currSubject}] 과목만 교체</b> (다른 과목은 안전하게 보존)</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', fontSize: '0.78rem', color: currMode === 'append' ? '#34d399' : 'var(--text-muted)' }}>
-                    <input
-                      type="radio"
-                      name="currMode"
-                      checked={currMode === 'append'}
-                      onChange={() => setCurrMode('append')}
-                    />
-                    <span><b>기존 강의 유지하고 추가</b></span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Intelligent Smoothed Preview */}
-              <div style={{ background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    📅 스무딩 적용 스케줄 미리보기 ({previewSchedule.totalDays}일간)
-                  </span>
-                  <span style={{ fontSize: '0.68rem', color: '#38bdf8', fontWeight: 'bold' }}>
-                    하루 최대 {currMaxReviewsPerDay}개 절대 엄수
-                  </span>
-                </div>
-                <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem', paddingRight: '0.2rem' }}>
-                  {previewSchedule.dates.map((dateStr) => {
-                    const items = previewSchedule.scheduleByDate[dateStr] || [];
-                    const isToday = dateStr === todayStr;
-                    return (
-                      <div key={dateStr} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.35rem 0.55rem', borderRadius: '6px', fontSize: '0.72rem' }}>
-                        <span style={{ color: isToday ? '#34d399' : '#94a3b8', fontWeight: isToday ? 'bold' : 'normal' }}>
-                          {dateStr} {isToday ? '(오늘)' : ''} <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>({items.length}개)</span>
-                        </span>
-                        <span style={{ color: '#fff', fontWeight: '500' }}>
-                          {items.map(it => `[${currSubject}] ${it.unitTitle} (${it.milestone}회차)`).join(' · ')}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Submit Buttons */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCurriculumModal(false)}
-                  className="btn btn-secondary"
-                  style={{ flex: 1, padding: '0.6rem', fontSize: '0.85rem' }}
-                >
-                  취소
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{
-                    flex: 2,
-                    background: 'linear-gradient(135deg, #8b5cf6 0%, #f97316 100%)',
-                    border: 'none',
-                    padding: '0.6rem',
-                    fontSize: '0.88rem',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)'
-                  }}
-                >
-                  <Flame size={16} /> 재무 54강 복습 플랜 생성 & 새출발
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* 복습 관리 통합 설정 모달 (ShowManageModal) */}
@@ -1076,27 +681,7 @@ export default function EbbinghausPlanner({ onClose }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              {/* Option 0: 재무 54강 1471430 맞춤 초기화 */}
-              <div style={{ background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(249, 115, 22, 0.15) 100%)', border: '1px solid #a855f7', borderRadius: '10px', padding: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                  <div style={{ fontWeight: 'bold', color: '#c084fc', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                    <Flame size={16} color="#f97316" /> 🔥 재무 54강 1471430 새출발
-                  </div>
-                  <span style={{ fontSize: '0.68rem', padding: '0.15rem 0.45rem', borderRadius: '4px', background: '#8b5cf6', color: '#fff', fontWeight: 'bold' }}>
-                    NEW 맞춤 프리셋
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem 0', lineHeight: 1.4 }}>
-                  재무 54강을 3강씩(총 18개 묶음), 오늘부터 하루 최대 2개씩 1471430 망각곡선 5회 복습으로 자동 세팅합니다.
-                </p>
-                <button
-                  onClick={() => { setShowManageModal(false); setShowCurriculumModal(true); }}
-                  className="btn btn-primary"
-                  style={{ width: '100%', background: 'linear-gradient(135deg, #8b5cf6 0%, #f97316 100%)', border: 'none', padding: '0.55rem', fontSize: '0.85rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem' }}
-                >
-                  <Sparkles size={15} /> 재무 54강 복습 플랜 생성기 열기
-                </button>
-              </div>
+
 
               {/* Option 1: 14714 새출발 */}
               <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', padding: '1rem' }}>
@@ -1204,27 +789,47 @@ export default function EbbinghausPlanner({ onClose }) {
 
             {/* Existing Vacations */}
             <div>
-              <h4 style={{ fontSize: '0.88rem', color: '#fff', margin: '0 0 0.5rem 0' }}>등록된 휴가 내역</h4>
-              {vacations.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>현재 등록된 휴가가 없습니다.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  {vacations.map(v => (
-                    <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '6px' }}>
-                      <span style={{ fontSize: '0.82rem', color: '#34d399' }}>
-                        {v.startDate} ~ {v.endDate} ({v.days}일간)
-                      </span>
-                      <button 
-                        onClick={() => handleRevertVacation(v.id)}
-                        className="btn btn-secondary"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem', color: '#ef4444' }}
-                      >
-                        취소(원복)
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <h4 style={{ fontSize: '0.88rem', color: '#fff', margin: 0 }}>등록된 휴가 내역</h4>
+                {vacations.some(v => v.endDate < todayStr) && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    (지난 휴가 {vacations.filter(v => v.endDate < todayStr).length}건 숨김)
+                  </span>
+                )}
+              </div>
+              {(() => {
+                const activeVacations = vacations.filter(v => v.endDate >= todayStr);
+                if (activeVacations.length === 0) {
+                  return (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0, padding: '0.5rem 0' }}>
+                      현재 진행 중이거나 예정된 휴가가 없습니다.
+                    </p>
+                  );
+                }
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {activeVacations.map(v => (
+                      <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '6px' }}>
+                        <span style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 'bold' }}>
+                          {v.startDate} ~ {v.endDate} ({v.days}일간)
+                          {v.startDate <= todayStr && v.endDate >= todayStr && (
+                            <span style={{ fontSize: '0.68rem', background: 'rgba(16, 185, 129, 0.2)', padding: '0.1rem 0.35rem', borderRadius: '4px', marginLeft: '0.4rem' }}>
+                              진행 중 🌴
+                            </span>
+                          )}
+                        </span>
+                        <button 
+                          onClick={() => handleRevertVacation(v.id)}
+                          className="btn btn-secondary"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.72rem', color: '#ef4444' }}
+                        >
+                          취소(원복)
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

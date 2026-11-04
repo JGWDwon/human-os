@@ -1,16 +1,33 @@
 import { useState, useEffect } from 'react';
-import { TreePine, Trophy, Flame } from 'lucide-react';
+import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight } from 'lucide-react';
 import { storage } from '../utils/storage';
 
 export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSelect }) {
   const [history, setHistory] = useState([]);
   const [stats, setStats] = useState({ totalTrees: 0, currentStreak: 0 });
   const [calendarInfo, setCalendarInfo] = useState({ year: 2026, month: 8, firstDay: 0 }); // month is 0-indexed
+  const [viewDate, setViewDate] = useState(() => new Date());
+
+  const handlePrevMonth = () => {
+    setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const handleTodayMonth = () => {
+    setViewDate(new Date());
+  };
+
+  const isCurrentMonth = () => {
+    const now = new Date();
+    return viewDate.getFullYear() === now.getFullYear() && viewDate.getMonth() === now.getMonth();
+  };
 
   useEffect(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
     
     // Get data for the calendar view
     const monthlyHist = storage.getMonthlyHistory(year, month);
@@ -38,7 +55,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     }
     
     setStats({ totalTrees, currentStreak: streak });
-  }, [refreshTrigger, selectedDate]);
+  }, [refreshTrigger, selectedDate, viewDate]);
 
   const getColor = (status) => {
     switch(status) {
@@ -69,11 +86,53 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
 
   return (
     <div className="glass-panel" style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderTop: '3px solid var(--accent-primary)', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', color: 'var(--text-primary)', margin: 0 }}>
-          <TreePine size={20} color="var(--accent-primary)" />
-          {calendarInfo.year}년 {monthNames[calendarInfo.month]} 성장의 숲
-        </h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', color: 'var(--text-primary)', margin: 0 }}>
+            <TreePine size={20} color="var(--accent-primary)" />
+            {calendarInfo.year}년 {monthNames[calendarInfo.month]} 성장의 숲
+          </h3>
+          
+          {/* Month Navigation */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px 4px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <button 
+              onClick={handlePrevMonth}
+              title="이전 달"
+              aria-label="이전 달"
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '3px 5px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button 
+              onClick={handleTodayMonth}
+              title="이번 달로 이동"
+              style={{
+                background: isCurrentMonth() ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.08)',
+                border: isCurrentMonth() ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255,255,255,0.1)',
+                color: isCurrentMonth() ? 'var(--accent-primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '2px 6px',
+                fontSize: '0.72rem',
+                borderRadius: '4px',
+                fontWeight: 'bold'
+              }}
+            >
+              이번달
+            </button>
+            <button 
+              onClick={handleNextMonth}
+              title="다음 달"
+              aria-label="다음 달"
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '3px 5px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
         
         {/* Stats */}
         <div style={{ display: 'flex', gap: '0.75rem' }}>

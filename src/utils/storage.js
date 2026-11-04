@@ -1403,6 +1403,19 @@ export const storage = {
     return overdueList.length;
   },
 
+  // Aliases for overdue redistribution
+  redistributeOverdueReviews(maxPerDay = 2) {
+    return this.distributeOverdueReviews(maxPerDay);
+  },
+
+  redistributeOverdueReviewsSmart(maxPerDay = 3) {
+    return this.smartEbbinghausRedistribute(maxPerDay);
+  },
+
+  moveOverdueReviewsToDate(dateStr) {
+    return this.moveAllOverdueToToday();
+  },
+
   reanchorEbbinghausFromToday(stagger = false) {
     const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     const lectures = this.getLectures();

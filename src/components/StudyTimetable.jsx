@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Calendar, ArrowRight, TrendingUp, TrendingDown, Clock, CheckCircle2 } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { storage } from '../utils/storage';
 
 // 24 Hours starting at 06:00 to 05:00 next morning (matching traditional Korean 10-minute study planner)
@@ -178,7 +178,7 @@ function TimetableBlock({ cell, activeColor, inactiveBg = 'rgba(255,255,255,0.04
 }
 
 export default function StudyTimetable() {
-  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'tier1' | 'tier2' | 'tier3'
+  const [weekOffset, setWeekOffset] = useState(0); // 0: 이번 주, -1: 지난 주, +1: 다음 주
 
   // Dates computation
   const todayObj = useMemo(() => new Date(), []);
@@ -187,21 +187,11 @@ export default function StudyTimetable() {
     return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   }, [todayObj]);
 
-  const yesterdayStr = useMemo(() => {
-    const d = new Date(todayObj);
-    d.setDate(d.getDate() - 1);
-    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-  }, [todayObj]);
-
-  const lastWeekSameDayStr = useMemo(() => {
-    const d = new Date(todayObj);
-    d.setDate(d.getDate() - 7);
-    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-  }, [todayObj]);
-
-  // Current week Mon ~ Sun
-  const weekDays = useMemo(() => {
+  // Selected week Mon ~ Sun based on weekOffset
+  const { weekDays, weekRangeLabel } = useMemo(() => {
     const now = new Date(todayObj);
+    now.setDate(now.getDate() + weekOffset * 7);
+
     const dayOfWeek = now.getDay() || 7; // 1=Mon, 7=Sun
     const monday = new Date(now);
     monday.setDate(now.getDate() - dayOfWeek + 1);
@@ -223,107 +213,84 @@ export default function StudyTimetable() {
         data: buildActiveMatrixForDate(dateStr)
       });
     }
-    return days;
-  }, [todayObj, todayStr]);
 
-  // Data for Tier 2 (Yesterday vs Today)
-  const yesterdayData = useMemo(() => buildActiveMatrixForDate(yesterdayStr), [yesterdayStr]);
-  const todayData = useMemo(() => buildActiveMatrixForDate(todayStr), [todayStr]);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const rangeLabel = `${monday.getFullYear()}년 ${monday.getMonth() + 1}월 ${monday.getDate()}일 ~ ${sunday.getMonth() + 1}월 ${sunday.getDate()}일`;
 
-  // Data for Tier 3 (Last Week Same Day vs Today)
-  const lastWeekData = useMemo(() => buildActiveMatrixForDate(lastWeekSameDayStr), [lastWeekSameDayStr]);
+    return { weekDays: days, weekRangeLabel: rangeLabel };
+  }, [todayObj, todayStr, weekOffset]);
 
-  // Comparison stats
-  const diffYesterday = todayData.totalMinutes - yesterdayData.totalMinutes;
-  const diffLastWeek = todayData.totalMinutes - lastWeekData.totalMinutes;
-
-  const todayDayName = ['일', '월', '화', '수', '목', '금', '토'][todayObj.getDay()];
-
+  const totalWeeklyMinutes = useMemo(() => {
+    return weekDays.reduce((sum, d) => sum + (d.data?.totalMinutes || 0), 0);
+  }, [weekDays]);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginTop: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
       
-      {/* Tier Switcher Navigation */}
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', background: 'rgba(0,0,0,0.3)', padding: '0.4rem', borderRadius: '10px' }}>
-        <button
-          onClick={() => setActiveTab('all')}
-          style={{
-            padding: '0.4rem 0.85rem',
-            borderRadius: '8px',
-            border: 'none',
-            fontSize: '0.82rem',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            background: activeTab === 'all' ? 'var(--accent-primary)' : 'transparent',
-            color: activeTab === 'all' ? '#000' : 'var(--text-secondary)',
-            transition: 'all 0.2s'
-          }}
-        >
-          ✨ 전체 타임테이블 보기
-        </button>
-        <button
-          onClick={() => setActiveTab('tier1')}
-          style={{
-            padding: '0.4rem 0.85rem',
-            borderRadius: '8px',
-            border: 'none',
-            fontSize: '0.82rem',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            background: activeTab === 'tier1' ? 'var(--accent-primary)' : 'transparent',
-            color: activeTab === 'tier1' ? '#000' : 'var(--text-secondary)',
-            transition: 'all 0.2s'
-          }}
-        >
-          1단. 월~일 주간 타임테이블
-        </button>
-        <button
-          onClick={() => setActiveTab('tier2')}
-          style={{
-            padding: '0.4rem 0.85rem',
-            borderRadius: '8px',
-            border: 'none',
-            fontSize: '0.82rem',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            background: activeTab === 'tier2' ? 'var(--accent-primary)' : 'transparent',
-            color: activeTab === 'tier2' ? '#000' : 'var(--text-secondary)',
-            transition: 'all 0.2s'
-          }}
-        >
-          2단. 어제 vs 오늘 비교
-        </button>
-        <button
-          onClick={() => setActiveTab('tier3')}
-          style={{
-            padding: '0.4rem 0.85rem',
-            borderRadius: '8px',
-            border: 'none',
-            fontSize: '0.82rem',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            background: activeTab === 'tier3' ? 'var(--accent-primary)' : 'transparent',
-            color: activeTab === 'tier3' ? '#000' : 'var(--text-secondary)',
-            transition: 'all 0.2s'
-          }}
-        >
-          3단. 저번주 {todayDayName}요일 vs 오늘 비교
-        </button>
+      {/* 주간 네비게이션 & 요약 바 */}
+      <div style={{
+        background: 'rgba(0,0,0,0.3)',
+        padding: '0.75rem 1rem',
+        borderRadius: '12px',
+        border: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '0.75rem'
+      }}>
+        {/* Week navigation buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={() => setWeekOffset(prev => prev - 1)}
+            className="btn btn-secondary"
+            style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+            title="지난주 보기"
+          >
+            <ChevronLeft size={16} /> 이전 주
+          </button>
+          
+          <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#fff', minWidth: '200px', textAlign: 'center' }}>
+            {weekRangeLabel} {weekOffset === 0 && <span style={{ fontSize: '0.72rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px', marginLeft: '0.3rem' }}>이번 주</span>}
+          </span>
+
+          <button
+            onClick={() => setWeekOffset(prev => prev + 1)}
+            className="btn btn-secondary"
+            style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+            title="다음주 보기"
+          >
+            다음 주 <ChevronRight size={16} />
+          </button>
+
+          {weekOffset !== 0 && (
+            <button
+              onClick={() => setWeekOffset(0)}
+              className="btn btn-secondary"
+              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+            >
+              <RotateCcw size={13} style={{ marginRight: '0.25rem' }} /> 이번 주로
+            </button>
+          )}
+        </div>
+
+        {/* Weekly Total Time Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.35rem 0.85rem', borderRadius: '8px' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>주간 총 공부 시간</span>
+          <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#34d399' }}>
+            {formatTimeRange(totalWeeklyMinutes)}
+          </span>
+        </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* 1단: 월~일 타임테이블 (Weekly Study Planner Timetable) */}
-      {/* ========================================================================= */}
-      {(activeTab === 'all' || activeTab === 'tier1') && (
-        <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.25rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ background: 'var(--accent-primary)', color: '#000', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                1단
-              </span>
-              <h3 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)', fontWeight: 'bold' }}>
-                월~일 주간 타임테이블 (10분 그리드 · 5분 반칸 지원)
-              </h3>
-            </div>
+      {/* Main Weekly Timetable Container */}
+      <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.25rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h3 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)', fontWeight: 'bold' }}>
+              월~일 주간 타임테이블 (10분 그리드 · 5분 반칸 지원)
+            </h3>
+          </div>
             {/* Legend showing Full, Half (25m/50m), and Break */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -420,233 +387,8 @@ export default function StudyTimetable() {
             </div>
           </div>
         </div>
-      )}
 
-      {/* ========================================================================= */}
-      {/* 2단: 어제와 오늘 비교 타임테이블 (Yesterday vs Today Comparison) */}
-      {/* ========================================================================= */}
-      {(activeTab === 'all' || activeTab === 'tier2') && (
-        <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.25rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'gap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ background: '#3b82f6', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                2단
-              </span>
-              <h3 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)', fontWeight: 'bold' }}>
-                어제 vs 오늘 집중 비교 타임테이블
-              </h3>
-            </div>
 
-            {/* Comparison Badge */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              background: diffYesterday >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-              border: `1px solid ${diffYesterday >= 0 ? '#10b981' : '#ef4444'}`,
-              color: diffYesterday >= 0 ? '#34d399' : '#f87171',
-              padding: '0.3rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 'bold'
-            }}>
-              {diffYesterday >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-              <span>
-                {diffYesterday >= 0
-                  ? `어제 대비 +${formatTimeRange(diffYesterday)} 더 집중!`
-                  : `어제 대비 ${formatTimeRange(Math.abs(diffYesterday))} 차이`}
-              </span>
-            </div>
-          </div>
-
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1rem 0' }}>
-            어제와 오늘 어느 시간대에 집중했는지 두 타임테이블을 나란히 비교하여 생활 패턴의 변화를 관찰합니다.
-          </p>
-
-          {/* 2-Column Comparison Layout */}
-          <div style={{ background: '#0a0f1d', borderRadius: '10px', padding: '1rem', border: '1px solid rgba(255,255,255,0.08)' }}>
-            
-            {/* Column Headers */}
-            <div style={{ display: 'flex', marginBottom: '0.75rem', paddingBottom: '0.5rem', borderBottom: '2px solid rgba(255,255,255,0.12)' }}>
-              <div style={{ width: '42px' }}></div>
-              
-              {/* Yesterday Header */}
-              <div style={{ flex: 1, padding: '0.4rem', background: 'rgba(59, 130, 246, 0.08)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.25)', textAlign: 'center', marginRight: '0.5rem' }}>
-                <div style={{ fontSize: '0.82rem', color: '#60a5fa', fontWeight: 'bold' }}>어제 ({yesterdayStr})</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#fff', marginTop: '0.15rem' }}>
-                  {formatTimeRange(yesterdayData.totalMinutes)}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>총 {yesterdayData.sessionCount}회 집중</div>
-              </div>
-
-              {/* Today Header */}
-              <div style={{ flex: 1, padding: '0.4rem', background: 'rgba(16, 185, 129, 0.08)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.25)', textAlign: 'center', marginLeft: '0.5rem' }}>
-                <div style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 'bold' }}>오늘 ({todayStr})</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#fff', marginTop: '0.15rem' }}>
-                  {formatTimeRange(todayData.totalMinutes)}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>총 {todayData.sessionCount}회 집중</div>
-              </div>
-            </div>
-
-            {/* 24 Hours Comparison Track */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {PLANNER_HOURS.map(h => (
-                <div key={h} style={{ display: 'flex', alignItems: 'center', height: '18px' }}>
-                  {/* Hour Label */}
-                  <div style={{ width: '42px', textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                    {getHourDisplayLabel(h)}시
-                  </div>
-
-                  {/* Yesterday 6 Blocks */}
-                  <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginRight: '0.5rem' }}>
-                    {[0, 1, 2, 3, 4, 5].map(b => {
-                      const cell = yesterdayData.matrix[h]?.[b] || { left: false, right: false };
-                      const tooltip = getBlockTooltip('어제', h, b, cell);
-                      return (
-                        <TimetableBlock
-                          key={b}
-                          cell={cell}
-                          activeColor="#3b82f6"
-                          tooltip={tooltip}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  {/* Divider */}
-                  <div style={{ width: '2px', height: '100%', background: 'rgba(255,255,255,0.1)' }}></div>
-
-                  {/* Today 6 Blocks */}
-                  <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginLeft: '0.5rem' }}>
-                    {[0, 1, 2, 3, 4, 5].map(b => {
-                      const cell = todayData.matrix[h]?.[b] || { left: false, right: false };
-                      const tooltip = getBlockTooltip('오늘', h, b, cell);
-                      return (
-                        <TimetableBlock
-                          key={b}
-                          cell={cell}
-                          activeColor="#10b981"
-                          tooltip={tooltip}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3단: 저번주 요일과 오늘 요일 비교 타임테이블 (Last Week vs Today Same Day) */}
-      {/* ========================================================================= */}
-      {(activeTab === 'all' || activeTab === 'tier3') && (
-        <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.25rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ background: '#8b5cf6', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                3단
-              </span>
-              <h3 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)', fontWeight: 'bold' }}>
-                저번주 {todayDayName}요일 vs 오늘 {todayDayName}요일 비교 타임테이블
-              </h3>
-            </div>
-
-            {/* Comparison Badge */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              background: diffLastWeek >= 0 ? 'rgba(139, 92, 246, 0.18)' : 'rgba(239, 68, 68, 0.15)',
-              border: `1px solid ${diffLastWeek >= 0 ? '#8b5cf6' : '#ef4444'}`,
-              color: diffLastWeek >= 0 ? '#c084fc' : '#f87171',
-              padding: '0.3rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 'bold'
-            }}>
-              {diffLastWeek >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-              <span>
-                {diffLastWeek >= 0
-                  ? `저번주 대비 +${formatTimeRange(diffLastWeek)} 성장!`
-                  : `저번주 대비 ${formatTimeRange(Math.abs(diffLastWeek))} 차이`}
-              </span>
-            </div>
-          </div>
-
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1rem 0' }}>
-            저번 주 같은 요일({todayDayName}요일)과 오늘의 집중 타임테이블을 비교하여 요일별 공부 습관의 개선도를 확인합니다.
-          </p>
-
-          {/* 2-Column Comparison Layout */}
-          <div style={{ background: '#0a0f1d', borderRadius: '10px', padding: '1rem', border: '1px solid rgba(255,255,255,0.08)' }}>
-            
-            {/* Column Headers */}
-            <div style={{ display: 'flex', marginBottom: '0.75rem', paddingBottom: '0.5rem', borderBottom: '2px solid rgba(255,255,255,0.12)' }}>
-              <div style={{ width: '42px' }}></div>
-              
-              {/* Last Week Header */}
-              <div style={{ flex: 1, padding: '0.4rem', background: 'rgba(139, 92, 246, 0.08)', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.25)', textAlign: 'center', marginRight: '0.5rem' }}>
-                <div style={{ fontSize: '0.82rem', color: '#c084fc', fontWeight: 'bold' }}>저번주 {todayDayName}요일 ({lastWeekSameDayStr})</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#fff', marginTop: '0.15rem' }}>
-                  {formatTimeRange(lastWeekData.totalMinutes)}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>총 {lastWeekData.sessionCount}회 집중</div>
-              </div>
-
-              {/* Today Header */}
-              <div style={{ flex: 1, padding: '0.4rem', background: 'rgba(16, 185, 129, 0.08)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.25)', textAlign: 'center', marginLeft: '0.5rem' }}>
-                <div style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 'bold' }}>이번주 {todayDayName}요일 ({todayStr})</div>
-                <div style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#fff', marginTop: '0.15rem' }}>
-                  {formatTimeRange(todayData.totalMinutes)}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>총 {todayData.sessionCount}회 집중</div>
-              </div>
-            </div>
-
-            {/* 24 Hours Comparison Track */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {PLANNER_HOURS.map(h => (
-                <div key={h} style={{ display: 'flex', alignItems: 'center', height: '18px' }}>
-                  {/* Hour Label */}
-                  <div style={{ width: '42px', textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                    {getHourDisplayLabel(h)}시
-                  </div>
-
-                  {/* Last Week 6 Blocks */}
-                  <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginRight: '0.5rem' }}>
-                    {[0, 1, 2, 3, 4, 5].map(b => {
-                      const cell = lastWeekData.matrix[h]?.[b] || { left: false, right: false };
-                      const tooltip = getBlockTooltip('저번주', h, b, cell);
-                      return (
-                        <TimetableBlock
-                          key={b}
-                          cell={cell}
-                          activeColor="#8b5cf6"
-                          tooltip={tooltip}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  {/* Divider */}
-                  <div style={{ width: '2px', height: '100%', background: 'rgba(255,255,255,0.1)' }}></div>
-
-                  {/* Today 6 Blocks */}
-                  <div style={{ flex: 1, display: 'flex', gap: '2px', height: '100%', marginLeft: '0.5rem' }}>
-                    {[0, 1, 2, 3, 4, 5].map(b => {
-                      const cell = todayData.matrix[h]?.[b] || { left: false, right: false };
-                      const tooltip = getBlockTooltip('오늘', h, b, cell);
-                      return (
-                        <TimetableBlock
-                          key={b}
-                          cell={cell}
-                          activeColor="#10b981"
-                          tooltip={tooltip}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-          </div>
-        </div>
-      )}
 
     </div>
   );
