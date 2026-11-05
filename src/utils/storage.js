@@ -1663,10 +1663,30 @@ export const storage = {
     vacations.unshift(newVacation);
     localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
 
-    // 2. Recalculate ALL uncompleted reviews with vacation-aware intervals
-    //    Vacation days are now "invisible" — 14714 intervals skip them entirely
-    //    Completed reviews are PRESERVED
-    const count = this.recalculateAllReviews();
+    // 2. Exactly shift all uncompleted reviews scheduled on or after startDate forward by `days` (하루면 1칸, 이틀이면 2칸)
+    const lectures = this.getLectures();
+    let count = 0;
+
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        // 미완료 복습 중 휴가 시작일 이후에 예정된 복습만 정확히 휴가 일수(days)만큼 연기
+        if (!rev.isCompleted && rev.targetDate >= startDate) {
+          const d = new Date(rev.targetDate + 'T00:00:00');
+          d.setDate(d.getDate() + days);
+          let newDateStr = this._dateToStr(d);
+
+          // 만약 이동한 날짜가 다른 기존 휴가 기간에 걸리면 다음 비휴가일로 보정
+          newDateStr = this.getAdjustedTargetDate(newDateStr);
+
+          rev.targetDate = newDateStr;
+          count++;
+        }
+      });
+    });
+
+    if (count > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    }
 
     this._dispatchSync();
     return { days, count };
@@ -1678,15 +1698,41 @@ export const storage = {
     if (vacIndex === -1) return { days: 0, count: 0 };
 
     const vac = vacations[vacIndex];
-    const { days } = vac;
+    const { startDate, days } = vac;
 
     // 1. Remove the vacation from the list
     vacations.splice(vacIndex, 1);
     localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
 
-    // 2. Recalculate all uncompleted reviews without the removed vacation
-    //    Completed reviews are PRESERVED
-    const count = this.recalculateAllReviews();
+    // 2. Shift all uncompleted reviews backward by `days`
+    //    휴가 등록 시 startDate 이상이던 복습들은 startDate + days 이상으로 이동했으므로,
+    //    startDate + days 이상의 미완료 복습들을 정확히 days만큼 앞당김
+    const thresholdDate = new Date(startDate + 'T00:00:00');
+    thresholdDate.setDate(thresholdDate.getDate() + days);
+    const thresholdStr = this._dateToStr(thresholdDate);
+
+    const lectures = this.getLectures();
+    let count = 0;
+
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (!rev.isCompleted && rev.targetDate >= thresholdStr) {
+          const d = new Date(rev.targetDate + 'T00:00:00');
+          d.setDate(d.getDate() - days);
+          let newDateStr = this._dateToStr(d);
+
+          // 만약 앞당긴 날짜가 다른 잔여 휴가에 걸리면 비휴가일로 보정
+          newDateStr = this.getAdjustedTargetDate(newDateStr);
+
+          rev.targetDate = newDateStr;
+          count++;
+        }
+      });
+    });
+
+    if (count > 0) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+    }
 
     this._dispatchSync();
     return { days, count };

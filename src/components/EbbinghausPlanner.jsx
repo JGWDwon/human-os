@@ -140,15 +140,15 @@ export default function EbbinghausPlanner({ onClose }) {
       return;
     }
     const result = storage.addVacation(vacStartDate, vacEndDate);
-    alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n\n휴가 기간 동안 미완료 복습 ${result.count}개가 휴가일 이후로 자동 연기되었습니다! 🎉`);
+    alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n\n휴가 기간 및 이후 미완료 복습 ${result.count}개가 정확히 ${result.days}일 뒤로 연기되었습니다! 🎉`);
     setShowVacationModal(false);
     refreshData();
   };
 
   const handleRevertVacation = (vacationId) => {
-    if (window.confirm("이 휴가 일정을 취소하시겠습니까?\n휴가 기간이 삭제되고, 미완료 복습이 원래 14714 간격으로 재계산됩니다.")) {
+    if (window.confirm("이 휴가 일정을 취소하시겠습니까?\n휴가 일정이 삭제되고, 연기되었던 미완료 복습 일정이 원래대로 앞당겨집니다.")) {
       const result = storage.revertVacation(vacationId);
-      alert(`↩️ 휴가 취소 완료!\n${result.count}개의 미완료 복습이 원래 간격으로 재배치되었습니다.`);
+      alert(`↩️ 휴가 취소 완료!\n${result.count}개의 미완료 복습 일정이 ${result.days}일 앞으로 원상복구되었습니다.`);
       refreshData();
     }
   };
