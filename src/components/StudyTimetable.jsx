@@ -177,8 +177,14 @@ function TimetableBlock({ cell, activeColor, inactiveBg = 'rgba(255,255,255,0.04
   );
 }
 
-export default function StudyTimetable() {
-  const [weekOffset, setWeekOffset] = useState(0); // 0: 이번 주, -1: 지난 주, +1: 다음 주
+export default function StudyTimetable({ 
+  weekOffset: externalOffset, 
+  setWeekOffset: externalSetOffset,
+  hideNav = false 
+}) {
+  const [internalOffset, setInternalOffset] = useState(0);
+  const weekOffset = externalOffset !== undefined ? externalOffset : internalOffset;
+  const setWeekOffset = externalSetOffset !== undefined ? externalSetOffset : setInternalOffset;
 
   // Dates computation
   const todayObj = useMemo(() => new Date(), []);
@@ -187,21 +193,22 @@ export default function StudyTimetable() {
     return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   }, [todayObj]);
 
-  // Selected week Mon ~ Sun based on weekOffset
+  // Selected week Sun ~ Sat based on weekOffset (달력 주기: 일요일 ~ 토요일)
   const { weekDays, weekRangeLabel } = useMemo(() => {
     const now = new Date(todayObj);
     now.setDate(now.getDate() + weekOffset * 7);
 
-    const dayOfWeek = now.getDay() || 7; // 1=Mon, 7=Sun
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek + 1);
+    // 0 is Sun, 1 is Mon ... 6 is Sat
+    const dayOfWeek = now.getDay();
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() - dayOfWeek);
 
     const days = [];
-    const dayNames = ['월', '화', '수', '목', '금', '토', '일'];
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
 
     for (let i = 0; i < 7; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
+      const d = new Date(sunday);
+      d.setDate(sunday.getDate() + i);
       const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
       const isToday = dateStr === todayStr;
 
@@ -214,9 +221,9 @@ export default function StudyTimetable() {
       });
     }
 
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const rangeLabel = `${monday.getFullYear()}년 ${monday.getMonth() + 1}월 ${monday.getDate()}일 ~ ${sunday.getMonth() + 1}월 ${sunday.getDate()}일`;
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+    const rangeLabel = `${sunday.getFullYear()}년 ${sunday.getMonth() + 1}월 ${sunday.getDate()}일 ~ ${saturday.getMonth() + 1}월 ${saturday.getDate()}일`;
 
     return { weekDays: days, weekRangeLabel: rangeLabel };
   }, [todayObj, todayStr, weekOffset]);
@@ -224,71 +231,74 @@ export default function StudyTimetable() {
   const totalWeeklyMinutes = useMemo(() => {
     return weekDays.reduce((sum, d) => sum + (d.data?.totalMinutes || 0), 0);
   }, [weekDays]);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: hideNav ? '0' : '1rem' }}>
       
       {/* 주간 네비게이션 & 요약 바 */}
-      <div style={{
-        background: 'rgba(0,0,0,0.3)',
-        padding: '0.75rem 1rem',
-        borderRadius: '12px',
-        border: '1px solid rgba(255,255,255,0.08)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '0.75rem'
-      }}>
-        {/* Week navigation buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button
-            onClick={() => setWeekOffset(prev => prev - 1)}
-            className="btn btn-secondary"
-            style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
-            title="지난주 보기"
-          >
-            <ChevronLeft size={16} /> 이전 주
-          </button>
-          
-          <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#fff', minWidth: '200px', textAlign: 'center' }}>
-            {weekRangeLabel} {weekOffset === 0 && <span style={{ fontSize: '0.72rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px', marginLeft: '0.3rem' }}>이번 주</span>}
-          </span>
-
-          <button
-            onClick={() => setWeekOffset(prev => prev + 1)}
-            className="btn btn-secondary"
-            style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
-            title="다음주 보기"
-          >
-            다음 주 <ChevronRight size={16} />
-          </button>
-
-          {weekOffset !== 0 && (
+      {!hideNav && (
+        <div style={{
+          background: 'rgba(0,0,0,0.3)',
+          padding: '0.75rem 1rem',
+          borderRadius: '12px',
+          border: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.75rem'
+        }}>
+          {/* Week navigation buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button
-              onClick={() => setWeekOffset(0)}
+              onClick={() => setWeekOffset(prev => prev - 1)}
               className="btn btn-secondary"
-              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+              style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+              title="지난주 보기"
             >
-              <RotateCcw size={13} style={{ marginRight: '0.25rem' }} /> 이번 주로
+              <ChevronLeft size={16} /> 이전 주
             </button>
-          )}
-        </div>
+            
+            <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#fff', minWidth: '200px', textAlign: 'center' }}>
+              {weekRangeLabel} {weekOffset === 0 && <span style={{ fontSize: '0.72rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px', marginLeft: '0.3rem' }}>이번 주</span>}
+            </span>
 
-        {/* Weekly Total Time Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.35rem 0.85rem', borderRadius: '8px' }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>주간 총 공부 시간</span>
-          <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#34d399' }}>
-            {formatTimeRange(totalWeeklyMinutes)}
-          </span>
+            <button
+              onClick={() => setWeekOffset(prev => prev + 1)}
+              className="btn btn-secondary"
+              style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+              title="다음주 보기"
+            >
+              다음 주 <ChevronRight size={16} />
+            </button>
+
+            {weekOffset !== 0 && (
+              <button
+                onClick={() => setWeekOffset(0)}
+                className="btn btn-secondary"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+              >
+                <RotateCcw size={13} style={{ marginRight: '0.25rem' }} /> 이번 주로
+              </button>
+            )}
+          </div>
+
+          {/* Weekly Total Time Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.35rem 0.85rem', borderRadius: '8px' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>주간 총 공부 시간</span>
+            <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#34d399' }}>
+              {formatTimeRange(totalWeeklyMinutes)}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Weekly Timetable Container */}
       <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1.25rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <h3 style={{ fontSize: '1.05rem', margin: 0, color: 'var(--text-primary)', fontWeight: 'bold' }}>
-              월~일 주간 타임테이블 (10분 그리드 · 5분 반칸 지원)
+              일~토 주간 타임테이블 (10분 그리드 · 5분 반칸 지원)
             </h3>
           </div>
             {/* Legend showing Full, Half (25m/50m), and Break */}
@@ -316,7 +326,7 @@ export default function StudyTimetable() {
           </div>
 
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1rem 0' }}>
-            이번 주 월요일부터 일요일까지 10분 그리드 및 5분 반칸으로 스터디 플래너 양식에 맞춰 자동 색칠됩니다.
+            이번 주 일요일부터 토요일까지 10분 그리드 및 5분 반칸으로 스터디 플래너 양식에 맞춰 자동 색칠됩니다.
           </p>
 
           {/* Timetable Grid Container */}
@@ -331,26 +341,38 @@ export default function StudyTimetable() {
                 </div>
 
                 {/* 7 Days Columns */}
-                {weekDays.map(day => (
-                  <div key={day.dateStr} style={{ flex: 1, textAlign: 'center', padding: '0.2rem 0.25rem' }}>
-                    <div style={{
-                      background: day.isToday ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.03)',
-                      border: day.isToday ? '1px solid #10b981' : '1px solid transparent',
-                      borderRadius: '6px',
-                      padding: '0.25rem'
-                    }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: day.isToday ? '#34d399' : 'var(--text-primary)' }}>
-                        {day.dayName}요일 {day.isToday && <span style={{ fontSize: '0.65rem', color: '#10b981' }}>(오늘)</span>}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                        {day.dateShort}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: day.data.totalMinutes > 0 ? '#34d399' : 'rgba(255,255,255,0.25)', marginTop: '0.15rem' }}>
-                        {formatTimeRange(day.data.totalMinutes)}
+                {weekDays.map(day => {
+                  const isSun = day.dayName === '일';
+                  const isSat = day.dayName === '토';
+                  const dayColor = day.isToday 
+                    ? '#34d399' 
+                    : isSun 
+                      ? '#f87171' 
+                      : isSat 
+                        ? '#60a5fa' 
+                        : 'var(--text-primary)';
+
+                  return (
+                    <div key={day.dateStr} style={{ flex: 1, textAlign: 'center', padding: '0.2rem 0.25rem' }}>
+                      <div style={{
+                        background: day.isToday ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.03)',
+                        border: day.isToday ? '1px solid #10b981' : '1px solid transparent',
+                        borderRadius: '6px',
+                        padding: '0.25rem'
+                      }}>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: dayColor }}>
+                          {day.dayName}요일 {day.isToday && <span style={{ fontSize: '0.65rem', color: '#10b981' }}>(오늘)</span>}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                          {day.dateShort}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: day.data.totalMinutes > 0 ? '#34d399' : 'rgba(255,255,255,0.25)', marginTop: '0.15rem' }}>
+                          {formatTimeRange(day.data.totalMinutes)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Rows: 24 Hours (6am to 5am next day) */}
