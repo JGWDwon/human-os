@@ -6,7 +6,9 @@ const STORAGE_KEYS = {
   USER_PROFILE: 'human_os_profile_v1',
   LECTURES: 'human_os_lectures_v1',
   VACATIONS: 'human_os_vacations_v1',
-  STUDY_SESSIONS: 'human_os_study_sessions_v1'
+  STUDY_SESSIONS: 'human_os_study_sessions_v1',
+  SUBJECTS: 'human_os_subjects_v1',
+  DDAYS: 'human_os_ddays_v1'
 };
 
 function safeParse(str, fallback = {}) {
@@ -291,7 +293,7 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoro(dateStr, timeStr, minutes = 25, startTimeStr = null) {
+  addCustomPomodoro(dateStr, timeStr, minutes = 25, startTimeStr = null, subject = null) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
     
@@ -341,7 +343,8 @@ export const storage = {
       time: fullTimeStr,
       minutes: minutes,
       startTime: calculatedStart,
-      endTime: timeStr
+      endTime: timeStr,
+      subject: subject || null
     });
     
     // Sort timestamps chronologically
@@ -389,8 +392,8 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes, startTimeStr = null) {
-    return this.addCustomPomodoro(dateStr, timeStr, minutes, startTimeStr);
+  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes, startTimeStr = null, subject = null) {
+    return this.addCustomPomodoro(dateStr, timeStr, minutes, startTimeStr, subject);
   },
 
   deletePomodoroTimestamp(dateStr, index) {
@@ -585,14 +588,16 @@ export const storage = {
     return true;
   },
 
-  getAllTimeStats() {
+  getAllTimeStats(startDate = '2026-10-11') {
     // Total Pomodoro
     const pomoRaw = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const pomoData = safeParse(pomoRaw, {});
     let totalPomodoroMins = 0;
     
-    Object.values(pomoData).forEach(day => {
-      totalPomodoroMins += day.totalMinutes || 0;
+    Object.entries(pomoData).forEach(([dateStr, day]) => {
+      if (!startDate || dateStr >= startDate) {
+        totalPomodoroMins += day.totalMinutes || 0;
+      }
     });
     
     // Total Quests
@@ -600,20 +605,25 @@ export const storage = {
     const questsData = safeParse(questsRaw, {});
     let totalCompletedQuests = 0;
     
-    Object.values(questsData).forEach(dayQuests => {
-      totalCompletedQuests += dayQuests.filter(q => q.isCompleted).length;
+    Object.entries(questsData).forEach(([dateStr, dayQuests]) => {
+      if (!startDate || dateStr >= startDate) {
+        if (Array.isArray(dayQuests)) {
+          totalCompletedQuests += dayQuests.filter(q => q.isCompleted).length;
+        }
+      }
     });
     
     // Total Diary Entries
     const diaryRaw = localStorage.getItem(STORAGE_KEYS.DIARY);
     const diaryData = safeParse(diaryRaw, []);
-    const totalDiaryEntries = diaryData.length;
+    const filteredDiary = diaryData.filter(e => !startDate || e.dateStr >= startDate);
+    const totalDiaryEntries = filteredDiary.length;
 
     // Active days (days with at least pomodoro or quest or diary)
     const activeDaysSet = new Set([
-      ...Object.keys(pomoData).filter(d => (pomoData[d].totalMinutes || 0) > 0),
-      ...Object.keys(questsData).filter(d => questsData[d].some(q => q.isCompleted || q.skippedReason)),
-      ...diaryData.map(e => e.dateStr)
+      ...Object.keys(pomoData).filter(d => (!startDate || d >= startDate) && (pomoData[d].totalMinutes || 0) > 0),
+      ...Object.keys(questsData).filter(d => (!startDate || d >= startDate) && Array.isArray(questsData[d]) && questsData[d].some(q => q.isCompleted || q.skippedReason)),
+      ...filteredDiary.map(e => e.dateStr)
     ]);
 
     return {
@@ -621,8 +631,64 @@ export const storage = {
       totalCompletedQuests,
       totalPomodoroMins,
       totalDiaryEntries,
-      activeDays: activeDaysSet.size
+      activeDays: activeDaysSet.size,
+      startDate: startDate || null
     };
+  },
+
+  // Custom Subjects Management
+  getSubjects() {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUBJECTS);
+    if (raw) {
+      const parsed = safeParse(raw, null);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+    // Scan existing lectures to pre-populate with user's actual subjects
+    const lectures = this.getLectures();
+    const existing = new Set(['세화', '행소', '재무', '원가']);
+    lectures.forEach(l => {
+      if (l.subject && l.subject.trim()) existing.add(l.subject.trim());
+    });
+    return Array.from(existing);
+  },
+
+  saveSubjects(subjects) {
+    if (!Array.isArray(subjects)) return;
+    localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(subjects));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('subjects-updated'));
+  },
+
+  addSubject(name) {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    const list = this.getSubjects();
+    if (!list.includes(trimmed)) {
+      list.push(trimmed);
+      this.saveSubjects(list);
+    }
+  },
+
+  deleteSubject(name) {
+    const list = this.getSubjects().filter(s => s !== name);
+    this.saveSubjects(list);
+  },
+
+  // Custom D-Days Management (1차, 2차 시험 등)
+  getDDays() {
+    const raw = localStorage.getItem(STORAGE_KEYS.DDAYS);
+    const fallback = [
+      { id: 'd1', label: '1차 시험', targetDate: '2027-02-28' },
+      { id: 'd2', label: '2차 시험', targetDate: '2027-06-27' }
+    ];
+    return safeParse(raw, fallback);
+  },
+
+  saveDDays(ddays) {
+    if (!Array.isArray(ddays)) return;
+    localStorage.setItem(STORAGE_KEYS.DDAYS, JSON.stringify(ddays));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('ddays-updated'));
   },
 
   getWeeklyGraphData(weeks = 8) {
@@ -1002,7 +1068,7 @@ export const storage = {
 
   recalculateTotalXP() {
     // 저장된 모든 퀘스트와 뽀모도로를 긁어모아 정확한 XP를 재계산합니다. (오류 복구용)
-    const { totalCompletedQuests, totalPomodoroMins } = this.getAllTimeStats();
+    const { totalCompletedQuests, totalPomodoroMins } = this.getAllTimeStats(null);
     // 메인=10, 서브=5 지만, stats에서 구분이 어려우면 일괄 재계산
     
     const questsRaw = localStorage.getItem(STORAGE_KEYS.QUESTS);

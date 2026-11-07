@@ -1,16 +1,34 @@
 import { useState, useEffect, useMemo } from 'react';
-import { BarChart2, Trophy, Timer, Zap, Calendar, ArrowLeft, Flame, CheckCircle2, Clock, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { BarChart2, Trophy, Timer, Zap, Calendar, ArrowLeft, Flame, CheckCircle2, Clock, ChevronLeft, ChevronRight, RotateCcw, BookOpen, PieChart } from 'lucide-react';
 import { storage } from '../utils/storage';
 import StudyTimetable from './StudyTimetable';
+import SubjectModal from './SubjectModal';
+
+const SUBJECT_COLORS = [
+  '#38bdf8', // Sky
+  '#a855f7', // Purple
+  '#10b981', // Emerald
+  '#f59e0b', // Amber
+  '#ec4899', // Pink
+  '#06b6d4', // Cyan
+  '#f97316', // Orange
+  '#8b5cf6', // Violet
+];
 
 export default function InsightsDashboard({ onClose }) {
   const [stats, setStats] = useState(null);
   const [weekOffset, setWeekOffset] = useState(0); // 0: 이번 주, -1: 지난 주, +1: 다음 주
   const [selectedDay, setSelectedDay] = useState(null);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [subjects, setSubjects] = useState(() => storage.getSubjects());
 
   useEffect(() => {
     const allStats = storage.getAllTimeStats();
     setStats(allStats);
+
+    const handleSubs = () => setSubjects(storage.getSubjects());
+    window.addEventListener('subjects-updated', handleSubs);
+    return () => window.removeEventListener('subjects-updated', handleSubs);
   }, []);
 
   const formatTime = (minutes) => {
@@ -85,7 +103,7 @@ export default function InsightsDashboard({ onClose }) {
   // Guidelines: 2h, 4h, 6h, 8h (and 10h if headroom allows)
   const guidelines = [
     { mins: 480, label: '8시간 🌲', color: 'rgba(16, 185, 129, 0.4)', textColor: '#34d399' },
-    { mins: 360, label: '6시간', color: 'rgba(255, 255, 255, 0.12)', textColor: 'var(--text-muted)' },
+    { mins: 360, label: '6시간 🌿', color: 'rgba(56, 189, 248, 0.35)', textColor: '#38bdf8' },
     { mins: 240, label: '4시간 🌱', color: 'rgba(52, 211, 153, 0.35)', textColor: '#34d399' },
     { mins: 120, label: '2시간', color: 'rgba(255, 255, 255, 0.08)', textColor: 'var(--text-muted)' }
   ];
@@ -96,6 +114,42 @@ export default function InsightsDashboard({ onClose }) {
   // Selected day pomodoro sessions for drilldown
   const activeDayForDetail = selectedDay || weeklyTrend.find(t => t.isToday) || weeklyTrend[weeklyTrend.length - 1];
   const activeDayPomo = activeDayForDetail ? storage.getPomodoroByDate(activeDayForDetail.dateStr) : null;
+
+  // Subject Balance Breakdown for the current week (과목 편식 방지)
+  const { subjectBreakdown, subjectTotalMins } = useMemo(() => {
+    const pomoRaw = localStorage.getItem('human_os_pomodoro_v1');
+    const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
+    const subMap = {};
+
+    // Initialize all registered subjects with 0 so the user sees all subjects
+    subjects.forEach(s => { subMap[s] = 0; });
+
+    let total = 0;
+    weeklyTrend.forEach(day => {
+      const dayData = pomoData[day.dateStr];
+      if (dayData && Array.isArray(dayData.timestamps)) {
+        dayData.timestamps.forEach(ts => {
+          const sub = (typeof ts === 'object' && ts.subject) ? ts.subject : '기타/미지정';
+          const mins = (typeof ts === 'object' && ts.minutes) ? Number(ts.minutes) : 25;
+          subMap[sub] = (subMap[sub] || 0) + mins;
+          total += mins;
+        });
+      }
+    });
+
+    const registeredOrder = [...subjects];
+    const breakdown = Object.entries(subMap)
+      .map(([name, mins]) => {
+        const pct = total > 0 ? Math.round((mins / total) * 100) : 0;
+        let colorIndex = registeredOrder.indexOf(name);
+        if (colorIndex === -1) colorIndex = 7;
+        const color = SUBJECT_COLORS[colorIndex % SUBJECT_COLORS.length];
+        return { name, mins, pct, color };
+      })
+      .sort((a, b) => b.mins - a.mins);
+
+    return { subjectBreakdown: breakdown, subjectTotalMins: total };
+  }, [weeklyTrend, subjects]);
 
   return (
     <div className="glass-panel animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh', gap: '1.25rem' }}>
@@ -127,6 +181,7 @@ export default function InsightsDashboard({ onClose }) {
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               <Trophy size={14} color="#10b981" /> 총 출석일
+              <span style={{ fontSize: '0.67rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '4px' }}>10/11부터</span>
             </div>
             <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--accent-primary)', marginTop: '0.15rem' }}>
               {stats.activeDays}일
@@ -138,6 +193,7 @@ export default function InsightsDashboard({ onClose }) {
           <div>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               <Zap size={14} color="#3b82f6" /> 누적 공부 시간
+              <span style={{ fontSize: '0.67rem', color: '#38bdf8', background: 'rgba(59, 130, 246, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '4px' }}>10/11부터</span>
             </div>
             <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--accent-secondary)', marginTop: '0.15rem' }}>
               {formatTime(stats.totalFocusMins || 0)}
@@ -261,6 +317,9 @@ export default function InsightsDashboard({ onClose }) {
             <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.7rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <span style={{ width: '8px', height: '8px', background: '#34d399', borderRadius: '2px' }}></span> 🌱 4시간
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <span style={{ width: '8px', height: '8px', background: '#38bdf8', borderRadius: '2px' }}></span> 🌿 6시간
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '2px' }}></span> 🌲 8시간
@@ -444,6 +503,7 @@ export default function InsightsDashboard({ onClose }) {
                 {activeDayPomo.timestamps.map((ts, idx) => {
                   const timeStr = typeof ts === 'string' ? ts : ts.time;
                   const mins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
+                  const sub = typeof ts === 'object' && ts.subject ? ts.subject : null;
                   return (
                     <span
                       key={idx}
@@ -453,9 +513,17 @@ export default function InsightsDashboard({ onClose }) {
                         border: '1px solid rgba(255,255,255,0.1)',
                         padding: '0.2rem 0.55rem',
                         borderRadius: '6px',
-                        color: '#e2e8f0'
+                        color: '#e2e8f0',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem'
                       }}
                     >
+                      {sub && (
+                        <span style={{ fontSize: '0.68rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                          {sub}
+                        </span>
+                      )}
                       ⏱️ {timeStr} ({mins}분)
                     </span>
                   );
@@ -472,13 +540,114 @@ export default function InsightsDashboard({ onClose }) {
       </div>
 
       {/* ========================================================================= */}
-      {/* SECTION 2: 주간 스터디 타임테이블 (10분 그리드 · 5분 반칸 지원) (일~토) */}
+      {/* SECTION 2: 과목별 공부시간 밸런스 바 (과목 편식 방지) */}
+      {/* ========================================================================= */}
+      <div style={{
+        background: 'rgba(15, 23, 42, 0.6)',
+        padding: '1.15rem 1.25rem',
+        borderRadius: '14px',
+        border: '1px solid rgba(255,255,255,0.08)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.85rem'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <h3 style={{ fontSize: '0.98rem', margin: 0, color: 'var(--text-primary)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <PieChart size={17} color="#38bdf8" /> 과목별 공부시간 밸런스 (과목 편식 방지)
+            </h3>
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+              주간 과목별 집중 비율을 점검하여 특정 과목에 편중되지 않도록 균형을 유지하세요.
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowSubjectModal(true)}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.3rem', borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+          >
+            <BookOpen size={13} /> 과목 관리
+          </button>
+        </div>
+
+        {/* Multi-Segment Stacked Balance Bar */}
+        <div style={{
+          height: '20px',
+          width: '100%',
+          background: 'rgba(255,255,255,0.05)',
+          borderRadius: '10px',
+          overflow: 'hidden',
+          display: 'flex',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)'
+        }}>
+          {subjectTotalMins > 0 ? (
+            subjectBreakdown.filter(s => s.mins > 0).map((s) => {
+              const widthPct = (s.mins / subjectTotalMins) * 100;
+              return (
+                <div
+                  key={s.name}
+                  style={{
+                    width: `${widthPct}%`,
+                    height: '100%',
+                    background: s.color,
+                    transition: 'width 0.4s ease',
+                    position: 'relative'
+                  }}
+                  title={`${s.name}: ${formatTime(s.mins)} (${s.pct}%)`}
+                />
+              );
+            })
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              이번 주 기록된 과목별 집중 시간이 없습니다. 타이머 시작 시 과목을 선택해주세요.
+            </div>
+          )}
+        </div>
+
+        {/* Subject Breakdown Badges */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {subjectBreakdown.map((s) => (
+            <div
+              key={s.name}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                padding: '0.3rem 0.65rem',
+                borderRadius: '8px',
+                background: s.mins > 0 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${s.mins > 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)'}`,
+                opacity: s.mins > 0 ? 1 : 0.6
+              }}
+            >
+              <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: s.color, display: 'inline-block' }} />
+              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fff' }}>{s.name}</span>
+              <span style={{ fontSize: '0.75rem', color: s.mins > 0 ? '#38bdf8' : 'var(--text-muted)' }}>
+                {formatTime(s.mins)}
+              </span>
+              {s.mins > 0 && (
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '0.05rem 0.35rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                  {s.pct}%
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* SECTION 3: 주간 스터디 타임테이블 (10분 그리드 · 5분 반칸 지원) (일~토) */}
       {/* ========================================================================= */}
       <StudyTimetable 
         weekOffset={weekOffset} 
         setWeekOffset={setWeekOffset} 
         hideNav={true} 
       />
+
+      {/* Subject Management Modal */}
+      <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
 
     </div>
   );

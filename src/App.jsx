@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen } from 'lucide-react';
+import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen, Target } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import PomodoroTracker from './components/PomodoroTracker';
 import ForestPixelMap from './components/ForestPixelMap';
 import InsightsDashboard from './components/InsightsDashboard';
 import EbbinghausPlanner from './components/EbbinghausPlanner';
+import DDayModal from './components/DDayModal';
+import SubjectModal from './components/SubjectModal';
 import { storage } from './utils/storage';
 import TierBadge from './components/TierBadge';
 import { Capacitor } from '@capacitor/core';
@@ -27,6 +29,9 @@ function App() {
   const [levelUpModal, setLevelUpModal] = useState(null);
   const [milestoneToast, setMilestoneToast] = useState(null);
   const [showTierModal, setShowTierModal] = useState(false);
+  const [showDDayModal, setShowDDayModal] = useState(false);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [dDays, setDDays] = useState(() => storage.getDDays());
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -82,12 +87,29 @@ function App() {
       });
     }
 
+    const handleDDaysUpdated = () => {
+      setDDays(storage.getDDays());
+    };
+    window.addEventListener('ddays-updated', handleDDaysUpdated);
+
     return () => {
       window.removeEventListener('xp-updated', handleXpUpdate);
       window.removeEventListener('level-up', handleLevelUp);
       window.removeEventListener('milestone-achieved', handleMilestone);
+      window.removeEventListener('ddays-updated', handleDDaysUpdated);
     };
   }, []);
+
+  const calcDDay = (targetDateStr) => {
+    if (!targetDateStr) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(targetDateStr + 'T00:00:00');
+    const diffDays = Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'D-Day';
+    if (diffDays > 0) return `D-${diffDays}`;
+    return `D+${Math.abs(diffDays)}`;
+  };
 
   const handleApplyUpdate = () => {
     if ('serviceWorker' in navigator) {
@@ -273,6 +295,38 @@ function App() {
                   transition: 'width 0.4s ease'
                 }} />
               </div>
+            </div>
+          </div>
+
+          {/* D-Day 1차 / 2차 Header Widget */}
+          <div 
+            onClick={() => setShowDDayModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              background: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: '20px',
+              padding: '0.25rem 0.8rem',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+              userSelect: 'none'
+            }}
+            title="클릭하여 1차 / 2차 D-Day 목표 설정"
+          >
+            <span style={{ fontSize: '0.9rem' }}>🎯</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.78rem' }}>
+              {dDays.map((d, idx) => {
+                const badge = calcDDay(d.targetDate);
+                return (
+                  <span key={d.id || idx} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{d.label}:</span>
+                    <strong style={{ color: '#fbbf24', fontWeight: 800 }}>{badge || '-'}</strong>
+                    {idx < dDays.length - 1 && <span style={{ color: 'rgba(255,255,255,0.2)', marginLeft: '0.15rem' }}>|</span>}
+                  </span>
+                );
+              })}
             </div>
           </div>
 
@@ -554,6 +608,30 @@ function App() {
               </div>
             </div>
 
+            {/* 시험 목표(D-Day) 및 과목 설정 */}
+            <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem' }}>
+              <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem', marginBottom: '0.3rem' }}>시험 목표(D-Day) 및 공부 과목 설정</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                1차/2차 시험 목표 날짜와 뽀모도로 및 에빙하우스 복습에 사용할 과목을 관리합니다.
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button 
+                  onClick={() => setShowDDayModal(true)}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.4)' }}
+                >
+                  <Target size={16} /> 1차 / 2차 D-Day 설정
+                </button>
+                <button 
+                  onClick={() => setShowSubjectModal(true)}
+                  className="btn btn-secondary"
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+                >
+                  <BookOpen size={16} /> 공부 과목 관리
+                </button>
+              </div>
+            </div>
+
             {/* 데이터 관리 및 초기화 */}
             <div style={{ paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
               <h4 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>데이터 관리 및 초기화</h4>
@@ -644,6 +722,10 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Global D-Day & Subject Management Modals */}
+        <DDayModal isOpen={showDDayModal} onClose={() => setShowDDayModal(false)} />
+        <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
       </div>
     </>
   );

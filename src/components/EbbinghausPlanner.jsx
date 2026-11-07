@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { BookOpen, Plus, Check, ChevronLeft, ChevronRight, Trash2, Calendar, BrainCircuit, RotateCcw, Palmtree, ArrowRight, Wand2, Settings, CheckCircle2, ChevronDown, ChevronUp, ArrowLeft, X, Sparkles, Flame, Layers } from 'lucide-react';
 import { storage } from '../utils/storage';
 import confetti from 'canvas-confetti';
+import SubjectModal from './SubjectModal';
 
 export default function EbbinghausPlanner({ onClose }) {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -19,6 +20,8 @@ export default function EbbinghausPlanner({ onClose }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showManageModal, setShowManageModal] = useState(false);
   const [showLectureList, setShowLectureList] = useState(false);
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [registeredSubjects, setRegisteredSubjects] = useState(() => storage.getSubjects());
 
   const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   const [selectedDateForAdd, setSelectedDateForAdd] = useState(todayStr);
@@ -44,7 +47,12 @@ export default function EbbinghausPlanner({ onClose }) {
     storage.migrateReviewsToSameDay();
     refreshData();
     window.addEventListener('cloud-sync-needed', refreshData);
-    return () => window.removeEventListener('cloud-sync-needed', refreshData);
+    const handleSubs = () => setRegisteredSubjects(storage.getSubjects());
+    window.addEventListener('subjects-updated', handleSubs);
+    return () => {
+      window.removeEventListener('cloud-sync-needed', refreshData);
+      window.removeEventListener('subjects-updated', handleSubs);
+    };
   }, []);
 
   const handlePrevWeek = () => {
@@ -426,11 +434,43 @@ export default function EbbinghausPlanner({ onClose }) {
                 style={{ width: '100%', padding: '0.5rem', background: 'rgba(0,0,0,0.3)', color: 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }}
               />
             </div>
-            <div style={{ flex: '1 1 160px' }}>
-              <label style={{ display: 'block', fontSize: '0.72rem', color: '#a78bfa', marginBottom: '0.2rem' }}>과목명</label>
+            <div style={{ flex: '1 1 200px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                <label style={{ fontSize: '0.72rem', color: '#a78bfa' }}>과목 (선택 또는 입력)</label>
+                <button
+                  type="button"
+                  onClick={() => setShowSubjectModal(true)}
+                  style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.7rem', cursor: 'pointer', padding: 0 }}
+                >
+                  + 과목 관리
+                </button>
+              </div>
+              {registeredSubjects.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginBottom: '0.35rem' }}>
+                  {registeredSubjects.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setNewSubject(s)}
+                      style={{
+                        padding: '0.15rem 0.45rem',
+                        borderRadius: '8px',
+                        border: newSubject === s ? '1px solid #a78bfa' : '1px solid rgba(255,255,255,0.1)',
+                        background: newSubject === s ? 'rgba(167, 139, 250, 0.25)' : 'rgba(255,255,255,0.04)',
+                        color: newSubject === s ? '#c4b5fd' : '#94a3b8',
+                        fontSize: '0.73rem',
+                        fontWeight: newSubject === s ? 'bold' : 'normal',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
               <input 
                 type="text" 
-                placeholder="예: 세법학, 회계학" 
+                placeholder="직접 입력 또는 위 과목 클릭" 
                 value={newSubject}
                 onChange={(e) => setNewSubject(e.target.value)}
                 required
@@ -914,6 +954,8 @@ export default function EbbinghausPlanner({ onClose }) {
         </div>
       )}
 
+      {/* Subject Management Modal */}
+      <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
     </div>
   );
 }

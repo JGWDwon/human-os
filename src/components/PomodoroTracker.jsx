@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen } from 'lucide-react';
 import { storage } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import SubjectModal from './SubjectModal';
 
 let globalAudioCtx = null;
 let decodedBellBuffer = null;
@@ -43,6 +44,30 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   }); // minutes
   const [customDuration, setCustomDuration] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
+  const [subjects, setSubjects] = useState(() => storage.getSubjects());
+  const [selectedSubject, setSelectedSubject] = useState(() => {
+    const list = storage.getSubjects();
+    return list[0] || '';
+  });
+  const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const selectedSubjectRef = useRef(selectedSubject);
+
+  useEffect(() => {
+    selectedSubjectRef.current = selectedSubject;
+  }, [selectedSubject]);
+
+  useEffect(() => {
+    const handleSubjectsUpdated = () => {
+      const list = storage.getSubjects();
+      setSubjects(list);
+      if (!list.includes(selectedSubjectRef.current)) {
+        setSelectedSubject(list[0] || '');
+      }
+    };
+    window.addEventListener('subjects-updated', handleSubjectsUpdated);
+    return () => window.removeEventListener('subjects-updated', handleSubjectsUpdated);
+  }, []);
+
   const sessionStartTsRef = useRef(null);
   const pauseStartTsRef = useRef(null);
 
@@ -119,7 +144,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       const startObj = new Date(targetEndTimeMs - mins * 60 * 1000);
       const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
 
-      storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, mins, startTimeStr);
+      storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, mins, startTimeStr, selectedSubjectRef.current);
       refreshData();
       window.dispatchEvent(new CustomEvent('xp-updated'));
       if (onUpdate) onUpdate();
@@ -409,7 +434,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const startObj = new Date(targetEndTimeMs - minutesCompleted * 60 * 1000);
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
 
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr);
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, selectedSubjectRef.current);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -564,7 +589,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const endTimeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
     const startObj = new Date(now.getTime() - minutesCompleted * 60 * 1000);
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr);
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, selectedSubjectRef.current);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -629,12 +654,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const endM = endTotalMins % 60;
     const endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-    storage.addCustomPomodoroWithMinutes(selectedDate, endTimeStr, mins, customTime);
+    storage.addCustomPomodoroWithMinutes(selectedDate, endTimeStr, mins, customTime, selectedSubjectRef.current);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
     setCustomTime('');
-    alert(`🍅 ${selectedDate} [${format12H(customTime)} ~ ${format12H(endTimeStr)}] (${mins}분) 공부 기록이 추가되었습니다!`);
+    const subLabel = selectedSubjectRef.current ? `[${selectedSubjectRef.current}] ` : '';
+    alert(`🍅 ${selectedDate} ${subLabel}[${format12H(customTime)} ~ ${format12H(endTimeStr)}] (${mins}분) 공부 기록이 추가되었습니다!`);
   };
 
   const handleDeleteTimestamp = (index) => {
@@ -650,12 +676,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const timeLabel = typeof ts === 'string' ? ts : (ts.time || '');
     const minutesVal = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
     const timeOnly = timeLabel.includes('T') ? timeLabel.split('T')[1].substring(0, 5) : timeLabel.substring(0, 5);
+    const subject = typeof ts === 'object' && ts.subject ? ts.subject : null;
 
     if (typeof ts === 'object' && ts.startTime && ts.endTime) {
       return {
         startTime: ts.startTime,
         endTime: ts.endTime,
-        minutes: minutesVal
+        minutes: minutesVal,
+        subject
       };
     }
 
@@ -670,7 +698,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     return {
       startTime: startStr,
       endTime: timeOnly,
-      minutes: minutesVal
+      minutes: minutesVal,
+      subject
     };
   };
 
@@ -702,23 +731,23 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         </div>
       </div>
 
-      {/* Notification Banner */}
+      {/* Notification Banner (Simplified) */}
       {notifPermission !== 'granted' && (
         <div style={{
-          background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)',
-          borderRadius: '8px', padding: '0.6rem 0.85rem', marginBottom: '1rem',
+          background: 'rgba(245, 158, 11, 0.09)', border: '1px solid rgba(245, 158, 11, 0.25)',
+          borderRadius: '8px', padding: '0.45rem 0.75rem', marginBottom: '0.85rem',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem'
         }}>
-          <div style={{ fontSize: '0.8rem', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Bell size={15} color="#fbbf24" />
-            <span>집중 완료 시 알림 팝업을 받으려면 알림 허용이 필요합니다.</span>
+          <div style={{ fontSize: '0.78rem', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Bell size={14} color="#fbbf24" />
+            <span>완료 시 알림 팝업 받기</span>
           </div>
           <button
             onClick={requestNotificationPermission}
             className="btn btn-secondary"
-            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', background: '#f59e0b', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem', background: '#f59e0b', color: '#000', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
-            알림 허용하기
+            알림 허용
           </button>
         </div>
       )}
@@ -727,18 +756,64 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       <div style={{
         background: 'rgba(0,0,0,0.3)',
         borderRadius: 'var(--radius-sm)',
-        padding: '1.5rem',
+        padding: '1.25rem 1rem',
         textAlign: 'center',
-        marginBottom: '1.5rem',
+        marginBottom: '1.25rem',
         border: '1px solid rgba(255,255,255,0.08)'
       }}>
-        <div style={{ fontSize: '4rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '2px', textShadow: '0 0 20px rgba(16, 185, 129, 0.3)' }}>
+        {/* Subject Selection Chips */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+            <BookOpen size={12} /> 과목:
+          </span>
+          {subjects.map(s => {
+            const isSelected = selectedSubject === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSelectedSubject(s)}
+                style={{
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '12px',
+                  border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.1)',
+                  background: isSelected ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.04)',
+                  color: isSelected ? '#38bdf8' : 'var(--text-secondary)',
+                  fontWeight: isSelected ? 'bold' : 'normal',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {s}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setShowSubjectModal(true)}
+            style={{
+              padding: '0.15rem 0.45rem',
+              borderRadius: '10px',
+              border: '1px dashed rgba(56, 189, 248, 0.4)',
+              background: 'transparent',
+              color: '#38bdf8',
+              fontSize: '0.72rem',
+              cursor: 'pointer'
+            }}
+            title="과목 추가/관리"
+          >
+            + 관리
+          </button>
+        </div>
+
+        <div style={{ fontSize: '3.8rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '2px', textShadow: '0 0 20px rgba(16, 185, 129, 0.3)', lineHeight: 1 }}>
           {formatTimeDisplay(timerState.timeLeft)}
         </div>
 
         {/* Preset Selector */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.25rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>집중 시간:</span>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.15rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>집중:</span>
           {[30, 60].map(mins => (
             <button
               key={mins}
@@ -884,13 +959,21 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                     background: 'rgba(255,255,255,0.03)', padding: '0.45rem 0.75rem', borderRadius: '6px',
                     border: '1px solid rgba(255,255,255,0.05)', transition: 'all 0.2s'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                       <span style={{
                         background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', fontSize: '0.7rem',
                         fontWeight: 'bold', padding: '0.1rem 0.4rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)'
                       }}>
                         {idx + 1}회
                       </span>
+                      {sessionInfo.subject && (
+                        <span style={{
+                          background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontSize: '0.7rem',
+                          fontWeight: 'bold', padding: '0.1rem 0.45rem', borderRadius: '4px', border: '1px solid rgba(56, 189, 248, 0.3)'
+                        }}>
+                          {sessionInfo.subject}
+                        </span>
+                      )}
                       <span style={{ fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                         {format12H(sessionInfo.startTime)} ~ {format12H(sessionInfo.endTime)}
                       </span>
@@ -921,7 +1004,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
           {/* Collapsible Manual Entry Form */}
           {showManualForm && (
-            <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)', animation: 'fadeIn 0.2s ease' }}>
+            <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)', animation: 'fadeIn 0.2s ease', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>시작:</span>
               <input
                 type="time"
@@ -946,6 +1029,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 }}
               />
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>분</span>
+              {selectedSubject && (
+                <span style={{ fontSize: '0.72rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                  {selectedSubject}
+                </span>
+              )}
               <button type="submit" className="btn btn-secondary" style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#34d399', fontWeight: 'bold' }}>
                 추가
               </button>
@@ -953,6 +1041,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           )}
         </div>
       </div>
+
+      {/* Subject Management Modal */}
+      <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
     </div>
   );
 }
