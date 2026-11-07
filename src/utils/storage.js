@@ -616,14 +616,17 @@ export const storage = {
     // Total Diary Entries
     const diaryRaw = localStorage.getItem(STORAGE_KEYS.DIARY);
     const diaryData = safeParse(diaryRaw, []);
-    const filteredDiary = diaryData.filter(e => !startDate || e.dateStr >= startDate);
+    const filteredDiary = diaryData.filter(e => {
+      const d = e.dateStr || (e.date ? e.date.substring(0, 10) : '');
+      return !startDate || (d && d >= startDate);
+    });
     const totalDiaryEntries = filteredDiary.length;
 
     // Active days (days with at least pomodoro or quest or diary)
     const activeDaysSet = new Set([
       ...Object.keys(pomoData).filter(d => (!startDate || d >= startDate) && (pomoData[d].totalMinutes || 0) > 0),
       ...Object.keys(questsData).filter(d => (!startDate || d >= startDate) && Array.isArray(questsData[d]) && questsData[d].some(q => q.isCompleted || q.skippedReason)),
-      ...filteredDiary.map(e => e.dateStr)
+      ...filteredDiary.map(e => e.dateStr || (e.date ? e.date.substring(0, 10) : '')).filter(Boolean)
     ]);
 
     return {

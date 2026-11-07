@@ -16,7 +16,7 @@ const SUBJECT_COLORS = [
 ];
 
 export default function InsightsDashboard({ onClose }) {
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState(() => storage.getAllTimeStats());
   const [weekOffset, setWeekOffset] = useState(0); // 0: 이번 주, -1: 지난 주, +1: 다음 주
   const [selectedDay, setSelectedDay] = useState(null);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
@@ -90,8 +90,44 @@ export default function InsightsDashboard({ onClose }) {
     return { weekRangeLabel: rangeLabel, weeklyTrend: trend, totalWeeklyMinutes: totalMins };
   }, [todayObj, todayStr, weekOffset]);
 
-  if (!stats) return null;
+  // Subject Balance Breakdown for the current week (과목 편식 방지)
+  const { subjectBreakdown, subjectTotalMins } = useMemo(() => {
+    const pomoRaw = localStorage.getItem('human_os_pomodoro_v1');
+    const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
+    const subMap = {};
 
+    const safeSubjects = Array.isArray(subjects) ? subjects : [];
+    // Initialize all registered subjects with 0 so the user sees all subjects
+    safeSubjects.forEach(s => { subMap[s] = 0; });
+
+    let total = 0;
+    weeklyTrend.forEach(day => {
+      const dayData = pomoData[day.dateStr];
+      if (dayData && Array.isArray(dayData.timestamps)) {
+        dayData.timestamps.forEach(ts => {
+          const sub = (typeof ts === 'object' && ts.subject) ? ts.subject : '기타/미지정';
+          const mins = (typeof ts === 'object' && ts.minutes) ? Number(ts.minutes) : 25;
+          subMap[sub] = (subMap[sub] || 0) + mins;
+          total += mins;
+        });
+      }
+    });
+
+    const registeredOrder = [...safeSubjects];
+    const breakdown = Object.entries(subMap)
+      .map(([name, mins]) => {
+        const pct = total > 0 ? Math.round((mins / total) * 100) : 0;
+        let colorIndex = registeredOrder.indexOf(name);
+        if (colorIndex === -1) colorIndex = 7;
+        const color = SUBJECT_COLORS[colorIndex % SUBJECT_COLORS.length];
+        return { name, mins, pct, color };
+      })
+      .sort((a, b) => b.mins - a.mins);
+
+    return { subjectBreakdown: breakdown, subjectTotalMins: total };
+  }, [weeklyTrend, subjects]);
+
+  const currentStats = stats || { activeDays: 0, totalFocusMins: 0 };
   const dailyAvgMins = Math.round(totalWeeklyMinutes / 7);
   const bestDay = weeklyTrend.reduce((best, cur) => (cur.minutes > (best?.minutes || 0) ? cur : best), null);
   const sproutDaysCount = weeklyTrend.filter(t => t.minutes >= 240).length;
@@ -114,42 +150,6 @@ export default function InsightsDashboard({ onClose }) {
   // Selected day pomodoro sessions for drilldown
   const activeDayForDetail = selectedDay || weeklyTrend.find(t => t.isToday) || weeklyTrend[weeklyTrend.length - 1];
   const activeDayPomo = activeDayForDetail ? storage.getPomodoroByDate(activeDayForDetail.dateStr) : null;
-
-  // Subject Balance Breakdown for the current week (과목 편식 방지)
-  const { subjectBreakdown, subjectTotalMins } = useMemo(() => {
-    const pomoRaw = localStorage.getItem('human_os_pomodoro_v1');
-    const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
-    const subMap = {};
-
-    // Initialize all registered subjects with 0 so the user sees all subjects
-    subjects.forEach(s => { subMap[s] = 0; });
-
-    let total = 0;
-    weeklyTrend.forEach(day => {
-      const dayData = pomoData[day.dateStr];
-      if (dayData && Array.isArray(dayData.timestamps)) {
-        dayData.timestamps.forEach(ts => {
-          const sub = (typeof ts === 'object' && ts.subject) ? ts.subject : '기타/미지정';
-          const mins = (typeof ts === 'object' && ts.minutes) ? Number(ts.minutes) : 25;
-          subMap[sub] = (subMap[sub] || 0) + mins;
-          total += mins;
-        });
-      }
-    });
-
-    const registeredOrder = [...subjects];
-    const breakdown = Object.entries(subMap)
-      .map(([name, mins]) => {
-        const pct = total > 0 ? Math.round((mins / total) * 100) : 0;
-        let colorIndex = registeredOrder.indexOf(name);
-        if (colorIndex === -1) colorIndex = 7;
-        const color = SUBJECT_COLORS[colorIndex % SUBJECT_COLORS.length];
-        return { name, mins, pct, color };
-      })
-      .sort((a, b) => b.mins - a.mins);
-
-    return { subjectBreakdown: breakdown, subjectTotalMins: total };
-  }, [weeklyTrend, subjects]);
 
   return (
     <div className="glass-panel animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh', gap: '1.25rem' }}>
@@ -184,7 +184,7 @@ export default function InsightsDashboard({ onClose }) {
               <span style={{ fontSize: '0.67rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '4px' }}>10/11부터</span>
             </div>
             <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--accent-primary)', marginTop: '0.15rem' }}>
-              {stats.activeDays}일
+              {currentStats.activeDays}일
             </div>
           </div>
         </div>
@@ -196,7 +196,7 @@ export default function InsightsDashboard({ onClose }) {
               <span style={{ fontSize: '0.67rem', color: '#38bdf8', background: 'rgba(59, 130, 246, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '4px' }}>10/11부터</span>
             </div>
             <div style={{ fontSize: '1.35rem', fontWeight: 'bold', color: 'var(--accent-secondary)', marginTop: '0.15rem' }}>
-              {formatTime(stats.totalFocusMins || 0)}
+              {formatTime(currentStats.totalFocusMins || 0)}
             </div>
           </div>
         </div>
