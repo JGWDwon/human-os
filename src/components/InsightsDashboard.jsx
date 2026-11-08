@@ -1,19 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart2, Trophy, Timer, Zap, Calendar, ArrowLeft, Flame, CheckCircle2, Clock, ChevronLeft, ChevronRight, RotateCcw, BookOpen, PieChart } from 'lucide-react';
-import { storage } from '../utils/storage';
+import { storage, getSubjectColor, SUBJECT_COLORS } from '../utils/storage';
 import StudyTimetable from './StudyTimetable';
 import SubjectModal from './SubjectModal';
-
-const SUBJECT_COLORS = [
-  '#38bdf8', // Sky
-  '#a855f7', // Purple
-  '#10b981', // Emerald
-  '#f59e0b', // Amber
-  '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#f97316', // Orange
-  '#8b5cf6', // Violet
-];
 
 export default function InsightsDashboard({ onClose }) {
   const [stats, setStats] = useState(() => storage.getAllTimeStats());
@@ -117,9 +106,7 @@ export default function InsightsDashboard({ onClose }) {
     const breakdown = Object.entries(subMap)
       .map(([name, mins]) => {
         const pct = total > 0 ? Math.round((mins / total) * 100) : 0;
-        let colorIndex = registeredOrder.indexOf(name);
-        if (colorIndex === -1) colorIndex = 7;
-        const color = SUBJECT_COLORS[colorIndex % SUBJECT_COLORS.length];
+        const color = getSubjectColor(name, registeredOrder);
         return { name, mins, pct, color };
       })
       .sort((a, b) => b.mins - a.mins);

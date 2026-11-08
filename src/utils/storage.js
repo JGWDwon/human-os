@@ -68,6 +68,33 @@ const INITIAL_QUESTS = [
   }
 ];
 
+export const SUBJECT_COLORS = [
+  '#38bdf8', // Sky
+  '#a855f7', // Purple
+  '#10b981', // Emerald
+  '#f59e0b', // Amber
+  '#ec4899', // Pink
+  '#06b6d4', // Cyan
+  '#f97316', // Orange
+  '#8b5cf6', // Violet
+];
+
+export function getSubjectColor(subjectName, customSubjectsList = null) {
+  if (!subjectName || subjectName === '기타/미지정' || subjectName === '일반') {
+    return '#34d399'; // Default mint/emerald
+  }
+  const list = customSubjectsList || storage.getSubjects();
+  const idx = list.indexOf(subjectName);
+  if (idx !== -1) {
+    return SUBJECT_COLORS[idx % SUBJECT_COLORS.length];
+  }
+  let hash = 0;
+  for (let i = 0; i < subjectName.length; i++) {
+    hash = (hash << 5) - hash + subjectName.charCodeAt(i);
+  }
+  return SUBJECT_COLORS[Math.abs(hash) % SUBJECT_COLORS.length];
+}
+
 export const storage = {
   _dispatchSync() {
     window.dispatchEvent(new CustomEvent('cloud-sync-needed'));
@@ -675,6 +702,10 @@ export const storage = {
   deleteSubject(name) {
     const list = this.getSubjects().filter(s => s !== name);
     this.saveSubjects(list);
+  },
+
+  getSubjectColor(name, customList = null) {
+    return getSubjectColor(name, customList || this.getSubjects());
   },
 
   // Custom D-Days Management (1차, 2차 시험 등)

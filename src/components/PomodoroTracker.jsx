@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen } from 'lucide-react';
-import { storage } from '../utils/storage';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X } from 'lucide-react';
+import { storage, getSubjectColor } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
 import { Capacitor } from '@capacitor/core';
@@ -50,6 +50,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     return list[0] || '';
   });
   const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [showSubjectConfirmModal, setShowSubjectConfirmModal] = useState(false);
   const selectedSubjectRef = useRef(selectedSubject);
 
   useEffect(() => {
@@ -452,8 +453,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
   };
 
-  const startTimer = async () => {
+  const handleStartButtonClick = () => {
     if (timerState.isRunning) return;
+    if (timerState.isPaused) {
+      // Resuming existing paused session
+      executeStartTimer();
+    } else {
+      // Starting new session: prompt for subject confirmation/selection
+      setShowSubjectConfirmModal(true);
+    }
+  };
+
+  const executeStartTimer = async (chosenSubject = null) => {
+    if (timerState.isRunning) return;
+    if (chosenSubject) {
+      setSelectedSubject(chosenSubject);
+      selectedSubjectRef.current = chosenSubject;
+    }
+    setShowSubjectConfirmModal(false);
     isCompletingRef.current = false;
     playSound('click');
     
@@ -506,7 +523,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 {
                   id: 1001,
                   title: '성장의 숲 🍅',
-                  body: `🎉 ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+                  body: `🎉 [${selectedSubjectRef.current || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
                   schedule: { at: new Date(endTime), allowWhileIdle: true },
                   channelId: 'pomodoro-alarm-v4',
                   sound: 'bell2',
@@ -761,51 +778,78 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         marginBottom: '1.25rem',
         border: '1px solid rgba(255,255,255,0.08)'
       }}>
-        {/* Subject Selection Chips */}
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-            <BookOpen size={12} /> 과목:
-          </span>
-          {subjects.map(s => {
-            const isSelected = selectedSubject === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSelectedSubject(s)}
-                style={{
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '12px',
-                  border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.1)',
-                  background: isSelected ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.04)',
-                  color: isSelected ? '#38bdf8' : 'var(--text-secondary)',
-                  fontWeight: isSelected ? 'bold' : 'normal',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-              >
-                {s}
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => setShowSubjectModal(true)}
-            style={{
-              padding: '0.15rem 0.45rem',
-              borderRadius: '10px',
-              border: '1px dashed rgba(56, 189, 248, 0.4)',
-              background: 'transparent',
-              color: '#38bdf8',
-              fontSize: '0.72rem',
-              cursor: 'pointer'
-            }}
-            title="과목 추가/관리"
-          >
-            + 관리
-          </button>
-        </div>
+        {/* Subject Indicator / Selection Chips */}
+        {timerState.isRunning || timerState.isPaused ? (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: 'rgba(15, 23, 42, 0.85)',
+            border: `1.5px solid ${getSubjectColor(selectedSubject, subjects)}`,
+            padding: '0.35rem 0.95rem',
+            borderRadius: '20px',
+            marginBottom: '1rem',
+            boxShadow: `0 0 15px ${getSubjectColor(selectedSubject, subjects)}30`
+          }}>
+            <span style={{
+              width: '9px',
+              height: '9px',
+              borderRadius: '50%',
+              background: getSubjectColor(selectedSubject, subjects),
+              display: 'inline-block',
+              boxShadow: `0 0 8px ${getSubjectColor(selectedSubject, subjects)}`
+            }} />
+            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>
+              집중 과목: <span style={{ color: getSubjectColor(selectedSubject, subjects) }}>{selectedSubject || '미지정'}</span>
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+              <BookOpen size={12} /> 과목:
+            </span>
+            {subjects.map(s => {
+              const isSelected = selectedSubject === s;
+              const col = getSubjectColor(s, subjects);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSelectedSubject(s)}
+                  style={{
+                    padding: '0.2rem 0.55rem',
+                    borderRadius: '12px',
+                    border: isSelected ? `1px solid ${col}` : '1px solid rgba(255,255,255,0.1)',
+                    background: isSelected ? `${col}25` : 'rgba(255,255,255,0.04)',
+                    color: isSelected ? col : 'var(--text-secondary)',
+                    fontWeight: isSelected ? 'bold' : 'normal',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {s}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setShowSubjectModal(true)}
+              style={{
+                padding: '0.15rem 0.45rem',
+                borderRadius: '10px',
+                border: '1px dashed rgba(56, 189, 248, 0.4)',
+                background: 'transparent',
+                color: '#38bdf8',
+                fontSize: '0.72rem',
+                cursor: 'pointer'
+              }}
+              title="과목 추가/관리"
+            >
+              + 관리
+            </button>
+          </div>
+        )}
 
         <div style={{ fontSize: '3.8rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '2px', textShadow: '0 0 20px rgba(16, 185, 129, 0.3)', lineHeight: 1 }}>
           {formatTimeDisplay(timerState.timeLeft)}
@@ -875,7 +919,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           {!timerState.isRunning ? (
             <button
-              onClick={startTimer}
+              onClick={handleStartButtonClick}
               className="btn btn-primary"
               style={{ padding: '0.65rem 2rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
@@ -1041,6 +1085,144 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           )}
         </div>
       </div>
+
+      {/* Subject Confirmation Modal before Timer Start */}
+      {showSubjectConfirmModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.82)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10002,
+          padding: '1rem'
+        }}>
+          <div className="glass-panel animate-fade-in" style={{
+            maxWidth: '430px',
+            width: '100%',
+            background: '#0f172a',
+            border: '1.5px solid #38bdf8',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            boxShadow: '0 12px 35px rgba(0,0,0,0.7)',
+            textAlign: 'center'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Target size={20} color="#38bdf8" /> 집중할 과목을 확인해주세요
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowSubjectConfirmModal(false)}
+                className="btn btn-secondary"
+                style={{ padding: '0.25rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0', lineHeight: 1.45 }}>
+              이번 집중 세션(<strong style={{ color: '#fff' }}>{activeMinutes}분</strong>)에서 공부할 과목을 선택하면 타이머가 즉시 시작됩니다.
+            </p>
+
+            {/* Subject Selection Buttons Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem', marginBottom: '1.25rem' }}>
+              {subjects.map(s => {
+                const isSelected = selectedSubject === s;
+                const col = getSubjectColor(s, subjects);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => executeStartTimer(s)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.75rem 0.9rem',
+                      borderRadius: '10px',
+                      border: isSelected ? `2px solid ${col}` : '1px solid rgba(255,255,255,0.1)',
+                      background: isSelected ? `${col}22` : 'rgba(255,255,255,0.03)',
+                      color: isSelected ? '#fff' : 'var(--text-secondary)',
+                      fontWeight: isSelected ? 'bold' : 'normal',
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      boxShadow: isSelected ? `0 0 12px ${col}40` : 'none'
+                    }}
+                    onMouseEnter={e => {
+                      if (!isSelected) {
+                        e.currentTarget.style.borderColor = col;
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSelected) {
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: col, display: 'inline-block' }} />
+                      <span>{s}</span>
+                    </div>
+                    {isSelected ? (
+                      <span style={{ fontSize: '0.72rem', color: col, fontWeight: 'bold' }}>✓ 선택됨</span>
+                    ) : (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>시작</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Primary Action Button */}
+            <button
+              type="button"
+              onClick={() => executeStartTimer(selectedSubject)}
+              className="btn btn-primary"
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                fontSize: '0.95rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.45rem',
+                marginBottom: '0.75rem'
+              }}
+            >
+              <Play size={18} /> "{selectedSubject || '선택 과목'}"(으)로 시작하기
+            </button>
+
+            {/* Footer link to manage subjects */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.65rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSubjectConfirmModal(false);
+                  setShowSubjectModal(true);
+                }}
+                style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
+              >
+                + 과목 추가 / 관리
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSubjectConfirmModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Subject Management Modal */}
       <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />

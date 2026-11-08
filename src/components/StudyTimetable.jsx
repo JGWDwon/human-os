@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
-import { storage } from '../utils/storage';
+import { storage, getSubjectColor } from '../utils/storage';
 
 // 24 Hours starting at 06:00 to 05:00 next morning (matching traditional Korean 10-minute study planner)
 const PLANNER_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5];
@@ -48,19 +48,28 @@ const getSessionRange = (ts) => {
   };
 };
 
-// Build 24x6 active matrix for a given date with 5-minute half-block resolution
-// Each block contains { left: boolean, right: boolean } representing two 5-min intervals
-const buildActiveMatrixForDate = (dateStr) => {
+// Build 24x6 active matrix for a given date with 5-minute half-block resolution and subject colors
+const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
   const dayData = storage.getPomodoroByDate(dateStr);
   const timestamps = dayData?.timestamps || [];
 
-  // matrix[hour_0_to_23][block_0_to_5] = { left: boolean, right: boolean }
+  // matrix[hour_0_to_23][block_0_to_5] = { left, right, leftColor, rightColor, leftSubject, rightSubject }
   const matrix = Array.from({ length: 24 }, () =>
-    Array.from({ length: 6 }, () => ({ left: false, right: false }))
+    Array.from({ length: 6 }, () => ({
+      left: false,
+      right: false,
+      leftColor: null,
+      rightColor: null,
+      leftSubject: null,
+      rightSubject: null
+    }))
   );
 
   timestamps.forEach(ts => {
     const { startTime, endTime } = getSessionRange(ts);
+    const subject = typeof ts === 'object' && ts.subject ? ts.subject : null;
+    const color = getSubjectColor(subject, subjectsList);
+
     const [startH, startM] = startTime.split(':').map(Number);
     const [endH, endM] = endTime.split(':').map(Number);
 
@@ -86,6 +95,8 @@ const buildActiveMatrixForDate = (dateStr) => {
 
         if (leftOverlap >= 2.5 || leftWrapped >= 2.5) {
           matrix[h][b].left = true;
+          matrix[h][b].leftColor = color;
+          matrix[h][b].leftSubject = subject;
         }
 
         // Right half (:05 ~ :10 of this 10-minute block)
@@ -98,6 +109,8 @@ const buildActiveMatrixForDate = (dateStr) => {
 
         if (rightOverlap >= 2.5 || rightWrapped >= 2.5) {
           matrix[h][b].right = true;
+          matrix[h][b].rightColor = color;
+          matrix[h][b].rightSubject = subject;
         }
       }
     }
@@ -110,33 +123,41 @@ const buildActiveMatrixForDate = (dateStr) => {
   };
 };
 
-// Generate informative tooltip for each block
+// Generate informative tooltip for each block with subject info
 const getBlockTooltip = (prefix, h, b, cell) => {
   const startMin = b * 10;
   const endMin = (b + 1) * 10;
   const startStr = `${h}:${startMin.toString().padStart(2, '0')}`;
   const endStr = `${h}:${endMin.toString().padStart(2, '0')}`;
+  const sub = cell.leftSubject || cell.rightSubject;
+  const subTag = sub ? `[${sub}] ` : '';
 
   if (cell.left && cell.right) {
-    return `${prefix} ${startStr} ~ ${endStr} (10분 집중)`;
+    return `${prefix} ${subTag}${startStr} ~ ${endStr} (10분 집중)`;
   }
   if (cell.left && !cell.right) {
     const halfEnd = `${h}:${(startMin + 5).toString().padStart(2, '0')}`;
-    return `${prefix} ${startStr} ~ ${halfEnd} (반 칸 / 5분 집중)`;
+    return `${prefix} ${subTag}${startStr} ~ ${halfEnd} (반 칸 / 5분 집중)`;
   }
   if (!cell.left && cell.right) {
     const halfStart = `${h}:${(startMin + 5).toString().padStart(2, '0')}`;
-    return `${prefix} ${halfStart} ~ ${endStr} (반 칸 / 5분 집중)`;
+    return `${prefix} ${subTag}${halfStart} ~ ${endStr} (반 칸 / 5분 집중)`;
   }
   return `${prefix} ${startStr} ~ ${endStr} (휴식)`;
 };
 
-// Subcomponent for rendering a 10-minute block with 5-minute half-block capability
-function TimetableBlock({ cell, activeColor, inactiveBg = 'rgba(255,255,255,0.04)', tooltip = '' }) {
+// Subcomponent for rendering a 10-minute block with 5-minute half-block capability and subject colors
+function TimetableBlock({ cell, fallbackColor, inactiveBg = 'rgba(255,255,255,0.04)', tooltip = '' }) {
   const left = !!cell?.left;
   const right = !!cell?.right;
   const isFull = left && right;
   const hasActive = left || right;
+
+  const leftColor = cell?.leftColor || fallbackColor;
+  const rightColor = cell?.rightColor || fallbackColor;
+  const borderColor = isFull
+    ? (leftColor === rightColor ? leftColor : 'rgba(255,255,255,0.45)')
+    : (hasActive ? (left ? leftColor : rightColor) : 'rgba(255,255,255,0.05)');
 
   return (
     <div
@@ -147,7 +168,7 @@ function TimetableBlock({ cell, activeColor, inactiveBg = 'rgba(255,255,255,0.04
         display: 'flex',
         background: inactiveBg,
         border: hasActive
-          ? `1px solid ${isFull ? activeColor : 'rgba(255,255,255,0.25)'}`
+          ? `1px solid ${borderColor}`
           : '1px solid rgba(255,255,255,0.05)',
         borderRadius: '2px',
         overflow: 'hidden',
@@ -159,8 +180,8 @@ function TimetableBlock({ cell, activeColor, inactiveBg = 'rgba(255,255,255,0.04
         style={{
           width: '50%',
           height: '100%',
-          background: left ? activeColor : 'transparent',
-          borderRight: isFull ? '1px solid rgba(0,0,0,0.1)' : '1px dashed rgba(255,255,255,0.12)',
+          background: left ? leftColor : 'transparent',
+          borderRight: isFull ? '1px solid rgba(0,0,0,0.15)' : '1px dashed rgba(255,255,255,0.12)',
           transition: 'background 0.15s'
         }}
       />
@@ -169,7 +190,7 @@ function TimetableBlock({ cell, activeColor, inactiveBg = 'rgba(255,255,255,0.04
         style={{
           width: '50%',
           height: '100%',
-          background: right ? activeColor : 'transparent',
+          background: right ? rightColor : 'transparent',
           transition: 'background 0.15s'
         }}
       />
@@ -185,6 +206,14 @@ export default function StudyTimetable({
   const [internalOffset, setInternalOffset] = useState(0);
   const weekOffset = externalOffset !== undefined ? externalOffset : internalOffset;
   const setWeekOffset = externalSetOffset !== undefined ? externalSetOffset : setInternalOffset;
+
+  const [registeredSubjects, setRegisteredSubjects] = useState(() => storage.getSubjects());
+
+  useEffect(() => {
+    const handleSubs = () => setRegisteredSubjects(storage.getSubjects());
+    window.addEventListener('subjects-updated', handleSubs);
+    return () => window.removeEventListener('subjects-updated', handleSubs);
+  }, []);
 
   // Dates computation
   const todayObj = useMemo(() => new Date(), []);
@@ -217,7 +246,7 @@ export default function StudyTimetable({
         dayName: dayNames[i],
         dateShort: `${d.getMonth() + 1}/${d.getDate()}`,
         isToday,
-        data: buildActiveMatrixForDate(dateStr)
+        data: buildActiveMatrixForDate(dateStr, registeredSubjects)
       });
     }
 
@@ -226,7 +255,7 @@ export default function StudyTimetable({
     const rangeLabel = `${sunday.getFullYear()}년 ${sunday.getMonth() + 1}월 ${sunday.getDate()}일 ~ ${saturday.getMonth() + 1}월 ${saturday.getDate()}일`;
 
     return { weekDays: days, weekRangeLabel: rangeLabel };
-  }, [todayObj, todayStr, weekOffset]);
+  }, [todayObj, todayStr, weekOffset, registeredSubjects]);
 
   const totalWeeklyMinutes = useMemo(() => {
     return weekDays.reduce((sum, d) => sum + (d.data?.totalMinutes || 0), 0);
@@ -325,9 +354,25 @@ export default function StudyTimetable({
             </div>
           </div>
 
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1rem 0' }}>
-            이번 주 일요일부터 토요일까지 10분 그리드 및 5분 반칸으로 스터디 플래너 양식에 맞춰 자동 색칠됩니다.
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 0.65rem 0' }}>
+            이번 주 일요일부터 토요일까지 10분 그리드 및 5분 반칸으로 과목별 색상에 맞춰 자동 색칠됩니다.
           </p>
+
+          {/* Subject Color Legend */}
+          {registeredSubjects && registeredSubjects.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '0.35rem 0.65rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>과목별 색상:</span>
+              {registeredSubjects.map(s => {
+                const color = getSubjectColor(s, registeredSubjects);
+                return (
+                  <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', color: '#e2e8f0', background: 'rgba(255,255,255,0.04)', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: color, display: 'inline-block' }} />
+                    {s}
+                  </span>
+                );
+              })}
+            </div>
+          )}
 
           {/* Timetable Grid Container */}
           <div style={{ overflowX: 'auto', paddingBottom: '0.5rem' }}>
@@ -389,13 +434,13 @@ export default function StudyTimetable({
                       <div key={day.dateStr} style={{ flex: 1, display: 'flex', gap: '2px', padding: '0 3px', height: '100%' }}>
                         {[0, 1, 2, 3, 4, 5].map(b => {
                           const cell = day.data.matrix[h]?.[b] || { left: false, right: false };
-                          const activeColor = day.isToday ? '#34d399' : 'rgba(52, 211, 153, 0.75)';
+                          const fallbackColor = day.isToday ? '#34d399' : 'rgba(52, 211, 153, 0.75)';
                           const tooltip = getBlockTooltip(`${day.dayName}요일`, h, b, cell);
                           return (
                             <TimetableBlock
                               key={b}
                               cell={cell}
-                              activeColor={activeColor}
+                              fallbackColor={fallbackColor}
                               tooltip={tooltip}
                             />
                           );
