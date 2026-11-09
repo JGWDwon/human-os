@@ -46,24 +46,53 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const [showManualForm, setShowManualForm] = useState(false);
   const [subjects, setSubjects] = useState(() => storage.getSubjects());
   const [selectedSubject, setSelectedSubject] = useState(() => {
-    const list = storage.getSubjects();
-    return list[0] || '';
+    try {
+      const saved = localStorage.getItem('human_os_selected_subject_v1');
+      const list = storage.getSubjects();
+      if (saved && list.includes(saved)) return saved;
+      return list[0] || '';
+    } catch (e) {
+      return storage.getSubjects()[0] || '';
+    }
   });
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showSubjectConfirmModal, setShowSubjectConfirmModal] = useState(false);
   const selectedSubjectRef = useRef(selectedSubject);
 
+  const handleSelectSubject = (sub) => {
+    if (!sub) return;
+    setSelectedSubject(sub);
+    selectedSubjectRef.current = sub;
+    try {
+      localStorage.setItem('human_os_selected_subject_v1', sub);
+    } catch (e) {}
+  };
+
   useEffect(() => {
     selectedSubjectRef.current = selectedSubject;
+    try {
+      if (selectedSubject) {
+        localStorage.setItem('human_os_selected_subject_v1', selectedSubject);
+      }
+    } catch (e) {}
   }, [selectedSubject]);
 
   useEffect(() => {
     const handleSubjectsUpdated = () => {
       const list = storage.getSubjects();
       setSubjects(list);
-      if (!list.includes(selectedSubjectRef.current)) {
-        setSelectedSubject(list[0] || '');
-      }
+      try {
+        const savedSub = localStorage.getItem('human_os_selected_subject_v1');
+        if (savedSub && list.includes(savedSub)) {
+          setSelectedSubject(savedSub);
+          selectedSubjectRef.current = savedSub;
+        } else if (!list.includes(selectedSubjectRef.current)) {
+          const nextSub = list[0] || '';
+          setSelectedSubject(nextSub);
+          selectedSubjectRef.current = nextSub;
+          if (nextSub) localStorage.setItem('human_os_selected_subject_v1', nextSub);
+        }
+      } catch (e) {}
     };
     window.addEventListener('subjects-updated', handleSubjectsUpdated);
     return () => window.removeEventListener('subjects-updated', handleSubjectsUpdated);
@@ -82,45 +111,50 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const [timerState, setTimerState] = useState(() => {
     const saved = localStorage.getItem('human_os_timer_state_v1');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.mode === 'break') {
-        parsed.mode = 'focus';
-        parsed.duration = 1800;
-        parsed.timeLeft = 1800;
-        parsed.isRunning = false;
-        parsed.isPaused = false;
-      }
-      // Migrate legacy 25m or 50m when idle
-      if (!parsed.isRunning && !parsed.isPaused) {
-        if (parsed.duration === 1500 || !parsed.duration) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.currentSubject) {
+          selectedSubjectRef.current = parsed.currentSubject;
+        }
+        if (parsed.mode === 'break') {
+          parsed.mode = 'focus';
           parsed.duration = 1800;
           parsed.timeLeft = 1800;
-        } else if (parsed.duration === 3000) {
-          parsed.duration = 3600;
-          parsed.timeLeft = 3600;
+          parsed.isRunning = false;
+          parsed.isPaused = false;
         }
-      }
-      if (parsed.isRunning) {
-        const remaining = Math.max(0, Math.round((parsed.endTime - Date.now()) / 1000));
-        if (remaining <= 0) {
-          // Timer finished while app was closed / suspended
+        // Migrate legacy 25m or 50m when idle
+        if (!parsed.isRunning && !parsed.isPaused) {
+          if (parsed.duration === 1500 || !parsed.duration) {
+            parsed.duration = 1800;
+            parsed.timeLeft = 1800;
+          } else if (parsed.duration === 3000) {
+            parsed.duration = 3600;
+            parsed.timeLeft = 3600;
+          }
+        }
+        if (parsed.isRunning) {
+          const remaining = Math.max(0, Math.round((parsed.endTime - Date.now()) / 1000));
+          if (remaining <= 0) {
+            // Timer finished while app was closed / suspended
+            return {
+              ...parsed,
+              timeLeft: 0,
+              isRunning: false,
+              isPaused: false,
+              pendingAutoLog: true,
+              autoLogMins: Math.max(1, Math.round(parsed.duration / 60)),
+              autoLogEndTime: parsed.endTime
+            };
+          }
           return {
             ...parsed,
-            timeLeft: 0,
-            isRunning: false,
-            isPaused: false,
-            pendingAutoLog: true,
-            autoLogMins: Math.max(1, Math.round(parsed.duration / 60)),
-            autoLogEndTime: parsed.endTime
+            timeLeft: remaining,
+            isRunning: true
           };
         }
-        return {
-          ...parsed,
-          timeLeft: remaining,
-          isRunning: true
-        };
-      }
-      return parsed;
+        return parsed;
+      } catch (e) {}
     }
     return {
       isRunning: false,
@@ -145,7 +179,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       const startObj = new Date(targetEndTimeMs - mins * 60 * 1000);
       const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
 
-      storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, mins, startTimeStr, selectedSubjectRef.current);
+      const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
+
+      storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, mins, startTimeStr, subjectToLog);
       refreshData();
       window.dispatchEvent(new CustomEvent('xp-updated'));
       if (onUpdate) onUpdate();
@@ -156,7 +192,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         isPaused: false,
         endTime: 0,
         duration: nextDuration,
-        timeLeft: nextDuration
+        timeLeft: nextDuration,
+        currentSubject: subjectToLog
       };
       setTimerState(nextState);
       localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -435,7 +472,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const startObj = new Date(targetEndTimeMs - minutesCompleted * 60 * 1000);
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
 
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, selectedSubjectRef.current);
+    const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
+
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -447,7 +486,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       isPaused: false,
       endTime: 0,
       duration: nextDuration,
-      timeLeft: nextDuration
+      timeLeft: nextDuration,
+      currentSubject: subjectToLog
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -466,10 +506,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const executeStartTimer = async (chosenSubject = null) => {
     if (timerState.isRunning) return;
-    if (chosenSubject) {
-      setSelectedSubject(chosenSubject);
-      selectedSubjectRef.current = chosenSubject;
-    }
+    const targetSubject = chosenSubject || timerState.currentSubject || selectedSubjectRef.current || selectedSubject || (storage.getSubjects()[0] || '');
+    handleSelectSubject(targetSubject);
     setShowSubjectConfirmModal(false);
     isCompletingRef.current = false;
     playSound('click');
@@ -523,7 +561,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 {
                   id: 1001,
                   title: '성장의 숲 🍅',
-                  body: `🎉 [${selectedSubjectRef.current || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+                  body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
                   schedule: { at: new Date(endTime), allowWhileIdle: true },
                   channelId: 'pomodoro-alarm-v4',
                   sound: 'bell2',
@@ -544,7 +582,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       ...timerState,
       isRunning: true,
       isPaused: false,
-      endTime
+      endTime,
+      currentSubject: targetSubject
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -574,7 +613,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const nextState = {
       ...timerState,
       isRunning: false,
-      isPaused: true
+      isPaused: true,
+      currentSubject: timerState.currentSubject || selectedSubjectRef.current
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -606,7 +646,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const endTimeStr = now.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
     const startObj = new Date(now.getTime() - minutesCompleted * 60 * 1000);
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, selectedSubjectRef.current);
+
+    const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
+
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -617,7 +660,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       isPaused: false,
       endTime: 0,
       duration: nextDuration,
-      timeLeft: nextDuration
+      timeLeft: nextDuration,
+      currentSubject: subjectToLog
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -633,7 +677,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       isPaused: false,
       duration: secs,
       timeLeft: secs,
-      endTime: 0
+      endTime: 0,
+      currentSubject: selectedSubjectRef.current || timerState.currentSubject
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -647,7 +692,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       isPaused: false,
       duration: secs,
       timeLeft: secs,
-      endTime: 0
+      endTime: 0,
+      currentSubject: selectedSubjectRef.current || timerState.currentSubject
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -671,12 +717,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const endM = endTotalMins % 60;
     const endTimeStr = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 
-    storage.addCustomPomodoroWithMinutes(selectedDate, endTimeStr, mins, customTime, selectedSubjectRef.current);
+    const subjectToLog = selectedSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
+
+    storage.addCustomPomodoroWithMinutes(selectedDate, endTimeStr, mins, customTime, subjectToLog);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
     setCustomTime('');
-    const subLabel = selectedSubjectRef.current ? `[${selectedSubjectRef.current}] ` : '';
+    const subLabel = subjectToLog ? `[${subjectToLog}] ` : '';
     alert(`🍅 ${selectedDate} ${subLabel}[${format12H(customTime)} ~ ${format12H(endTimeStr)}] (${mins}분) 공부 기록이 추가되었습니다!`);
   };
 
@@ -785,22 +833,22 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
             alignItems: 'center',
             gap: '0.5rem',
             background: 'rgba(15, 23, 42, 0.85)',
-            border: `1.5px solid ${getSubjectColor(selectedSubject, subjects)}`,
+            border: `1.5px solid ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}`,
             padding: '0.35rem 0.95rem',
             borderRadius: '20px',
             marginBottom: '1rem',
-            boxShadow: `0 0 15px ${getSubjectColor(selectedSubject, subjects)}30`
+            boxShadow: `0 0 15px ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}30`
           }}>
             <span style={{
               width: '9px',
               height: '9px',
               borderRadius: '50%',
-              background: getSubjectColor(selectedSubject, subjects),
+              background: getSubjectColor(timerState.currentSubject || selectedSubject, subjects),
               display: 'inline-block',
-              boxShadow: `0 0 8px ${getSubjectColor(selectedSubject, subjects)}`
+              boxShadow: `0 0 8px ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}`
             }} />
             <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>
-              집중 과목: <span style={{ color: getSubjectColor(selectedSubject, subjects) }}>{selectedSubject || '미지정'}</span>
+              집중 과목: <span style={{ color: getSubjectColor(timerState.currentSubject || selectedSubject, subjects) }}>{(timerState.currentSubject || selectedSubject) || '미지정'}</span>
             </span>
           </div>
         ) : (
@@ -815,7 +863,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 <button
                   key={s}
                   type="button"
-                  onClick={() => setSelectedSubject(s)}
+                  onClick={() => handleSelectSubject(s)}
                   style={{
                     padding: '0.2rem 0.55rem',
                     borderRadius: '12px',
@@ -1137,7 +1185,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   <button
                     key={s}
                     type="button"
-                    onClick={() => executeStartTimer(s)}
+                    onClick={() => {
+                      handleSelectSubject(s);
+                      executeStartTimer(s);
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1168,12 +1219,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: col, display: 'inline-block' }} />
-                      <span>{s}</span>
+                      <span style={{ color: isSelected ? col : 'inherit', fontWeight: isSelected ? 'bold' : 'normal' }}>{s}</span>
                     </div>
                     {isSelected ? (
                       <span style={{ fontSize: '0.72rem', color: col, fontWeight: 'bold' }}>✓ 선택됨</span>
                     ) : (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>시작</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>시작 ▶</span>
                     )}
                   </button>
                 );
@@ -1194,10 +1245,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.45rem',
-                marginBottom: '0.75rem'
+                marginBottom: '0.75rem',
+                background: `linear-gradient(135deg, ${getSubjectColor(selectedSubject, subjects)}, #10b981)`,
+                color: '#000',
+                boxShadow: `0 4px 15px ${getSubjectColor(selectedSubject, subjects)}40`
               }}
             >
-              <Play size={18} /> "{selectedSubject || '선택 과목'}"(으)로 시작하기
+              <Play size={18} /> "{selectedSubject || '선택 과목'}" 과목으로 시작하기
             </button>
 
             {/* Footer link to manage subjects */}
