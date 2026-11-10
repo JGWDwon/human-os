@@ -214,244 +214,216 @@ function App() {
       <div className="app-container">
         
         {/* ========================================================================= */}
-        {/* SLIM COMPACT HEADER (높이 48px 내외로 공간 대폭 확보) */}
+        {/* RESTRUCTURED BALANCED HEADER (2-Tier: Nav Row & RPG Status HUD) */}
         {/* ========================================================================= */}
         <header style={{
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          flexWrap: 'wrap',
+          flexDirection: 'column',
+          gap: '0.65rem',
           background: 'rgba(15, 23, 42, 0.75)',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '12px',
-          padding: '0.6rem 1rem',
+          borderRadius: '14px',
+          padding: '0.65rem 1rem',
           marginBottom: '1.25rem',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
         }}>
-          {/* Logo & Today Badge */}
-          <div 
-            onClick={() => setActiveView('main')} 
-            style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}
-            title="메인 화면으로 이동"
-          >
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#fff', letterSpacing: '-0.5px' }}>
-              Human<span style={{ color: 'var(--accent-primary)' }}>OS</span>
-            </h1>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
-              {todayFormatted}
-            </span>
-            {updateAvailable ? (
+          {/* Row 1: Brand & Navigation */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            flexWrap: 'wrap'
+          }}>
+            {/* Logo & Today Badge */}
+            <div 
+              onClick={() => setActiveView('main')} 
+              style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}
+              title="메인 화면으로 이동"
+            >
+              <h1 style={{ fontSize: '1.25rem', fontWeight: 900, margin: 0, color: '#fff', letterSpacing: '-0.5px' }}>
+                Human<span style={{ color: 'var(--accent-primary)' }}>OS</span>
+              </h1>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+                {todayFormatted}
+              </span>
+            </div>
+
+            {/* Unified Header Nav Buttons */}
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleApplyUpdate();
-                }}
+                onClick={() => setActiveView(activeView === 'ebbinghaus' ? 'main' : 'ebbinghaus')}
+                className="btn btn-secondary"
                 style={{
-                  background: 'linear-gradient(90deg, #8b5cf6, #ec4899)',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '0.2rem 0.65rem',
-                  borderRadius: '12px',
-                  fontSize: '0.74rem',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  boxShadow: '0 0 12px rgba(236, 72, 153, 0.6)',
-                  animation: 'pulse 1.5s infinite'
-                }}
-                title="새로운 기능 업데이트 즉시 적용"
-              >
-                🚀 새 업데이트 적용
-              </button>
-            ) : (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleApplyUpdate();
-                }}
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  color: 'var(--text-muted)',
-                  padding: '0.15rem 0.5rem',
-                  borderRadius: '12px',
-                  fontSize: '0.72rem',
-                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.25rem'
+                  gap: '0.35rem',
+                  fontSize: '0.82rem',
+                  padding: '0.4rem 0.75rem',
+                  background: activeView === 'ebbinghaus' ? '#8b5cf6' : 'rgba(255, 255, 255, 0.05)',
+                  color: activeView === 'ebbinghaus' ? '#fff' : 'var(--text-secondary)',
+                  border: activeView === 'ebbinghaus' ? '1px solid #a78bfa' : '1px solid rgba(255, 255, 255, 0.1)'
                 }}
-                title="최신 버전 확인 및 앱 새로고침"
               >
-                <RotateCw size={11} /> 업데이트 확인
+                <BookOpen size={15} />
+                <span>에빙하우스 복습</span>
               </button>
-            )}
-          </div>
 
-          {/* Slim RPG Level & Tier Badge Widget */}
-          <div 
-            onClick={() => setShowTierModal(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.65rem',
-              background: 'rgba(0, 0, 0, 0.35)',
-              border: `1px solid ${xpInfo.tierColor || 'rgba(16, 185, 129, 0.3)'}`,
-              borderRadius: '24px',
-              padding: '0.25rem 0.85rem',
-              flex: '1 1 260px',
-              maxWidth: '380px',
-              minWidth: '220px',
-              cursor: 'pointer',
-              transition: 'transform 0.15s, border-color 0.2s'
-            }}
-            title="클릭하여 랭크 배지 도감 확인"
-          >
-            <TierBadge level={xpInfo.level} size={34} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 800,
-                  color: xpInfo.tierColor || '#34d399',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  Lv.{xpInfo.level} {xpInfo.title.split('(')[0]}
-                </span>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  {xpInfo.progressPercent}%
-                </span>
-              </div>
-              <div style={{
-                width: '100%',
-                height: '5px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                borderRadius: '3px',
-                overflow: 'hidden',
-                marginTop: '0.2rem'
-              }}>
-                <div style={{
-                  width: `${xpInfo.progressPercent}%`,
-                  height: '100%',
-                  background: `linear-gradient(90deg, ${xpInfo.tierColor || '#10b981'}, #34d399)`,
-                  transition: 'width 0.4s ease'
-                }} />
-              </div>
+              <button
+                onClick={() => setActiveView(activeView === 'insights' ? 'main' : 'insights')}
+                className="btn btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.82rem',
+                  padding: '0.4rem 0.75rem',
+                  background: activeView === 'insights' ? 'var(--accent-secondary)' : 'rgba(255, 255, 255, 0.05)',
+                  color: activeView === 'insights' ? '#fff' : 'var(--text-secondary)',
+                  border: activeView === 'insights' ? '1px solid #60a5fa' : '1px solid rgba(255, 255, 255, 0.1)'
+                }}
+              >
+                <BarChart2 size={15} />
+                <span>성장 리포트</span>
+              </button>
+
+              <button
+                onClick={() => setActiveView(activeView === 'settings' ? 'main' : 'settings')}
+                className="btn btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.82rem',
+                  padding: '0.4rem 0.65rem',
+                  background: activeView === 'settings' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                }}
+                title="설정"
+              >
+                <Settings size={15} />
+              </button>
+
+              {/* Quick Refresh & Update Button */}
+              <button
+                onClick={handleApplyUpdate}
+                className="btn btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  fontSize: '0.8rem',
+                  padding: '0.4rem 0.65rem',
+                  background: updateAvailable ? 'linear-gradient(90deg, #8b5cf6, #ec4899)' : 'rgba(255, 255, 255, 0.05)',
+                  color: updateAvailable ? '#fff' : 'var(--text-secondary)',
+                  border: updateAvailable ? '1px solid #ec4899' : '1px solid rgba(255, 255, 255, 0.1)',
+                  cursor: 'pointer',
+                  boxShadow: updateAvailable ? '0 0 12px rgba(236, 72, 153, 0.5)' : 'none',
+                  fontWeight: updateAvailable ? 'bold' : 'normal'
+                }}
+                title={updateAvailable ? "새 버전이 준비되었습니다! 클릭하여 적용" : "최신 버전 확인 및 앱 새로고침"}
+              >
+                <RotateCw size={14} className={updateAvailable ? "animate-spin-slow" : ""} />
+                <span>{updateAvailable ? "업데이트!" : "새로고침"}</span>
+              </button>
             </div>
           </div>
 
-          {/* D-Day 1차 / 2차 Header Widget */}
-          <div 
-            onClick={() => setShowDDayModal(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.45rem',
-              background: 'rgba(245, 158, 11, 0.1)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: '20px',
-              padding: '0.25rem 0.8rem',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-              userSelect: 'none'
-            }}
-            title="클릭하여 1차 / 2차 D-Day 목표 설정"
-          >
-            <span style={{ fontSize: '0.9rem' }}>🎯</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.78rem' }}>
-              {dDays.map((d, idx) => {
-                const badge = calcDDay(d.targetDate);
-                return (
-                  <span key={d.id || idx} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{d.label}:</span>
-                    <strong style={{ color: '#fbbf24', fontWeight: 800 }}>{badge || '-'}</strong>
-                    {idx < dDays.length - 1 && <span style={{ color: 'rgba(255,255,255,0.2)', marginLeft: '0.15rem' }}>|</span>}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Unified Header Nav Buttons */}
-          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            <button
-              onClick={() => setActiveView(activeView === 'ebbinghaus' ? 'main' : 'ebbinghaus')}
-              className="btn btn-secondary"
+          {/* Row 2: Status & Goals HUD Bar */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.85rem',
+            paddingTop: '0.55rem',
+            borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+            flexWrap: 'wrap'
+          }}>
+            {/* Slim RPG Level & Tier Badge Widget */}
+            <div 
+              onClick={() => setShowTierModal(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.35rem',
-                fontSize: '0.82rem',
-                padding: '0.4rem 0.75rem',
-                background: activeView === 'ebbinghaus' ? '#8b5cf6' : 'rgba(255, 255, 255, 0.05)',
-                color: activeView === 'ebbinghaus' ? '#fff' : 'var(--text-secondary)',
-                border: activeView === 'ebbinghaus' ? '1px solid #a78bfa' : '1px solid rgba(255, 255, 255, 0.1)'
-              }}
-            >
-              <BookOpen size={15} />
-              <span>에빙하우스 복습</span>
-            </button>
-
-            <button
-              onClick={() => setActiveView(activeView === 'insights' ? 'main' : 'insights')}
-              className="btn btn-secondary"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                fontSize: '0.82rem',
-                padding: '0.4rem 0.75rem',
-                background: activeView === 'insights' ? 'var(--accent-secondary)' : 'rgba(255, 255, 255, 0.05)',
-                color: activeView === 'insights' ? '#fff' : 'var(--text-secondary)',
-                border: activeView === 'insights' ? '1px solid #60a5fa' : '1px solid rgba(255, 255, 255, 0.1)'
-              }}
-            >
-              <BarChart2 size={15} />
-              <span>성장 리포트</span>
-            </button>
-
-            <button
-              onClick={() => setActiveView(activeView === 'settings' ? 'main' : 'settings')}
-              className="btn btn-secondary"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                fontSize: '0.82rem',
-                padding: '0.4rem 0.65rem',
-                background: activeView === 'settings' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)'
-              }}
-              title="설정"
-            >
-              <Settings size={15} />
-            </button>
-
-            {/* Quick Refresh & Update Button */}
-            <button
-              onClick={handleApplyUpdate}
-              className="btn btn-secondary"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-                fontSize: '0.8rem',
-                padding: '0.4rem 0.65rem',
-                background: updateAvailable ? 'linear-gradient(90deg, #8b5cf6, #ec4899)' : 'rgba(255, 255, 255, 0.05)',
-                color: updateAvailable ? '#fff' : 'var(--text-secondary)',
-                border: updateAvailable ? '1px solid #ec4899' : '1px solid rgba(255, 255, 255, 0.1)',
+                gap: '0.65rem',
+                background: 'rgba(0, 0, 0, 0.35)',
+                border: `1.5px solid ${xpInfo.tierColor || 'rgba(16, 185, 129, 0.3)'}`,
+                borderRadius: '24px',
+                padding: '0.3rem 0.9rem',
+                flex: '1 1 260px',
                 cursor: 'pointer',
-                boxShadow: updateAvailable ? '0 0 12px rgba(236, 72, 153, 0.5)' : 'none',
-                fontWeight: updateAvailable ? 'bold' : 'normal'
+                transition: 'transform 0.15s, border-color 0.2s'
               }}
-              title={updateAvailable ? "새 버전이 준비되었습니다! 클릭하여 적용" : "최신 버전 확인 및 앱 새로고침"}
+              title="클릭하여 랭크 배지 도감 확인"
             >
-              <RotateCw size={14} />
-              <span>{updateAvailable ? "업데이트!" : "새로고침"}</span>
-            </button>
+              <TierBadge level={xpInfo.level} size={32} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    color: xpInfo.tierColor || '#34d399',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>
+                    Lv.{xpInfo.level} {xpInfo.title.split('(')[0]}
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {xpInfo.progressPercent}%
+                  </span>
+                </div>
+                <div style={{
+                  width: '100%',
+                  height: '5px',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  borderRadius: '3px',
+                  overflow: 'hidden',
+                  marginTop: '0.2rem'
+                }}>
+                  <div style={{
+                    width: `${xpInfo.progressPercent}%`,
+                    height: '100%',
+                    background: `linear-gradient(90deg, ${xpInfo.tierColor || '#10b981'}, #34d399)`,
+                    transition: 'width 0.4s ease'
+                  }} />
+                </div>
+              </div>
+            </div>
+
+            {/* D-Day 1차 / 2차 Header Widget */}
+            <div 
+              onClick={() => setShowDDayModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1.5px solid rgba(245, 158, 11, 0.35)',
+                borderRadius: '24px',
+                padding: '0.35rem 0.85rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                userSelect: 'none',
+                flexShrink: 0
+              }}
+              title="클릭하여 1차 / 2차 D-Day 목표 설정"
+            >
+              <span style={{ fontSize: '0.9rem' }}>🎯</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.78rem' }}>
+                {dDays.map((d, idx) => {
+                  const badge = calcDDay(d.targetDate);
+                  return (
+                    <span key={d.id || idx} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{d.label}:</span>
+                      <strong style={{ color: '#fbbf24', fontWeight: 800 }}>{badge || '-'}</strong>
+                      {idx < dDays.length - 1 && <span style={{ color: 'rgba(255,255,255,0.2)', marginLeft: '0.15rem' }}>|</span>}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </header>
 
