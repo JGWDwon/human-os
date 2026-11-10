@@ -572,9 +572,12 @@ export const storage = {
       lectures: localStorage.getItem(STORAGE_KEYS.LECTURES),
       vacations: localStorage.getItem(STORAGE_KEYS.VACATIONS),
       studySessions: localStorage.getItem(STORAGE_KEYS.STUDY_SESSIONS),
+      subjects: localStorage.getItem(STORAGE_KEYS.SUBJECTS),
+      ddays: localStorage.getItem(STORAGE_KEYS.DDAYS),
+      selectedSubject: localStorage.getItem('human_os_selected_subject_v1'),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
-      version: '1.0'
+      version: '1.1'
     };
   },
 
@@ -595,6 +598,9 @@ export const storage = {
     if (jsonData.lectures) localStorage.setItem(STORAGE_KEYS.LECTURES, ensureString(jsonData.lectures));
     if (jsonData.vacations) localStorage.setItem(STORAGE_KEYS.VACATIONS, ensureString(jsonData.vacations));
     if (jsonData.studySessions) localStorage.setItem(STORAGE_KEYS.STUDY_SESSIONS, ensureString(jsonData.studySessions));
+    if (jsonData.subjects) localStorage.setItem(STORAGE_KEYS.SUBJECTS, ensureString(jsonData.subjects));
+    if (jsonData.ddays) localStorage.setItem(STORAGE_KEYS.DDAYS, ensureString(jsonData.ddays));
+    if (jsonData.selectedSubject) localStorage.setItem('human_os_selected_subject_v1', ensureString(jsonData.selectedSubject));
     if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
