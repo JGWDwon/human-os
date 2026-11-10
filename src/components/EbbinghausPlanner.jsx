@@ -4,14 +4,62 @@ import { storage } from '../utils/storage';
 import confetti from 'canvas-confetti';
 import SubjectModal from './SubjectModal';
 
+// 1일차, 4일차, 7일차, 14일차, 30일차 복습 주기별 구분 스타일 및 색상 정의
+export const getDayOffsetBadgeStyle = (dayOffset) => {
+  switch (Number(dayOffset)) {
+    case 1:
+      return {
+        bg: 'rgba(56, 189, 248, 0.16)', // 하늘색
+        border: 'rgba(56, 189, 248, 0.45)',
+        color: '#38bdf8',
+        label: '1일차'
+      };
+    case 4:
+      return {
+        bg: 'rgba(168, 85, 247, 0.16)', // 보라색
+        border: 'rgba(168, 85, 247, 0.45)',
+        color: '#c084fc',
+        label: '4일차'
+      };
+    case 7:
+      return {
+        bg: 'rgba(52, 211, 153, 0.16)', // 에메랄드/민트
+        border: 'rgba(52, 211, 153, 0.45)',
+        color: '#34d399',
+        label: '7일차'
+      };
+    case 14:
+      return {
+        bg: 'rgba(251, 146, 60, 0.16)', // 오렌지
+        border: 'rgba(251, 146, 60, 0.45)',
+        color: '#fb923c',
+        label: '14일차'
+      };
+    case 30:
+      return {
+        bg: 'rgba(250, 204, 21, 0.2)', // 골드/황금색
+        border: 'rgba(250, 204, 21, 0.5)',
+        color: '#facc15',
+        label: '30일차'
+      };
+    default:
+      return {
+        bg: 'rgba(148, 163, 184, 0.15)',
+        border: 'rgba(148, 163, 184, 0.3)',
+        color: '#94a3b8',
+        label: `${dayOffset}일차`
+      };
+  }
+};
+
 export default function EbbinghausPlanner({ onClose }) {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const now = new Date();
-    const dayOfWeek = now.getDay() || 7; // 1=Mon, 7=Sun
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek + 1);
-    monday.setHours(0,0,0,0);
-    return monday;
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() - dayOfWeek);
+    sunday.setHours(0,0,0,0);
+    return sunday;
   });
 
   const [lectures, setLectures] = useState([]);
@@ -129,9 +177,8 @@ export default function EbbinghausPlanner({ onClose }) {
 
         if (revDate < currentWeekStart || revDate > weekEnd) {
           const dayOfWeek = revDate.getDay();
-          const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
           const targetWeekStart = new Date(revDate);
-          targetWeekStart.setDate(revDate.getDate() + diffToMon);
+          targetWeekStart.setDate(revDate.getDate() - dayOfWeek);
           targetWeekStart.setHours(0, 0, 0, 0);
           setCurrentWeekStart(targetWeekStart);
         }
@@ -352,59 +399,71 @@ export default function EbbinghausPlanner({ onClose }) {
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.5rem' }}>
-            {todayReviews.map(rev => (
-              <div
-                key={rev.id}
-                onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '0.75rem',
-                  background: rev.isCompleted ? 'rgba(16, 185, 129, 0.12)' : 'rgba(0, 0, 0, 0.3)',
-                  border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
-                  borderRadius: '8px',
-                  padding: '0.55rem 0.8rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
-                  <div style={{
-                    width: '18px',
-                    height: '18px',
-                    borderRadius: '5px',
-                    border: `2px solid ${rev.isCompleted ? '#10b981' : 'rgba(255,255,255,0.3)'}`,
-                    background: rev.isCompleted ? '#10b981' : 'transparent',
+            {todayReviews.map(rev => {
+              const badge = getDayOffsetBadgeStyle(rev.dayOffset);
+              return (
+                <div
+                  key={rev.id}
+                  onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted)}
+                  style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    {rev.isCompleted && <Check size={13} color="#000" strokeWidth={3} />}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.1rem' }}>
-                      <span style={{ fontSize: '0.68rem', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.15)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                        {rev.subject}
-                      </span>
-                      <span style={{ fontSize: '0.68rem', color: '#c084fc', fontWeight: 'bold' }}>
-                        {rev.dayOffset}일차
-                      </span>
-                    </div>
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    background: rev.isCompleted ? 'rgba(16, 185, 129, 0.12)' : 'rgba(0, 0, 0, 0.3)',
+                    border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
+                    borderLeft: `3px solid ${rev.isCompleted ? '#10b981' : badge.color}`,
+                    borderRadius: '8px',
+                    padding: '0.55rem 0.8rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
                     <div style={{
-                      fontSize: '0.85rem',
-                      fontWeight: 'bold',
-                      color: rev.isCompleted ? 'var(--text-muted)' : '#fff',
-                      textDecoration: rev.isCompleted ? 'line-through' : 'none',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '5px',
+                      border: `2px solid ${rev.isCompleted ? '#10b981' : 'rgba(255,255,255,0.3)'}`,
+                      background: rev.isCompleted ? '#10b981' : 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
                     }}>
-                      {rev.title}
+                      {rev.isCompleted && <Check size={13} color="#000" strokeWidth={3} />}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.12rem' }}>
+                        <span style={{ fontSize: '0.68rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                          {rev.subject}
+                        </span>
+                        <span style={{ 
+                          fontSize: '0.68rem', 
+                          color: badge.color, 
+                          background: badge.bg, 
+                          border: `1px solid ${badge.border}`, 
+                          padding: '0.05rem 0.35rem', 
+                          borderRadius: '3px', 
+                          fontWeight: 'bold',
+                          letterSpacing: '-0.2px'
+                        }}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      <div style={{
+                        fontSize: '0.85rem',
+                        fontWeight: 'bold',
+                        color: rev.isCompleted ? 'var(--text-muted)' : '#fff',
+                        textDecoration: rev.isCompleted ? 'line-through' : 'none',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {rev.title}
+                      </div>
                     </div>
                   </div>
-                </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
                   {!rev.isCompleted && (
@@ -443,7 +502,8 @@ export default function EbbinghausPlanner({ onClose }) {
                   )}
                 </div>
               </div>
-            ))}
+            );
+          })}
           </div>
         )}
       </div>
@@ -525,7 +585,7 @@ export default function EbbinghausPlanner({ onClose }) {
       )}
 
       {/* Weekly Navigation */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.75rem', borderRadius: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', background: 'rgba(0,0,0,0.2)', padding: '0.4rem 0.75rem', borderRadius: '8px' }}>
         <button onClick={handlePrevWeek} className="btn btn-secondary" style={{ padding: '0.35rem' }}>
           <ChevronLeft size={18} />
         </button>
@@ -541,6 +601,42 @@ export default function EbbinghausPlanner({ onClose }) {
         <button onClick={handleNextWeek} className="btn btn-secondary" style={{ padding: '0.35rem' }}>
           <ChevronRight size={18} />
         </button>
+      </div>
+
+      {/* Ebbinghaus Cycle Badges Legend */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '0.4rem', 
+        marginBottom: '0.75rem',
+        padding: '0.35rem 0.75rem',
+        background: 'rgba(0,0,0,0.2)',
+        borderRadius: '7px',
+        border: '1px solid rgba(255,255,255,0.05)'
+      }}>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
+          복습 주기 구분:
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+          {[1, 4, 7, 14, 30].map(offset => {
+            const b = getDayOffsetBadgeStyle(offset);
+            return (
+              <span key={offset} style={{
+                fontSize: '0.66rem',
+                padding: '0.06rem 0.35rem',
+                borderRadius: '3px',
+                background: b.bg,
+                border: `1px solid ${b.border}`,
+                color: b.color,
+                fontWeight: 'bold'
+              }}>
+                {b.label}
+              </span>
+            );
+          })}
+        </div>
       </div>
 
       {/* Weekly Grid */}
@@ -592,32 +688,36 @@ export default function EbbinghausPlanner({ onClose }) {
                   {day.isVacation ? '🌴 휴가' : '-'}
                 </div>
               ) : (
-                day.reviews.map(rev => (
-                  <div 
-                    key={rev.id}
-                    style={{ 
-                      background: rev.isCompleted ? 'rgba(16, 185, 129, 0.1)' : 'rgba(30, 41, 59, 0.8)',
-                      border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.3)' : 'var(--panel-border)'}`,
-                      padding: '0.4rem 0.5rem',
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      opacity: (day.dateStr < todayStr && !rev.isCompleted) ? 0.7 : 1
-                    }}
-                    onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted)}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
-                      <span style={{ 
-                        fontSize: '0.65rem', 
-                        padding: '0.05rem 0.25rem', 
-                        borderRadius: '3px',
-                        background: '#3b82f640',
-                        color: '#60a5fa',
-                        fontWeight: 'bold'
-                      }}>
-                        {rev.dayOffset}일차
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                day.reviews.map(rev => {
+                  const badge = getDayOffsetBadgeStyle(rev.dayOffset);
+                  return (
+                    <div 
+                      key={rev.id}
+                      style={{ 
+                        background: rev.isCompleted ? 'rgba(16, 185, 129, 0.1)' : 'rgba(30, 41, 59, 0.8)',
+                        border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.3)' : 'var(--panel-border)'}`,
+                        borderLeft: `3px solid ${rev.isCompleted ? '#10b981' : badge.color}`,
+                        padding: '0.4rem 0.5rem',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        opacity: (day.dateStr < todayStr && !rev.isCompleted) ? 0.7 : 1
+                      }}
+                      onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted)}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
+                        <span style={{ 
+                          fontSize: '0.65rem', 
+                          padding: '0.05rem 0.3rem', 
+                          borderRadius: '3px',
+                          background: badge.bg,
+                          border: `1px solid ${badge.border}`,
+                          color: badge.color,
+                          fontWeight: 'bold'
+                        }}>
+                          {badge.label}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                         {!rev.isCompleted && (
                           <>
                             <button
@@ -671,8 +771,9 @@ export default function EbbinghausPlanner({ onClose }) {
                       {rev.title}
                     </div>
                   </div>
-                ))
-              )}
+                );
+              })
+            )}
             </div>
           </div>
         ))}
@@ -718,6 +819,29 @@ export default function EbbinghausPlanner({ onClose }) {
                         </div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                           시작일: {lec.dateAdded} | 복습 진행률: {completedCount}/5
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                          {lec.reviews.map(rev => {
+                            const badge = getDayOffsetBadgeStyle(rev.dayOffset);
+                            return (
+                              <span 
+                                key={rev.id}
+                                style={{
+                                  fontSize: '0.64rem',
+                                  padding: '0.06rem 0.35rem',
+                                  borderRadius: '3px',
+                                  background: rev.isCompleted ? 'rgba(16, 185, 129, 0.15)' : badge.bg,
+                                  border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.4)' : badge.border}`,
+                                  color: rev.isCompleted ? '#34d399' : badge.color,
+                                  fontWeight: rev.isCompleted ? 'normal' : 'bold',
+                                  opacity: rev.isCompleted ? 0.75 : 1
+                                }}
+                                title={`${badge.label}: ${rev.targetDate} (${rev.isCompleted ? '완료' : '미완료'})`}
+                              >
+                                {badge.label} {rev.isCompleted ? '✓' : ''}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                       <button 
