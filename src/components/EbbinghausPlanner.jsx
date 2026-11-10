@@ -105,6 +105,17 @@ export default function EbbinghausPlanner({ onClose }) {
 
   const handleShiftReview = (e, lectureId, reviewId, days) => {
     e.stopPropagation();
+
+    if (days < 0) {
+      const currentLectures = storage.getLectures();
+      const lec = currentLectures.find(l => l.id === lectureId);
+      const rev = lec?.reviews.find(r => r.id === reviewId);
+      if (lec && rev && lec.dateAdded && rev.targetDate <= lec.dateAdded) {
+        alert("강의 등록일(첫 학습일) 이전으로는 당길 수 없습니다.");
+        return;
+      }
+    }
+
     storage.postponeReview(lectureId, reviewId, days);
     
     const updatedLectures = storage.getLectures();
@@ -121,6 +132,7 @@ export default function EbbinghausPlanner({ onClose }) {
           const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
           const targetWeekStart = new Date(revDate);
           targetWeekStart.setDate(revDate.getDate() + diffToMon);
+          targetWeekStart.setHours(0, 0, 0, 0);
           setCurrentWeekStart(targetWeekStart);
         }
       }
@@ -396,21 +408,38 @@ export default function EbbinghausPlanner({ onClose }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
                   {!rev.isCompleted && (
-                    <button
-                      onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
-                      style={{
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(255,255,255,0.12)',
-                        color: 'var(--text-muted)',
-                        fontSize: '0.68rem',
-                        padding: '0.15rem 0.35rem',
-                        borderRadius: '3px',
-                        cursor: 'pointer'
-                      }}
-                      title="내일로 미루기 (+1일)"
-                    >
-                      +1일
-                    </button>
+                    <>
+                      <button
+                        onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          color: 'var(--text-muted)',
+                          fontSize: '0.68rem',
+                          padding: '0.15rem 0.35rem',
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                        title="어제로 당기기 (-1일)"
+                      >
+                        -1일
+                      </button>
+                      <button
+                        onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          color: 'var(--text-muted)',
+                          fontSize: '0.68rem',
+                          padding: '0.15rem 0.35rem',
+                          borderRadius: '3px',
+                          cursor: 'pointer'
+                        }}
+                        title="내일로 미루기 (+1일)"
+                      >
+                        +1일
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -590,21 +619,38 @@ export default function EbbinghausPlanner({ onClose }) {
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                         {!rev.isCompleted && (
-                          <button
-                            onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
-                            style={{
-                              background: 'rgba(255,255,255,0.08)',
-                              border: 'none',
-                              color: '#cbd5e1',
-                              fontSize: '0.6rem',
-                              padding: '0.05rem 0.25rem',
-                              borderRadius: '2px',
-                              cursor: 'pointer'
-                            }}
-                            title="+1일 미루기"
-                          >
-                            +1
-                          </button>
+                          <>
+                            <button
+                              onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
+                              style={{
+                                background: 'rgba(255,255,255,0.08)',
+                                border: 'none',
+                                color: '#cbd5e1',
+                                fontSize: '0.6rem',
+                                padding: '0.05rem 0.25rem',
+                                borderRadius: '2px',
+                                cursor: 'pointer'
+                              }}
+                              title="-1일 당기기"
+                            >
+                              -1
+                            </button>
+                            <button
+                              onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
+                              style={{
+                                background: 'rgba(255,255,255,0.08)',
+                                border: 'none',
+                                color: '#cbd5e1',
+                                fontSize: '0.6rem',
+                                padding: '0.05rem 0.25rem',
+                                borderRadius: '2px',
+                                cursor: 'pointer'
+                              }}
+                              title="+1일 미루기"
+                            >
+                              +1
+                            </button>
+                          </>
                         )}
                         {rev.isCompleted && <Check size={12} color="#10b981" />}
                       </div>

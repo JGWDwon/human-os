@@ -1432,15 +1432,22 @@ export const storage = {
   },
 
   postponeReview(lectureId, reviewId, days = 1) {
+    const shiftDays = Number(days) || 1;
     const lectures = this.getLectures();
     lectures.forEach(lec => {
       if (lec.id === lectureId) {
         lec.reviews.forEach(rev => {
           if (rev.id === reviewId) {
-            const current = new Date(rev.targetDate + 'T00:00:00');
-            current.setDate(current.getDate() + days);
-            const rawTargetStr = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-            rev.targetDate = this.getAdjustedTargetDate(rawTargetStr);
+            if (shiftDays > 0) {
+              rev.targetDate = this.getDateAfterNonVacationDays(rev.targetDate, shiftDays);
+            } else if (shiftDays < 0) {
+              const prevDate = this.getNonVacationDayBefore(rev.targetDate, Math.abs(shiftDays));
+              if (lec.dateAdded && prevDate < lec.dateAdded) {
+                rev.targetDate = lec.dateAdded;
+              } else {
+                rev.targetDate = prevDate;
+              }
+            }
           }
         });
       }
@@ -1690,7 +1697,15 @@ export const storage = {
   },
 
   // Auto-migrate uncompleted 1일차 reviews that were scheduled on next day to same day (당일 시작)
+  // Gated with a one-time migration key so user manual +1 shifts are not repeatedly reset
   migrateReviewsToSameDay() {
+    const MIGRATION_KEY = 'human_os_migrated_sameday_v1';
+    try {
+      if (localStorage.getItem(MIGRATION_KEY)) {
+        return false;
+      }
+    } catch (e) {}
+
     const lectures = this.getLectures();
     let updated = false;
 
@@ -1711,6 +1726,9 @@ export const storage = {
       localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
       this._dispatchSync();
     }
+    try {
+      localStorage.setItem(MIGRATION_KEY, 'true');
+    } catch (e) {}
     return updated;
   },
 
