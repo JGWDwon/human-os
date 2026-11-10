@@ -152,7 +152,9 @@ function App() {
   const handleExport = async () => {
     const data = storage.getAllData();
     const jsonStr = JSON.stringify(data, null, 2);
-    const filename = `human-os-backup-${new Date().toISOString().split('T')[0]}.json`;
+    const now = new Date();
+    const localDateStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const filename = `human-os-backup-${localDateStr}.json`;
 
     if (Capacitor.isNativePlatform()) {
       try {

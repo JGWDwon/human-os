@@ -1080,8 +1080,10 @@ export const storage = {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const now = new Date();
+    const localDateStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     a.href = url;
-    a.download = `human-os-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `human-os-backup-${localDateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
   },
