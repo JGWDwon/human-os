@@ -116,8 +116,62 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
     }
   });
 
+  // Map meal sessions onto timetable in distinct warm orange
+  const meals = storage.getMealsByDate(dateStr) || [];
+  let totalMealMinutes = 0;
+  meals.forEach(m => {
+    const startTime = m.startTime || '12:00';
+    const endTime = m.endTime || '12:30';
+    const subject = '식사';
+    const color = '#fb923c'; // Warm Orange for meals
+    totalMealMinutes += (m.minutes || 0);
+
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    if (isNaN(startH) || isNaN(endH)) return;
+
+    const startTotal = startH * 60 + startM;
+    let endTotal = endH * 60 + endM;
+    if (endTotal < startTotal) {
+      endTotal += 1440;
+    }
+
+    for (let h = 0; h < 24; h++) {
+      for (let b = 0; b < 6; b++) {
+        const blockStart = h * 60 + b * 10;
+
+        const leftStart = blockStart;
+        const leftEnd = blockStart + 5;
+        const leftOverlap = Math.max(0, Math.min(endTotal, leftEnd) - Math.max(startTotal, leftStart));
+        const leftWrapped = endTotal > 1440
+          ? Math.max(0, Math.min(endTotal - 1440, leftEnd) - Math.max(startTotal - 1440, leftStart))
+          : 0;
+
+        if (leftOverlap >= 2.5 || leftWrapped >= 2.5) {
+          matrix[h][b].left = true;
+          matrix[h][b].leftColor = color;
+          matrix[h][b].leftSubject = subject;
+        }
+
+        const rightStart = blockStart + 5;
+        const rightEnd = blockStart + 10;
+        const rightOverlap = Math.max(0, Math.min(endTotal, rightEnd) - Math.max(startTotal, rightStart));
+        const rightWrapped = endTotal > 1440
+          ? Math.max(0, Math.min(endTotal - 1440, rightEnd) - Math.max(startTotal - 1440, rightStart))
+          : 0;
+
+        if (rightOverlap >= 2.5 || rightWrapped >= 2.5) {
+          matrix[h][b].right = true;
+          matrix[h][b].rightColor = color;
+          matrix[h][b].rightSubject = subject;
+        }
+      }
+    }
+  });
+
   return {
     totalMinutes: dayData?.totalMinutes || 0,
+    totalMealMinutes,
     sessionCount: timestamps.length,
     matrix
   };
@@ -130,6 +184,11 @@ const getBlockTooltip = (prefix, h, b, cell) => {
   const startStr = `${h}:${startMin.toString().padStart(2, '0')}`;
   const endStr = `${h}:${endMin.toString().padStart(2, '0')}`;
   const sub = cell.leftSubject || cell.rightSubject;
+
+  if (sub === '식사') {
+    return `${prefix} [🍱 식사] ${startStr} ~ ${endStr}`;
+  }
+
   const subTag = sub ? `[${sub}] ` : '';
 
   if (cell.left && cell.right) {
@@ -208,11 +267,17 @@ export default function StudyTimetable({
   const setWeekOffset = externalSetOffset !== undefined ? externalSetOffset : setInternalOffset;
 
   const [registeredSubjects, setRegisteredSubjects] = useState(() => storage.getSubjects());
+  const [mealTick, setMealTick] = useState(0);
 
   useEffect(() => {
     const handleSubs = () => setRegisteredSubjects(storage.getSubjects());
+    const handleMeals = () => setMealTick(prev => prev + 1);
     window.addEventListener('subjects-updated', handleSubs);
-    return () => window.removeEventListener('subjects-updated', handleSubs);
+    window.addEventListener('meals-updated', handleMeals);
+    return () => {
+      window.removeEventListener('subjects-updated', handleSubs);
+      window.removeEventListener('meals-updated', handleMeals);
+    };
   }, []);
 
   // Dates computation
@@ -255,7 +320,7 @@ export default function StudyTimetable({
     const rangeLabel = `${sunday.getFullYear()}년 ${sunday.getMonth() + 1}월 ${sunday.getDate()}일 ~ ${saturday.getMonth() + 1}월 ${saturday.getDate()}일`;
 
     return { weekDays: days, weekRangeLabel: rangeLabel };
-  }, [todayObj, todayStr, weekOffset, registeredSubjects]);
+  }, [todayObj, todayStr, weekOffset, registeredSubjects, mealTick]);
 
   const totalWeeklyMinutes = useMemo(() => {
     return weekDays.reduce((sum, d) => sum + (d.data?.totalMinutes || 0), 0);
@@ -346,6 +411,10 @@ export default function StudyTimetable({
                   display: 'inline-block'
                 }}></span>
                 5분 (반칸)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ width: '12px', height: '11px', background: '#fb923c', borderRadius: '2px', display: 'inline-block' }}></span>
+                🍱 식사 (오렌지)
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <span style={{ width: '12px', height: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', display: 'inline-block' }}></span>

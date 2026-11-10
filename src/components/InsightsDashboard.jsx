@@ -10,14 +10,20 @@ export default function InsightsDashboard({ onClose }) {
   const [selectedDay, setSelectedDay] = useState(null);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [subjects, setSubjects] = useState(() => storage.getSubjects());
+  const [mealTick, setMealTick] = useState(0);
 
   useEffect(() => {
     const allStats = storage.getAllTimeStats();
     setStats(allStats);
 
     const handleSubs = () => setSubjects(storage.getSubjects());
+    const handleMeals = () => setMealTick(p => p + 1);
     window.addEventListener('subjects-updated', handleSubs);
-    return () => window.removeEventListener('subjects-updated', handleSubs);
+    window.addEventListener('meals-updated', handleMeals);
+    return () => {
+      window.removeEventListener('subjects-updated', handleSubs);
+      window.removeEventListener('meals-updated', handleMeals);
+    };
   }, []);
 
   const formatTime = (minutes) => {
@@ -118,6 +124,16 @@ export default function InsightsDashboard({ onClose }) {
   const dailyAvgMins = Math.round(totalWeeklyMinutes / 7);
   const bestDay = weeklyTrend.reduce((best, cur) => (cur.minutes > (best?.minutes || 0) ? cur : best), null);
   const sproutDaysCount = weeklyTrend.filter(t => t.minutes >= 240).length;
+
+  // Weekly Meal Total
+  const weeklyMealTotalMins = useMemo(() => {
+    let sum = 0;
+    weeklyTrend.forEach(d => {
+      const ms = storage.getMealsByDate(d.dateStr) || [];
+      ms.forEach(m => { sum += (m.minutes || 0); });
+    });
+    return sum;
+  }, [weeklyTrend, mealTick]);
 
   // Chart Y-axis max scale: comfortable headroom above max, milestone aligned
   const rawMax = Math.max(...weeklyTrend.map(t => t.minutes), 0);
@@ -283,6 +299,18 @@ export default function InsightsDashboard({ onClose }) {
             </div>
             <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#10b981', marginTop: '0.15rem' }}>
               {sproutDaysCount}일 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>/ 7일</span>
+            </div>
+          </div>
+
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              🍱 식사 시간 (주간)
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#fb923c', marginTop: '0.15rem' }}>
+              {formatTime(weeklyMealTotalMins)}
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
+                (일평균 {Math.round(weeklyMealTotalMins / 7)}분)
+              </span>
             </div>
           </div>
         </div>
@@ -460,69 +488,100 @@ export default function InsightsDashboard({ onClose }) {
         </div>
 
         {/* Selected Day Detail Card */}
-        {activeDayForDetail && (
-          <div style={{
-            background: 'rgba(0,0,0,0.3)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '12px',
-            padding: '0.9rem 1.1rem'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Clock size={16} color="var(--accent-primary)" />
-                <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#fff' }}>
-                  {activeDayForDetail.dayLabel} 상세 집중 세션
-                </span>
-                {activeDayForDetail.isToday && (
-                  <span style={{ fontSize: '0.68rem', color: '#c084fc', background: 'rgba(192, 132, 252, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                    오늘
+        {activeDayForDetail && (() => {
+          const dayMeals = storage.getMealsByDate(activeDayForDetail.dateStr) || [];
+          const dayMealMins = dayMeals.reduce((s, m) => s + (m.minutes || 0), 0);
+          return (
+            <div style={{
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '12px',
+              padding: '0.9rem 1.1rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Clock size={16} color="var(--accent-primary)" />
+                  <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#fff' }}>
+                    {activeDayForDetail.dayLabel} 상세 집중 세션
                   </span>
-                )}
+                  {activeDayForDetail.isToday && (
+                    <span style={{ fontSize: '0.68rem', color: '#c084fc', background: 'rgba(192, 132, 252, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                      오늘
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ color: activeDayForDetail.minutes > 0 ? '#34d399' : 'var(--text-muted)' }}>
+                    총 {formatTime(activeDayForDetail.minutes)} ({activeDayPomo?.count || 0}회 집중)
+                  </span>
+                  {dayMealMins > 0 && (
+                    <span style={{ color: '#fb923c', background: 'rgba(251, 146, 60, 0.15)', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                      🍱 식사 {formatTime(dayMealMins)}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: activeDayForDetail.minutes > 0 ? '#34d399' : 'var(--text-muted)' }}>
-                총 {formatTime(activeDayForDetail.minutes)} ({activeDayPomo?.count || 0}회 집중)
-              </div>
-            </div>
 
-            {/* Session list or empty message */}
-            {activeDayPomo?.timestamps && activeDayPomo.timestamps.length > 0 ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', maxHeight: '120px', overflowY: 'auto' }}>
-                {activeDayPomo.timestamps.map((ts, idx) => {
-                  const timeStr = typeof ts === 'string' ? ts : ts.time;
-                  const mins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
-                  const sub = typeof ts === 'object' && ts.subject ? ts.subject : null;
-                  return (
+              {/* Session list or empty message */}
+              {(activeDayPomo?.timestamps && activeDayPomo.timestamps.length > 0) || dayMeals.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', maxHeight: '140px', overflowY: 'auto' }}>
+                  {activeDayPomo?.timestamps?.map((ts, idx) => {
+                    const timeStr = typeof ts === 'string' ? ts : ts.time;
+                    const mins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
+                    const sub = typeof ts === 'object' && ts.subject ? ts.subject : null;
+                    return (
+                      <span
+                        key={`pomo_${idx}`}
+                        style={{
+                          fontSize: '0.74rem',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: '6px',
+                          color: '#e2e8f0',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem'
+                        }}
+                      >
+                        {sub && (
+                          <span style={{ fontSize: '0.68rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                            {sub}
+                          </span>
+                        )}
+                        ⏱️ {timeStr} ({mins}분)
+                      </span>
+                    );
+                  })}
+
+                  {dayMeals.map(m => (
                     <span
-                      key={idx}
+                      key={m.id}
                       style={{
                         fontSize: '0.74rem',
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'rgba(251, 146, 60, 0.15)',
+                        border: '1px solid rgba(251, 146, 60, 0.35)',
                         padding: '0.2rem 0.55rem',
                         borderRadius: '6px',
-                        color: '#e2e8f0',
+                        color: '#fdba74',
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '0.3rem'
+                        gap: '0.3rem',
+                        fontWeight: 'bold'
                       }}
                     >
-                      {sub && (
-                        <span style={{ fontSize: '0.68rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                          {sub}
-                        </span>
-                      )}
-                      ⏱️ {timeStr} ({mins}분)
+                      🍱 {m.startTime}~{m.endTime} ({m.minutes}분 식사)
                     </span>
-                  );
-                })}
-              </div>
-            ) : (
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
-                이 날짜에는 기록된 뽀모도로 집중 세션이 없습니다.
-              </p>
-            )}
-          </div>
-        )}
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+                  이 날짜에는 기록된 뽀모도로 및 식사 기록이 없습니다.
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
       </div>
 

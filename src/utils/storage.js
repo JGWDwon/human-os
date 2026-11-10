@@ -8,7 +8,8 @@ const STORAGE_KEYS = {
   VACATIONS: 'human_os_vacations_v1',
   STUDY_SESSIONS: 'human_os_study_sessions_v1',
   SUBJECTS: 'human_os_subjects_v1',
-  DDAYS: 'human_os_ddays_v1'
+  DDAYS: 'human_os_ddays_v1',
+  MEALS: 'human_os_meals_v1'
 };
 
 function safeParse(str, fallback = {}) {
@@ -575,9 +576,10 @@ export const storage = {
       subjects: localStorage.getItem(STORAGE_KEYS.SUBJECTS),
       ddays: localStorage.getItem(STORAGE_KEYS.DDAYS),
       selectedSubject: localStorage.getItem('human_os_selected_subject_v1'),
+      meals: localStorage.getItem(STORAGE_KEYS.MEALS),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
-      version: '1.1'
+      version: '1.2'
     };
   },
 
@@ -601,6 +603,7 @@ export const storage = {
     if (jsonData.subjects) localStorage.setItem(STORAGE_KEYS.SUBJECTS, ensureString(jsonData.subjects));
     if (jsonData.ddays) localStorage.setItem(STORAGE_KEYS.DDAYS, ensureString(jsonData.ddays));
     if (jsonData.selectedSubject) localStorage.setItem('human_os_selected_subject_v1', ensureString(jsonData.selectedSubject));
+    if (jsonData.meals) localStorage.setItem(STORAGE_KEYS.MEALS, ensureString(jsonData.meals));
     if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
@@ -729,6 +732,69 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.DDAYS, JSON.stringify(ddays));
     this._dispatchSync();
     window.dispatchEvent(new CustomEvent('ddays-updated'));
+  },
+
+  // --- Meal Tracking (식사 시간 스톱워치 & 통계) ---
+  getMeals() {
+    const raw = localStorage.getItem(STORAGE_KEYS.MEALS);
+    return safeParse(raw, {});
+  },
+
+  getMealsByDate(dateStr) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const all = this.getMeals();
+    return all[dateStr] || [];
+  },
+
+  addMeal(dateStr, startTime, endTime, minutes) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const all = this.getMeals();
+    if (!all[dateStr]) all[dateStr] = [];
+
+    const newMeal = {
+      id: `meal_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      startTime: startTime || '12:00',
+      endTime: endTime || '12:30',
+      minutes: Math.max(1, Math.round(minutes)),
+      timestamp: Date.now()
+    };
+
+    all[dateStr].push(newMeal);
+    all[dateStr].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    localStorage.setItem(STORAGE_KEYS.MEALS, JSON.stringify(all));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('meals-updated'));
+    return newMeal;
+  },
+
+  removeMeal(dateStr, mealId) {
+    const all = this.getMeals();
+    if (!all[dateStr]) return false;
+    all[dateStr] = all[dateStr].filter(m => m.id !== mealId);
+    localStorage.setItem(STORAGE_KEYS.MEALS, JSON.stringify(all));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('meals-updated'));
+    return true;
+  },
+
+  getWeeklyMealMinutes(sundayDateStr) {
+    const all = this.getMeals();
+    let total = 0;
+    const start = new Date(sundayDateStr);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const ds = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const list = all[ds] || [];
+      list.forEach(m => { total += (m.minutes || 0); });
+    }
+    return total;
   },
 
   getWeeklyGraphData(weeks = 8) {

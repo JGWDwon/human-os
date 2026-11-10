@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed } from 'lucide-react';
 import { storage, getSubjectColor } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import SubjectModal from './SubjectModal';
+import confetti from 'canvas-confetti';
 
 let globalAudioCtx = null;
 let decodedBellBuffer = null;
@@ -22,6 +23,61 @@ const loadBellSound = async (audioCtx) => {
 };
 
 export default function PomodoroTracker({ selectedDate, onUpdate }) {
+  // Timer Mode: 'study' (공부 뽀모도로) | 'meal' (식사 시간 스톱워치)
+  const [activeTimerMode, setActiveTimerMode] = useState(() => {
+    return localStorage.getItem('human_os_timer_mode_v1') || 'study';
+  });
+
+  const handleSwitchMode = (mode) => {
+    setActiveTimerMode(mode);
+    try {
+      localStorage.setItem('human_os_timer_mode_v1', mode);
+    } catch (e) {}
+  };
+
+  // Meal StopWatch State (시간이 차오르는 스톱워치 형태)
+  const [mealTimerState, setMealTimerState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('human_os_meal_timer_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.isRunning && parsed.startTimeMs) {
+          const elapsed = Math.max(0, Math.floor((Date.now() - parsed.startTimeMs) / 1000));
+          return { ...parsed, elapsedSeconds: elapsed };
+        }
+        return parsed;
+      }
+    } catch (e) {}
+    return { isRunning: false, startTimeMs: null, startTimeStr: null, elapsedSeconds: 0 };
+  });
+
+  const [todayMeals, setTodayMeals] = useState(() => storage.getMealsByDate(selectedDate));
+
+  useEffect(() => {
+    setTodayMeals(storage.getMealsByDate(selectedDate));
+    const handleMeals = () => setTodayMeals(storage.getMealsByDate(selectedDate));
+    window.addEventListener('meals-updated', handleMeals);
+    return () => window.removeEventListener('meals-updated', handleMeals);
+  }, [selectedDate]);
+
+  // Meal Timer ticker
+  useEffect(() => {
+    let interval = null;
+    if (mealTimerState.isRunning && mealTimerState.startTimeMs) {
+      interval = setInterval(() => {
+        const elapsed = Math.max(0, Math.floor((Date.now() - mealTimerState.startTimeMs) / 1000));
+        setMealTimerState(prev => {
+          const next = { ...prev, elapsedSeconds: elapsed };
+          localStorage.setItem('human_os_meal_timer_v1', JSON.stringify(next));
+          return next;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [mealTimerState.isRunning, mealTimerState.startTimeMs]);
+
   // Manual input states
   const [todayData, setTodayData] = useState({ count: 0, totalMinutes: 0, timestamps: [] });
   const [weeklyData, setWeeklyData] = useState({ weeklyCount: 0, weeklyMinutes: 0, weekData: [] });
@@ -783,16 +839,97 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatMealTimeDisplay = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleStartMeal = () => {
+    const now = new Date();
+    const startTimeStr = now.toTimeString().split(' ')[0].substring(0, 5);
+    const newState = {
+      isRunning: true,
+      startTimeMs: Date.now(),
+      startTimeStr,
+      elapsedSeconds: 0
+    };
+    setMealTimerState(newState);
+    localStorage.setItem('human_os_meal_timer_v1', JSON.stringify(newState));
+    playSound('click');
+  };
+
+  const handleStopMeal = () => {
+    if (!mealTimerState.isRunning) return;
+    const elapsedSec = mealTimerState.elapsedSeconds;
+    const mins = Math.max(1, Math.round(elapsedSec / 60));
+
+    const now = new Date();
+    const endTimeStr = now.toTimeString().split(' ')[0].substring(0, 5);
+    const startTimeStr = mealTimerState.startTimeStr || new Date(mealTimerState.startTimeMs || (now.getTime() - mins * 60 * 1000)).toTimeString().split(' ')[0].substring(0, 5);
+    const actualToday = getTodayStr();
+
+    storage.addMeal(actualToday, startTimeStr, endTimeStr, mins);
+    playSound('complete');
+
+    confetti({
+      particleCount: 45,
+      spread: 60,
+      origin: { y: 0.8 },
+      colors: ['#fb923c', '#f59e0b', '#34d399']
+    });
+
+    const resetState = {
+      isRunning: false,
+      startTimeMs: null,
+      startTimeStr: null,
+      elapsedSeconds: 0
+    };
+    setMealTimerState(resetState);
+    localStorage.removeItem('human_os_meal_timer_v1');
+    refreshData();
+    if (onUpdate) onUpdate();
+  };
+
+  const handleResetMeal = () => {
+    if (mealTimerState.isRunning && !window.confirm("식사 타이머를 기록하지 않고 초기화하시겠습니까?")) {
+      return;
+    }
+    const resetState = {
+      isRunning: false,
+      startTimeMs: null,
+      startTimeStr: null,
+      elapsedSeconds: 0
+    };
+    setMealTimerState(resetState);
+    localStorage.removeItem('human_os_meal_timer_v1');
+  };
+
+  const handleDeleteMeal = (mealId) => {
+    if (window.confirm("이 식사 기록을 삭제하시겠습니까?")) {
+      storage.removeMeal(selectedDate, mealId);
+      refreshData();
+      if (onUpdate) onUpdate();
+    }
+  };
+
   const activeMinutes = customDuration ? parseInt(customDuration, 10) : selectedDuration;
 
   return (
     <div className="glass-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <h2 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, color: 'var(--text-primary)' }}>
           <span>🎯</span> 공부 사냥터
         </h2>
-        <div style={{ fontSize: '0.9rem', color: 'var(--accent-primary)', fontWeight: 'bold' }}>
-          오늘 집중: {Math.floor(todayData.totalMinutes / 60)}시간 {todayData.totalMinutes % 60}분
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '0.88rem', color: 'var(--accent-primary)', fontWeight: 'bold' }}>
+            오늘 집중: {Math.floor(todayData.totalMinutes / 60)}시간 {todayData.totalMinutes % 60}분
+          </div>
+          {todayMeals && todayMeals.length > 0 && (
+            <div style={{ fontSize: '0.8rem', color: '#fb923c', fontWeight: 'bold', background: 'rgba(251, 146, 60, 0.12)', padding: '0.15rem 0.45rem', borderRadius: '6px' }}>
+              🍱 식사 {todayMeals.reduce((s, m) => s + (m.minutes || 0), 0)}분
+            </div>
+          )}
         </div>
       </div>
 
@@ -817,6 +954,61 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         </div>
       )}
 
+      {/* Mode Selector: [🍅 공부 뽀모도로] vs [🍱 식사 시간] */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.85rem' }}>
+        <div style={{
+          display: 'inline-flex',
+          background: 'rgba(0,0,0,0.4)',
+          padding: '0.2rem',
+          borderRadius: '24px',
+          border: '1px solid rgba(255,255,255,0.08)'
+        }}>
+          <button
+            type="button"
+            onClick={() => handleSwitchMode('study')}
+            style={{
+              padding: '0.35rem 0.95rem',
+              borderRadius: '20px',
+              border: 'none',
+              background: activeTimerMode === 'study' ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+              color: activeTimerMode === 'study' ? '#34d399' : 'var(--text-muted)',
+              fontWeight: 'bold',
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            🍅 공부 집중
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSwitchMode('meal')}
+            style={{
+              padding: '0.35rem 0.95rem',
+              borderRadius: '20px',
+              border: 'none',
+              background: activeTimerMode === 'meal' ? 'rgba(249, 115, 22, 0.25)' : 'transparent',
+              color: activeTimerMode === 'meal' ? '#fb923c' : 'var(--text-muted)',
+              fontWeight: 'bold',
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              transition: 'all 0.2s'
+            }}
+          >
+            <UtensilsCrossed size={13} color={activeTimerMode === 'meal' ? '#fb923c' : 'var(--text-muted)'} /> 식사 시간
+            {mealTimerState.isRunning && (
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fb923c', display: 'inline-block' }} />
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Main Timer Display */}
       <div style={{
         background: 'rgba(0,0,0,0.3)',
@@ -824,184 +1016,329 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         padding: '1.25rem 1rem',
         textAlign: 'center',
         marginBottom: '1.25rem',
-        border: '1px solid rgba(255,255,255,0.08)'
+        border: activeTimerMode === 'meal' ? '1px solid rgba(249, 115, 22, 0.25)' : '1px solid rgba(255,255,255,0.08)'
       }}>
-        {/* Subject Indicator / Selection Chips */}
-        {timerState.isRunning || timerState.isPaused ? (
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            background: 'rgba(15, 23, 42, 0.85)',
-            border: `1.5px solid ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}`,
-            padding: '0.35rem 0.95rem',
-            borderRadius: '20px',
-            marginBottom: '1rem',
-            boxShadow: `0 0 15px ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}30`
-          }}>
-            <span style={{
-              width: '9px',
-              height: '9px',
-              borderRadius: '50%',
-              background: getSubjectColor(timerState.currentSubject || selectedSubject, subjects),
-              display: 'inline-block',
-              boxShadow: `0 0 8px ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}`
-            }} />
-            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>
-              집중 과목: <span style={{ color: getSubjectColor(timerState.currentSubject || selectedSubject, subjects) }}>{(timerState.currentSubject || selectedSubject) || '미지정'}</span>
-            </span>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-              <BookOpen size={12} /> 과목:
-            </span>
-            {subjects.map(s => {
-              const isSelected = selectedSubject === s;
-              const col = getSubjectColor(s, subjects);
-              return (
+        {activeTimerMode === 'study' ? (
+          <>
+            {/* Subject Indicator / Selection Chips */}
+            {timerState.isRunning || timerState.isPaused ? (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'rgba(15, 23, 42, 0.85)',
+                border: `1.5px solid ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}`,
+                padding: '0.35rem 0.95rem',
+                borderRadius: '20px',
+                marginBottom: '1rem',
+                boxShadow: `0 0 15px ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}30`
+              }}>
+                <span style={{
+                  width: '9px',
+                  height: '9px',
+                  borderRadius: '50%',
+                  background: getSubjectColor(timerState.currentSubject || selectedSubject, subjects),
+                  display: 'inline-block',
+                  boxShadow: `0 0 8px ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}`
+                }} />
+                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>
+                  집중 과목: <span style={{ color: getSubjectColor(timerState.currentSubject || selectedSubject, subjects) }}>{(timerState.currentSubject || selectedSubject) || '미지정'}</span>
+                </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                  <BookOpen size={12} /> 과목:
+                </span>
+                {subjects.map(s => {
+                  const isSelected = selectedSubject === s;
+                  const col = getSubjectColor(s, subjects);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleSelectSubject(s)}
+                      style={{
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '12px',
+                        border: isSelected ? `1px solid ${col}` : '1px solid rgba(255,255,255,0.1)',
+                        background: isSelected ? `${col}25` : 'rgba(255,255,255,0.04)',
+                        color: isSelected ? col : 'var(--text-secondary)',
+                        fontWeight: isSelected ? 'bold' : 'normal',
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
                 <button
-                  key={s}
                   type="button"
-                  onClick={() => handleSelectSubject(s)}
+                  onClick={() => setShowSubjectModal(true)}
                   style={{
-                    padding: '0.2rem 0.55rem',
-                    borderRadius: '12px',
-                    border: isSelected ? `1px solid ${col}` : '1px solid rgba(255,255,255,0.1)',
-                    background: isSelected ? `${col}25` : 'rgba(255,255,255,0.04)',
-                    color: isSelected ? col : 'var(--text-secondary)',
-                    fontWeight: isSelected ? 'bold' : 'normal',
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s'
+                    padding: '0.15rem 0.45rem',
+                    borderRadius: '10px',
+                    border: '1px dashed rgba(56, 189, 248, 0.4)',
+                    background: 'transparent',
+                    color: '#38bdf8',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer'
+                  }}
+                  title="과목 추가/관리"
+                >
+                  + 관리
+                </button>
+              </div>
+            )}
+
+            <div style={{ fontSize: '3.8rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '2px', textShadow: '0 0 20px rgba(16, 185, 129, 0.3)', lineHeight: 1 }}>
+              {formatTimeDisplay(timerState.timeLeft)}
+            </div>
+
+            {/* Preset Selector */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.15rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>집중:</span>
+              {[30, 60].map(mins => (
+                <button
+                  key={mins}
+                  onClick={() => {
+                    if (timerState.isRunning || timerState.isPaused) return;
+                    setSelectedDuration(mins);
+                    setCustomDuration('');
+                    applyDuration(mins);
+                  }}
+                  disabled={timerState.isRunning || timerState.isPaused}
+                  style={{
+                    padding: '0.3rem 0.75rem',
+                    borderRadius: '20px',
+                    border: selectedDuration === mins && !customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                    background: selectedDuration === mins && !customDuration ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)',
+                    color: selectedDuration === mins && !customDuration ? '#000' : 'var(--text-secondary)',
+                    fontWeight: selectedDuration === mins && !customDuration ? 'bold' : 'normal',
+                    fontSize: '0.85rem',
+                    cursor: timerState.isRunning || timerState.isPaused ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  {s}
+                  {mins}분
                 </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => setShowSubjectModal(true)}
-              style={{
-                padding: '0.15rem 0.45rem',
-                borderRadius: '10px',
-                border: '1px dashed rgba(56, 189, 248, 0.4)',
-                background: 'transparent',
-                color: '#38bdf8',
-                fontSize: '0.72rem',
-                cursor: 'pointer'
-              }}
-              title="과목 추가/관리"
-            >
-              + 관리
-            </button>
+              ))}
+
+              {/* Custom Duration Input */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  placeholder="직접"
+                  value={customDuration}
+                  disabled={timerState.isRunning || timerState.isPaused}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomDuration(val);
+                    const parsed = parseInt(val, 10);
+                    if (!isNaN(parsed) && parsed > 0) {
+                      applyDuration(parsed);
+                    }
+                  }}
+                  style={{
+                    width: '60px',
+                    padding: '0.3rem 0.5rem',
+                    borderRadius: '4px',
+                    border: customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                    background: 'rgba(0,0,0,0.4)',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    textAlign: 'center'
+                  }}
+                />
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>분</span>
+              </div>
+            </div>
+
+            {/* Control Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {!timerState.isRunning ? (
+                <button
+                  onClick={handleStartButtonClick}
+                  className="btn btn-primary"
+                  style={{ padding: '0.65rem 2rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  <Play size={20} /> {timerState.isPaused ? '재개' : '시작'}
+                </button>
+              ) : (
+                <button
+                  onClick={pauseTimer}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.65rem 1.5rem', fontSize: '1rem', background: '#f59e0b', color: '#000', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  <Pause size={18} /> 일시정지
+                </button>
+              )}
+
+              {(timerState.isRunning || timerState.isPaused) && (
+                <button
+                  onClick={handleEarlyComplete}
+                  className="btn btn-primary"
+                  style={{ padding: '0.65rem 1.25rem', fontSize: '0.9rem', background: 'var(--accent-secondary)' }}
+                >
+                  <Check size={18} /> 조기 완료
+                </button>
+              )}
+
+              <button
+                onClick={resetTimer}
+                className="btn btn-secondary"
+                style={{ padding: '0.65rem', borderRadius: '8px' }}
+                title="타이머 리셋"
+              >
+                <RotateCcw size={18} />
+              </button>
+            </div>
+          </>
+        ) : (
+          /* ========================================================= */
+          /* Meal Stopwatch Mode (시간이 차오르는 스톱워치 형태) */
+          /* ========================================================= */
+          <div>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              background: 'rgba(249, 115, 22, 0.12)',
+              border: '1px solid rgba(249, 115, 22, 0.35)',
+              padding: '0.35rem 0.95rem',
+              borderRadius: '20px',
+              marginBottom: '0.85rem'
+            }}>
+              <UtensilsCrossed size={14} color="#fb923c" />
+              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#fed7aa' }}>
+                {mealTimerState.isRunning ? '🍱 식사 진행 중 (시간이 차오르는 중)' : '🍱 식사 대기 중 (스톱워치)'}
+              </span>
+            </div>
+
+            <div style={{
+              fontSize: '3.8rem',
+              fontWeight: 'bold',
+              fontFamily: 'monospace',
+              color: '#fb923c',
+              letterSpacing: '2px',
+              textShadow: '0 0 25px rgba(249, 115, 22, 0.45)',
+              lineHeight: 1,
+              margin: '0.5rem 0 0.85rem 0'
+            }}>
+              {formatMealTimeDisplay(mealTimerState.elapsedSeconds)}
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0' }}>
+              {mealTimerState.isRunning
+                ? `시작: ${mealTimerState.startTimeStr} ~ 맛있게 식사하시고 완료를 눌러주세요 🍽️`
+                : '식사 시작을 누르면 스톱워치가 차오르며, 멈추면 성장일지 및 JSON에 자동 기록됩니다.'}
+            </p>
+
+            {/* Meal Control Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {!mealTimerState.isRunning ? (
+                <button
+                  onClick={handleStartMeal}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '0.65rem 2.2rem',
+                    fontSize: '1.05rem',
+                    background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                    borderColor: '#ea580c',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  <Play size={20} /> 식사 시작
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopMeal}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '0.65rem 2rem',
+                    fontSize: '1rem',
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    borderColor: '#059669',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  <Check size={20} /> 식사 완료 및 기록 ({Math.max(1, Math.round(mealTimerState.elapsedSeconds / 60))}분)
+                </button>
+              )}
+
+              {mealTimerState.isRunning && (
+                <button
+                  onClick={handleResetMeal}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.65rem', borderRadius: '8px' }}
+                  title="식사 타이머 초기화"
+                >
+                  <RotateCcw size={18} />
+                </button>
+              )}
+            </div>
+
+            {/* Today's Meal Summary & Logs */}
+            {todayMeals && todayMeals.length > 0 && (
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>
+                    오늘 식사 기록 ({todayMeals.length}회)
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#fb923c', fontWeight: 'bold' }}>
+                    총 {todayMeals.reduce((s, m) => s + (m.minutes || 0), 0)}분
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', justifyContent: 'center' }}>
+                  {todayMeals.map((m) => (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        fontSize: '0.75rem',
+                        background: 'rgba(251, 146, 60, 0.12)',
+                        border: '1px solid rgba(251, 146, 60, 0.3)',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '6px',
+                        color: '#fdba74'
+                      }}
+                    >
+                      <span>🍱 {m.startTime} ~ {m.endTime} ({m.minutes}분)</span>
+                      <button
+                        onClick={() => handleDeleteMeal(m.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#f87171',
+                          cursor: 'pointer',
+                          padding: '0 0.1rem',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                        title="기록 삭제"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
-
-        <div style={{ fontSize: '3.8rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '2px', textShadow: '0 0 20px rgba(16, 185, 129, 0.3)', lineHeight: 1 }}>
-          {formatTimeDisplay(timerState.timeLeft)}
-        </div>
-
-        {/* Preset Selector */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.15rem', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>집중:</span>
-          {[30, 60].map(mins => (
-            <button
-              key={mins}
-              onClick={() => {
-                if (timerState.isRunning || timerState.isPaused) return;
-                setSelectedDuration(mins);
-                setCustomDuration('');
-                applyDuration(mins);
-              }}
-              disabled={timerState.isRunning || timerState.isPaused}
-              style={{
-                padding: '0.3rem 0.75rem',
-                borderRadius: '20px',
-                border: selectedDuration === mins && !customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
-                background: selectedDuration === mins && !customDuration ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)',
-                color: selectedDuration === mins && !customDuration ? '#000' : 'var(--text-secondary)',
-                fontWeight: selectedDuration === mins && !customDuration ? 'bold' : 'normal',
-                fontSize: '0.85rem',
-                cursor: timerState.isRunning || timerState.isPaused ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {mins}분
-            </button>
-          ))}
-
-          {/* Custom Duration Input */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-            <input
-              type="number"
-              min="1"
-              max="180"
-              placeholder="직접"
-              value={customDuration}
-              disabled={timerState.isRunning || timerState.isPaused}
-              onChange={(e) => {
-                const val = e.target.value;
-                setCustomDuration(val);
-                const parsed = parseInt(val, 10);
-                if (!isNaN(parsed) && parsed > 0) {
-                  applyDuration(parsed);
-                }
-              }}
-              style={{
-                width: '60px',
-                padding: '0.3rem 0.5rem',
-                borderRadius: '4px',
-                border: customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
-                background: 'rgba(0,0,0,0.4)',
-                color: '#fff',
-                fontSize: '0.85rem',
-                textAlign: 'center'
-              }}
-            />
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>분</span>
-          </div>
-        </div>
-
-        {/* Control Buttons */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {!timerState.isRunning ? (
-            <button
-              onClick={handleStartButtonClick}
-              className="btn btn-primary"
-              style={{ padding: '0.65rem 2rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <Play size={20} /> {timerState.isPaused ? '재개' : '시작'}
-            </button>
-          ) : (
-            <button
-              onClick={pauseTimer}
-              className="btn btn-secondary"
-              style={{ padding: '0.65rem 1.5rem', fontSize: '1rem', background: '#f59e0b', color: '#000', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <Pause size={18} /> 일시정지
-            </button>
-          )}
-
-          {(timerState.isRunning || timerState.isPaused) && (
-            <button
-              onClick={handleEarlyComplete}
-              className="btn btn-primary"
-              style={{ padding: '0.65rem 1.25rem', fontSize: '0.9rem', background: 'var(--accent-secondary)' }}
-            >
-              <Check size={18} /> 조기 완료
-            </button>
-          )}
-
-          <button
-            onClick={resetTimer}
-            className="btn btn-secondary"
-            style={{ padding: '0.65rem', borderRadius: '8px' }}
-            title="타이머 리셋"
-          >
-            <RotateCcw size={18} />
-          </button>
-        </div>
       </div>
 
       {/* Daily Timestamped Log & Collapsible Manual Input */}
@@ -1014,8 +1351,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 오늘 집중 타임라인
               </h3>
               <span style={{ fontSize: '0.72rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.12)', padding: '0.15rem 0.5rem', borderRadius: '10px', fontWeight: 'bold' }}>
-                {todayData.timestamps?.length || 0}회 완료
+                집중 {todayData.timestamps?.length || 0}회
               </span>
+              {todayMeals && todayMeals.length > 0 && (
+                <span style={{ fontSize: '0.72rem', color: '#fb923c', background: 'rgba(251, 146, 60, 0.12)', padding: '0.15rem 0.5rem', borderRadius: '10px', fontWeight: 'bold' }}>
+                  식사 {todayMeals.length}회 ({todayMeals.reduce((s, m) => s + (m.minutes || 0), 0)}분)
+                </span>
+              )}
             </div>
 
             <button
