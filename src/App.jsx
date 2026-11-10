@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen, Target } from 'lucide-react';
+import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen, Target, RotateCw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import PomodoroTracker from './components/PomodoroTracker';
 import ForestPixelMap from './components/ForestPixelMap';
@@ -70,6 +70,13 @@ function App() {
     // In-App Update Detector for native app experience
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(reg => {
+        // If a new worker is already waiting, trigger update alert immediately
+        if (reg.waiting) {
+          setUpdateAvailable(true);
+        }
+        // Proactively ask server if a newer service worker exists
+        reg.update().catch(() => {});
+
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (newWorker) {
@@ -111,15 +118,26 @@ function App() {
     return `D+${Math.abs(diffDays)}`;
   };
 
-  const handleApplyUpdate = () => {
+  const handleApplyUpdate = async () => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration().then(reg => {
-        if (reg && reg.waiting) {
-          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          await reg.update();
         }
-      });
+        if ('caches' in window) {
+          const cacheKeys = await caches.keys();
+          await Promise.all(cacheKeys.map(k => caches.delete(k)));
+        }
+      } catch (e) {
+        console.error('Update apply error:', e);
+      }
     }
-    window.location.reload();
+    // Hard reload with cache-buster query to guarantee freshest HTML/JS on mobile PWAs
+    window.location.href = window.location.pathname + '?t=' + Date.now();
   };
 
   const handleDateSelect = (date) => {
@@ -224,22 +242,49 @@ function App() {
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
               {todayFormatted}
             </span>
-            {updateAvailable && (
+            {updateAvailable ? (
               <button
-                onClick={handleApplyUpdate}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleApplyUpdate();
+                }}
                 style={{
                   background: 'linear-gradient(90deg, #8b5cf6, #ec4899)',
                   color: '#fff',
                   border: 'none',
-                  padding: '0.2rem 0.6rem',
+                  padding: '0.2rem 0.65rem',
                   borderRadius: '12px',
-                  fontSize: '0.72rem',
+                  fontSize: '0.74rem',
                   fontWeight: 'bold',
                   cursor: 'pointer',
+                  boxShadow: '0 0 12px rgba(236, 72, 153, 0.6)',
                   animation: 'pulse 1.5s infinite'
                 }}
+                title="새로운 기능 업데이트 즉시 적용"
               >
-                🚀 업데이트
+                🚀 새 업데이트 적용
+              </button>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleApplyUpdate();
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  color: 'var(--text-muted)',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '12px',
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+                title="최신 버전 확인 및 앱 새로고침"
+              >
+                <RotateCw size={11} /> 업데이트 확인
               </button>
             )}
           </div>
@@ -383,6 +428,29 @@ function App() {
               title="설정"
             >
               <Settings size={15} />
+            </button>
+
+            {/* Quick Refresh & Update Button */}
+            <button
+              onClick={handleApplyUpdate}
+              className="btn btn-secondary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                fontSize: '0.8rem',
+                padding: '0.4rem 0.65rem',
+                background: updateAvailable ? 'linear-gradient(90deg, #8b5cf6, #ec4899)' : 'rgba(255, 255, 255, 0.05)',
+                color: updateAvailable ? '#fff' : 'var(--text-secondary)',
+                border: updateAvailable ? '1px solid #ec4899' : '1px solid rgba(255, 255, 255, 0.1)',
+                cursor: 'pointer',
+                boxShadow: updateAvailable ? '0 0 12px rgba(236, 72, 153, 0.5)' : 'none',
+                fontWeight: updateAvailable ? 'bold' : 'normal'
+              }}
+              title={updateAvailable ? "새 버전이 준비되었습니다! 클릭하여 적용" : "최신 버전 확인 및 앱 새로고침"}
+            >
+              <RotateCw size={14} />
+              <span>{updateAvailable ? "업데이트!" : "새로고침"}</span>
             </button>
           </div>
         </header>
@@ -577,6 +645,52 @@ function App() {
                 <Settings size={20} color="var(--accent-secondary)" /> 환경 설정
               </h3>
               <button onClick={() => setActiveView('main')} className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem' }}>닫기</button>
+            </div>
+
+            {/* 최신 업데이트 및 캐시 갱신 */}
+            <div style={{
+              background: 'rgba(0,0,0,0.25)',
+              padding: '1rem',
+              borderRadius: '8px',
+              marginBottom: '1.25rem',
+              border: updateAvailable ? '1.5px solid #ec4899' : '1px solid rgba(255,255,255,0.08)',
+              boxShadow: updateAvailable ? '0 0 15px rgba(236, 72, 153, 0.25)' : 'none'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <RotateCw size={16} color={updateAvailable ? '#ec4899' : '#38bdf8'} />
+                  앱 최신 버전 업데이트 및 새로고침
+                </div>
+                {updateAvailable && (
+                  <span style={{ fontSize: '0.72rem', background: '#ec4899', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '10px', fontWeight: 'bold' }}>
+                    새 버전 발견! 🚀
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                홈 화면에 설치된 웹앱(PWA) 또는 브라우저 캐시를 최신 상태로 갱신하여 방금 반영된 최신 기능들을 즉시 불러옵니다.
+              </div>
+              <button 
+                onClick={handleApplyUpdate}
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  fontSize: '0.88rem',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.45rem',
+                  background: 'linear-gradient(90deg, #8b5cf6, #ec4899)',
+                  border: 'none',
+                  color: '#fff',
+                  boxShadow: '0 4px 15px rgba(236, 72, 153, 0.4)',
+                  cursor: 'pointer'
+                }}
+              >
+                <RotateCw size={16} /> 🚀 최신 버전으로 즉시 업데이트 및 캐시 새로고침
+              </button>
             </div>
 
             {/* 백업 및 복구 영역 (리포트에서 설정으로 깔끔하게 이동) */}
