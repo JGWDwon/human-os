@@ -267,7 +267,7 @@ export const storage = {
     return data[dateStr] || { count: 0, totalMinutes: 0 };
   },
 
-  addPomodoroByDate(dateStr) {
+  addPomodoroByDate(dateStr, activityType = 'review') {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
     if (!dateStr) {
@@ -285,7 +285,7 @@ export const storage = {
     
     data[dateStr].count += 1;
     data[dateStr].totalMinutes += 25; // 1 Pomodoro = 25 mins
-    data[dateStr].timestamps.push({ time: new Date().toISOString(), minutes: 25 });
+    data[dateStr].timestamps.push({ time: new Date().toISOString(), minutes: 25, activityType: activityType || 'review' });
     
     localStorage.setItem(STORAGE_KEYS.POMODORO, JSON.stringify(data));
     
@@ -321,7 +321,7 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoro(dateStr, timeStr, minutes = 25, startTimeStr = null, subject = null) {
+  addCustomPomodoro(dateStr, timeStr, minutes = 25, startTimeStr = null, subject = null, activityType = 'review') {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
     
@@ -372,7 +372,8 @@ export const storage = {
       minutes: minutes,
       startTime: calculatedStart,
       endTime: timeStr,
-      subject: subject || null
+      subject: subject || null,
+      activityType: activityType || 'review'
     });
     
     // Sort timestamps chronologically
@@ -420,8 +421,30 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes, startTimeStr = null, subject = null) {
-    return this.addCustomPomodoro(dateStr, timeStr, minutes, startTimeStr, subject);
+  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes, startTimeStr = null, subject = null, activityType = 'review') {
+    return this.addCustomPomodoro(dateStr, timeStr, minutes, startTimeStr, subject, activityType);
+  },
+
+  getActivityStats(dateStr) {
+    const data = this.getPomodoroByDate(dateStr);
+    let lectureMins = 0;
+    let reviewMins = 0;
+    if (data && Array.isArray(data.timestamps)) {
+      data.timestamps.forEach(ts => {
+        const mins = (typeof ts === 'object' && ts.minutes) ? Number(ts.minutes) : 25;
+        const type = (typeof ts === 'object' && ts.activityType) ? ts.activityType : 'review';
+        if (type === 'lecture') {
+          lectureMins += mins;
+        } else {
+          reviewMins += mins;
+        }
+      });
+    }
+    return {
+      lectureMins,
+      reviewMins,
+      totalMins: data?.totalMinutes || (lectureMins + reviewMins)
+    };
   },
 
   deletePomodoroTimestamp(dateStr, index) {

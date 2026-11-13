@@ -53,7 +53,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
   const dayData = storage.getPomodoroByDate(dateStr);
   const timestamps = dayData?.timestamps || [];
 
-  // matrix[hour_0_to_23][block_0_to_5] = { left, right, leftColor, rightColor, leftSubject, rightSubject }
+  // matrix[hour_0_to_23][block_0_to_5] = { left, right, leftColor, rightColor, leftSubject, rightSubject, leftType, rightType }
   const matrix = Array.from({ length: 24 }, () =>
     Array.from({ length: 6 }, () => ({
       left: false,
@@ -61,14 +61,27 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
       leftColor: null,
       rightColor: null,
       leftSubject: null,
-      rightSubject: null
+      rightSubject: null,
+      leftType: null,
+      rightType: null
     }))
   );
+
+  let totalLectureMinutes = 0;
+  let totalReviewMinutes = 0;
 
   timestamps.forEach(ts => {
     const { startTime, endTime } = getSessionRange(ts);
     const subject = typeof ts === 'object' && ts.subject ? ts.subject : null;
+    const activityType = typeof ts === 'object' && ts.activityType ? ts.activityType : 'review';
     const color = getSubjectColor(subject, subjectsList);
+    const mins = typeof ts === 'object' && ts.minutes ? Number(ts.minutes) : 25;
+
+    if (activityType === 'lecture') {
+      totalLectureMinutes += mins;
+    } else {
+      totalReviewMinutes += mins;
+    }
 
     const [startH, startM] = startTime.split(':').map(Number);
     const [endH, endM] = endTime.split(':').map(Number);
@@ -97,6 +110,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
           matrix[h][b].left = true;
           matrix[h][b].leftColor = color;
           matrix[h][b].leftSubject = subject;
+          matrix[h][b].leftType = activityType;
         }
 
         // Right half (:05 ~ :10 of this 10-minute block)
@@ -111,6 +125,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
           matrix[h][b].right = true;
           matrix[h][b].rightColor = color;
           matrix[h][b].rightSubject = subject;
+          matrix[h][b].rightType = activityType;
         }
       }
     }
@@ -151,6 +166,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
           matrix[h][b].left = true;
           matrix[h][b].leftColor = color;
           matrix[h][b].leftSubject = subject;
+          matrix[h][b].leftType = 'meal';
         }
 
         const rightStart = blockStart + 5;
@@ -164,6 +180,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
           matrix[h][b].right = true;
           matrix[h][b].rightColor = color;
           matrix[h][b].rightSubject = subject;
+          matrix[h][b].rightType = 'meal';
         }
       }
     }
@@ -171,38 +188,51 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
 
   return {
     totalMinutes: dayData?.totalMinutes || 0,
+    totalLectureMinutes,
+    totalReviewMinutes,
     totalMealMinutes,
     sessionCount: timestamps.length,
     matrix
   };
 };
 
-// Generate informative tooltip for each block with subject info
+// Generate informative tooltip for each block with subject info & activity type
 const getBlockTooltip = (prefix, h, b, cell) => {
   const startMin = b * 10;
   const endMin = (b + 1) * 10;
   const startStr = `${h}:${startMin.toString().padStart(2, '0')}`;
   const endStr = `${h}:${endMin.toString().padStart(2, '0')}`;
   const sub = cell.leftSubject || cell.rightSubject;
+  const type = cell.leftType || cell.rightType || 'review';
 
-  if (sub === '식사') {
+  if (type === 'meal' || sub === '식사') {
     return `${prefix} [🍱 식사] ${startStr} ~ ${endStr}`;
   }
 
+  const typeBadge = type === 'lecture' ? '🎧 강의' : '📖 복습';
   const subTag = sub ? `[${sub}] ` : '';
 
   if (cell.left && cell.right) {
-    return `${prefix} ${subTag}${startStr} ~ ${endStr} (10분 집중)`;
+    return `${prefix} ${subTag}${typeBadge} ${startStr} ~ ${endStr} (10분 집중)`;
   }
   if (cell.left && !cell.right) {
     const halfEnd = `${h}:${(startMin + 5).toString().padStart(2, '0')}`;
-    return `${prefix} ${subTag}${startStr} ~ ${halfEnd} (반 칸 / 5분 집중)`;
+    return `${prefix} ${subTag}${typeBadge} ${startStr} ~ ${halfEnd} (반 칸 / 5분 집중)`;
   }
   if (!cell.left && cell.right) {
     const halfStart = `${h}:${(startMin + 5).toString().padStart(2, '0')}`;
-    return `${prefix} ${subTag}${halfStart} ~ ${endStr} (반 칸 / 5분 집중)`;
+    return `${prefix} ${subTag}${typeBadge} ${halfStart} ~ ${endStr} (반 칸 / 5분 집중)`;
   }
   return `${prefix} ${startStr} ~ ${endStr} (휴식)`;
+};
+
+// Helper to compute fill style: hatched stripes for lecture, solid for review/meal
+const getBlockFillStyle = (isActive, color, type) => {
+  if (!isActive) return 'transparent';
+  if (type === 'lecture') {
+    return `repeating-linear-gradient(45deg, ${color}, ${color} 3px, rgba(0,0,0,0.42) 3px, rgba(0,0,0,0.42) 6px)`;
+  }
+  return color;
 };
 
 // Subcomponent for rendering a 10-minute block with 5-minute half-block capability and subject colors
@@ -239,7 +269,7 @@ function TimetableBlock({ cell, fallbackColor, inactiveBg = 'rgba(255,255,255,0.
         style={{
           width: '50%',
           height: '100%',
-          background: left ? leftColor : 'transparent',
+          background: getBlockFillStyle(left, leftColor, cell?.leftType),
           borderRight: isFull ? '1px solid rgba(0,0,0,0.15)' : '1px dashed rgba(255,255,255,0.12)',
           transition: 'background 0.15s'
         }}
@@ -249,7 +279,7 @@ function TimetableBlock({ cell, fallbackColor, inactiveBg = 'rgba(255,255,255,0.
         style={{
           width: '50%',
           height: '100%',
-          background: right ? rightColor : 'transparent',
+          background: getBlockFillStyle(right, rightColor, cell?.rightType),
           transition: 'background 0.15s'
         }}
       />
@@ -322,8 +352,23 @@ export default function StudyTimetable({
     return { weekDays: days, weekRangeLabel: rangeLabel };
   }, [todayObj, todayStr, weekOffset, registeredSubjects, mealTick]);
 
-  const totalWeeklyMinutes = useMemo(() => {
-    return weekDays.reduce((sum, d) => sum + (d.data?.totalMinutes || 0), 0);
+  const { totalWeeklyMinutes, totalWeeklyLectureMinutes, totalWeeklyReviewMinutes, totalWeeklyMealMinutes } = useMemo(() => {
+    let tot = 0;
+    let lec = 0;
+    let rev = 0;
+    let meal = 0;
+    weekDays.forEach(d => {
+      tot += (d.data?.totalMinutes || 0);
+      lec += (d.data?.totalLectureMinutes || 0);
+      rev += (d.data?.totalReviewMinutes || 0);
+      meal += (d.data?.totalMealMinutes || 0);
+    });
+    return {
+      totalWeeklyMinutes: tot,
+      totalWeeklyLectureMinutes: lec,
+      totalWeeklyReviewMinutes: rev,
+      totalWeeklyMealMinutes: meal
+    };
   }, [weekDays]);
 
   return (
@@ -377,12 +422,31 @@ export default function StudyTimetable({
             )}
           </div>
 
-          {/* Weekly Total Time Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.35rem 0.85rem', borderRadius: '8px' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>주간 총 공부 시간</span>
-            <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#34d399' }}>
-              {formatTimeRange(totalWeeklyMinutes)}
-            </span>
+          {/* Weekly Total Time Badge with Lecture / Review Split */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.35rem 0.75rem', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>주간 총 공부:</span>
+              <span style={{ fontSize: '0.92rem', fontWeight: 'bold', color: '#34d399' }}>
+                {formatTimeRange(totalWeeklyMinutes)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(129, 140, 248, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontWeight: 'bold' }}>
+                🎧 강의 {formatTimeRange(totalWeeklyLectureMinutes)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(52, 211, 153, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#6ee7b7', fontWeight: 'bold' }}>
+                📖 복습 {formatTimeRange(totalWeeklyReviewMinutes)}
+              </span>
+            </div>
+            {totalWeeklyMealMinutes > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(251, 146, 60, 0.12)', border: '1px solid rgba(251, 146, 60, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.75rem', color: '#fdba74', fontWeight: 'bold' }}>
+                  🍱 식사 {formatTimeRange(totalWeeklyMealMinutes)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -395,11 +459,22 @@ export default function StudyTimetable({
               일~토 주간 타임테이블 (10분 그리드 · 5분 반칸 지원)
             </h3>
           </div>
-            {/* Legend showing Full, Half (25m/50m), and Break */}
+            {/* Legend showing Review, Lecture, Half, Meal, and Break */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <span style={{ width: '12px', height: '11px', background: '#34d399', borderRadius: '2px', display: 'inline-block' }}></span>
-                10분 (풀칸)
+                📖 복습·자습 (솔리드)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{
+                  width: '12px',
+                  height: '11px',
+                  background: 'repeating-linear-gradient(45deg, #818cf8, #818cf8 2px, rgba(0,0,0,0.45) 2px, rgba(0,0,0,0.45) 4px)',
+                  border: '1px solid #818cf8',
+                  borderRadius: '2px',
+                  display: 'inline-block'
+                }}></span>
+                🎧 강의 수강 (사선 빗금)
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <span style={{
@@ -483,6 +558,16 @@ export default function StudyTimetable({
                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: day.data.totalMinutes > 0 ? '#34d399' : 'rgba(255,255,255,0.25)', marginTop: '0.15rem' }}>
                           {formatTimeRange(day.data.totalMinutes)}
                         </div>
+                        {day.data.totalMinutes > 0 && (
+                          <div style={{ fontSize: '0.62rem', display: 'flex', justifyContent: 'center', gap: '0.25rem', marginTop: '0.1rem', flexWrap: 'wrap' }}>
+                            {day.data.totalLectureMinutes > 0 && (
+                              <span style={{ color: '#a5b4fc' }}>🎧{formatTimeRange(day.data.totalLectureMinutes)}</span>
+                            )}
+                            {day.data.totalReviewMinutes > 0 && (
+                              <span style={{ color: '#6ee7b7' }}>📖{formatTimeRange(day.data.totalReviewMinutes)}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

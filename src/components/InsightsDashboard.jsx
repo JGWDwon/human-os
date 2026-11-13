@@ -135,6 +135,29 @@ export default function InsightsDashboard({ onClose }) {
     return sum;
   }, [weeklyTrend, mealTick]);
 
+  // Weekly Lecture vs Review Breakdown
+  const { weeklyLectureMins, weeklyReviewMins } = useMemo(() => {
+    const pomoRaw = localStorage.getItem('human_os_pomodoro_v1');
+    const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
+    let lectureMins = 0;
+    let reviewMins = 0;
+    weeklyTrend.forEach(day => {
+      const dayData = pomoData[day.dateStr];
+      if (dayData && Array.isArray(dayData.timestamps)) {
+        dayData.timestamps.forEach(ts => {
+          const mins = (typeof ts === 'object' && ts.minutes) ? Number(ts.minutes) : 25;
+          const type = (typeof ts === 'object' && ts.activityType) ? ts.activityType : 'review';
+          if (type === 'lecture') {
+            lectureMins += mins;
+          } else {
+            reviewMins += mins;
+          }
+        });
+      }
+    });
+    return { weeklyLectureMins: lectureMins, weeklyReviewMins: reviewMins };
+  }, [weeklyTrend]);
+
   // Chart Y-axis max scale: comfortable headroom above max, milestone aligned
   const rawMax = Math.max(...weeklyTrend.map(t => t.minutes), 0);
   const scaleMaxMins = Math.max(480, Math.ceil((rawMax * 1.18) / 60) * 60);
@@ -262,11 +285,31 @@ export default function InsightsDashboard({ onClose }) {
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.35rem 0.85rem', borderRadius: '8px' }}>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>주간 총 공부 시간</span>
-          <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#34d399' }}>
-            {formatTime(totalWeeklyMinutes)}
-          </span>
+        {/* Weekly Total Time Badge with Lecture / Review Split */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.35rem 0.75rem', borderRadius: '8px' }}>
+            <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>주간 총 공부:</span>
+            <span style={{ fontSize: '0.92rem', fontWeight: 'bold', color: '#34d399' }}>
+              {formatTime(totalWeeklyMinutes)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(129, 140, 248, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '8px' }}>
+            <span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontWeight: 'bold' }}>
+              🎧 강의 {formatTime(weeklyLectureMins)}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(52, 211, 153, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '8px' }}>
+            <span style={{ fontSize: '0.75rem', color: '#6ee7b7', fontWeight: 'bold' }}>
+              📖 복습 {formatTime(weeklyReviewMins)}
+            </span>
+          </div>
+          {weeklyMealTotalMins > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(251, 146, 60, 0.12)', border: '1px solid rgba(251, 146, 60, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.75rem', color: '#fdba74', fontWeight: 'bold' }}>
+                🍱 식사 {formatTime(weeklyMealTotalMins)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -275,8 +318,8 @@ export default function InsightsDashboard({ onClose }) {
       {/* ========================================================================= */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         
-        {/* 3 Trend Insight Chips */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+        {/* 4 Trend Insight Chips including Input vs Output Ratio */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem' }}>
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>일평균 순공</div>
             <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#38bdf8', marginTop: '0.15rem' }}>
@@ -295,13 +338,32 @@ export default function InsightsDashboard({ onClose }) {
 
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <CheckCircle2 size={12} color="#10b981" /> 4h+ 새싹 달성
+              <span>🌱</span> 목표(4h+) 달성일
             </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#10b981', marginTop: '0.15rem' }}>
-              {sproutDaysCount}일 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>/ 7일</span>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#34d399', marginTop: '0.15rem' }}>
+              {sproutDaysCount}일 / 7일
             </div>
           </div>
 
+          {/* Input vs Output Balance Card */}
+          <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(129, 140, 248, 0.25)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
+            <div style={{ fontSize: '0.72rem', color: '#a5b4fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>인풋 vs 아웃풋 밸런스</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>강의:복습</span>
+            </div>
+            <div style={{ fontSize: '0.92rem', fontWeight: 'bold', color: '#fff', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ color: '#818cf8' }}>🎧 {totalWeeklyMinutes > 0 ? Math.round((weeklyLectureMins / totalWeeklyMinutes) * 100) : 0}%</span>
+              <span style={{ color: 'var(--text-muted)' }}>:</span>
+              <span style={{ color: '#34d399' }}>📖 {totalWeeklyMinutes > 0 ? Math.round((weeklyReviewMins / totalWeeklyMinutes) * 100) : 0}%</span>
+            </div>
+            {/* Visual ratio bar */}
+            <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginTop: '0.35rem', overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: `${totalWeeklyMinutes > 0 ? Math.round((weeklyLectureMins / totalWeeklyMinutes) * 100) : 0}%`, background: '#818cf8', transition: 'width 0.3s' }} />
+              <div style={{ width: `${totalWeeklyMinutes > 0 ? Math.round((weeklyReviewMins / totalWeeklyMinutes) * 100) : 0}%`, background: '#34d399', transition: 'width 0.3s' }} />
+            </div>
+          </div>
+
+          {/* Weekly Meal Card */}
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
               🍱 식사 시간 (주간)
@@ -491,6 +553,17 @@ export default function InsightsDashboard({ onClose }) {
         {activeDayForDetail && (() => {
           const dayMeals = storage.getMealsByDate(activeDayForDetail.dateStr) || [];
           const dayMealMins = dayMeals.reduce((s, m) => s + (m.minutes || 0), 0);
+          const dayLectureMins = (activeDayPomo?.timestamps || []).reduce((s, ts) => {
+            const mins = typeof ts === 'object' && ts.minutes ? Number(ts.minutes) : 25;
+            const type = typeof ts === 'object' && ts.activityType ? ts.activityType : 'review';
+            return type === 'lecture' ? s + mins : s;
+          }, 0);
+          const dayReviewMins = (activeDayPomo?.timestamps || []).reduce((s, ts) => {
+            const mins = typeof ts === 'object' && ts.minutes ? Number(ts.minutes) : 25;
+            const type = typeof ts === 'object' && ts.activityType ? ts.activityType : 'review';
+            return type !== 'lecture' ? s + mins : s;
+          }, 0);
+
           return (
             <div style={{
               background: 'rgba(0,0,0,0.3)',
@@ -510,10 +583,20 @@ export default function InsightsDashboard({ onClose }) {
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                   <span style={{ color: activeDayForDetail.minutes > 0 ? '#34d399' : 'var(--text-muted)' }}>
-                    총 {formatTime(activeDayForDetail.minutes)} ({activeDayPomo?.count || 0}회 집중)
+                    총 {formatTime(activeDayForDetail.minutes)}
                   </span>
+                  {activeDayForDetail.minutes > 0 && (
+                    <span style={{ fontSize: '0.74rem', color: '#a5b4fc', background: 'rgba(99, 102, 241, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                      🎧 강의 {formatTime(dayLectureMins)}
+                    </span>
+                  )}
+                  {activeDayForDetail.minutes > 0 && (
+                    <span style={{ fontSize: '0.74rem', color: '#6ee7b7', background: 'rgba(16, 185, 129, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                      📖 복습 {formatTime(dayReviewMins)}
+                    </span>
+                  )}
                   {dayMealMins > 0 && (
                     <span style={{ color: '#fb923c', background: 'rgba(251, 146, 60, 0.15)', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
                       🍱 식사 {formatTime(dayMealMins)}
@@ -526,16 +609,19 @@ export default function InsightsDashboard({ onClose }) {
               {(activeDayPomo?.timestamps && activeDayPomo.timestamps.length > 0) || dayMeals.length > 0 ? (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', maxHeight: '140px', overflowY: 'auto' }}>
                   {activeDayPomo?.timestamps?.map((ts, idx) => {
-                    const timeStr = typeof ts === 'string' ? ts : ts.time;
+                    const timeStr = typeof ts === 'string' ? ts : (ts.time?.includes('T') ? ts.time.split('T')[1].substring(0, 5) : ts.time);
                     const mins = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
                     const sub = typeof ts === 'object' && ts.subject ? ts.subject : null;
+                    const activityType = typeof ts === 'object' && ts.activityType ? ts.activityType : 'review';
+                    const isLecture = activityType === 'lecture';
+
                     return (
                       <span
                         key={`pomo_${idx}`}
                         style={{
                           fontSize: '0.74rem',
-                          background: 'rgba(255,255,255,0.05)',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          background: isLecture ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.05)',
+                          border: isLecture ? '1px solid rgba(129, 140, 248, 0.35)' : '1px solid rgba(255,255,255,0.1)',
                           padding: '0.2rem 0.55rem',
                           borderRadius: '6px',
                           color: '#e2e8f0',
@@ -544,6 +630,16 @@ export default function InsightsDashboard({ onClose }) {
                           gap: '0.3rem'
                         }}
                       >
+                        <span style={{
+                          fontSize: '0.66rem',
+                          padding: '0.05rem 0.35rem',
+                          borderRadius: '3px',
+                          fontWeight: 'bold',
+                          background: isLecture ? 'rgba(99, 102, 241, 0.25)' : 'rgba(16, 185, 129, 0.2)',
+                          color: isLecture ? '#c7d2fe' : '#6ee7b7'
+                        }}>
+                          {isLecture ? '🎧 강의' : '📖 복습'}
+                        </span>
                         {sub && (
                           <span style={{ fontSize: '0.68rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '3px', fontWeight: 'bold' }}>
                             {sub}

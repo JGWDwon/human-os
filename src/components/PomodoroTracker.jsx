@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones } from 'lucide-react';
 import { storage, getSubjectColor } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
@@ -23,17 +23,26 @@ const loadBellSound = async (audioCtx) => {
 };
 
 export default function PomodoroTracker({ selectedDate, onUpdate }) {
-  // Timer Mode: 'study' (공부 뽀모도로) | 'meal' (식사 시간 스톱워치)
+  // Timer Mode: 'lecture' (🎧 강의 수강) | 'review' (📖 복습·자습) | 'meal' (🍱 식사 시간)
   const [activeTimerMode, setActiveTimerMode] = useState(() => {
-    return localStorage.getItem('human_os_timer_mode_v1') || 'study';
+    const saved = localStorage.getItem('human_os_timer_mode_v1');
+    if (saved === 'lecture' || saved === 'meal') return saved;
+    return 'review'; // default to review (covers legacy 'study' as well)
   });
 
-  const handleSwitchMode = (mode) => {
-    setActiveTimerMode(mode);
-    try {
-      localStorage.setItem('human_os_timer_mode_v1', mode);
-    } catch (e) {}
-  };
+  // Separate duration presets for Lecture vs Review
+  const [lectureDuration, setLectureDuration] = useState(() => {
+    const saved = localStorage.getItem('human_os_lecture_duration_v1');
+    return saved ? parseInt(saved, 10) : 60; // 60 min default for lectures
+  });
+
+  const [reviewDuration, setReviewDuration] = useState(() => {
+    const saved = localStorage.getItem('human_os_review_duration_v1');
+    return saved ? parseInt(saved, 10) : 30; // 30 min default for review
+  });
+
+  // Manual input activity type
+  const [manualActivityType, setManualActivityType] = useState('review');
 
   // Meal StopWatch State (시간이 차오르는 스톱워치 형태)
   const [mealTimerState, setMealTimerState] = useState(() => {
@@ -83,21 +92,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const [weeklyData, setWeeklyData] = useState({ weeklyCount: 0, weeklyMinutes: 0, weekData: [] });
   const [customTime, setCustomTime] = useState('');
   const [customMinutes, setCustomMinutes] = useState('30');
-  const [selectedDuration, setSelectedDuration] = useState(() => {
-    try {
-      const saved = localStorage.getItem('human_os_timer_state_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.duration) {
-          const m = Math.round(parsed.duration / 60);
-          if (m === 25) return 30;
-          if (m === 50) return 60;
-          return m;
-        }
-      }
-    } catch (e) {}
-    return 30;
-  }); // minutes
+  const selectedDuration = activeTimerMode === 'lecture' ? lectureDuration : reviewDuration;
   const [customDuration, setCustomDuration] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
   const [subjects, setSubjects] = useState(() => storage.getSubjects());
@@ -216,10 +211,63 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       isRunning: false,
       isPaused: false,
       endTime: 0,
-      duration: 1800, // 30 min default
-      timeLeft: 1800,
+      duration: (activeTimerMode === 'lecture' ? lectureDuration : reviewDuration) * 60,
+      timeLeft: (activeTimerMode === 'lecture' ? lectureDuration : reviewDuration) * 60,
+      currentActivityType: activeTimerMode === 'lecture' ? 'lecture' : 'review'
     };
   });
+
+  const handleSwitchMode = (mode) => {
+    if (mode === activeTimerMode) return;
+
+    if (mode === 'meal') {
+      if (timerState.isRunning) {
+        alert("공부 타이머가 진행 중입니다. 먼저 일시정지하거나 완료해주세요.");
+        return;
+      }
+      setActiveTimerMode('meal');
+      try { localStorage.setItem('human_os_timer_mode_v1', 'meal'); } catch(e) {}
+      return;
+    }
+
+    // Switching between 'lecture' and 'review'
+    if (timerState.isRunning || timerState.isPaused) {
+      const currentModeLabel = (timerState.currentActivityType === 'lecture' || activeTimerMode === 'lecture') ? '🎧 강의 수강' : '📖 복습·자습';
+      const targetModeLabel = mode === 'lecture' ? '🎧 강의 수강' : '📖 복습·자습';
+      
+      const confirmChange = window.confirm(`현재 ${currentModeLabel} 타이머가 진행 중입니다.\n진행 중인 세션 유형을 [${targetModeLabel}]으로 변경하시겠습니까?`);
+      if (confirmChange) {
+        const nextState = {
+          ...timerState,
+          currentActivityType: mode
+        };
+        setTimerState(nextState);
+        localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
+        setActiveTimerMode(mode);
+        try { localStorage.setItem('human_os_timer_mode_v1', mode); } catch(e) {}
+      }
+      return;
+    }
+
+    // If timer is idle: seamlessly switch mode & set to that mode's saved duration
+    setActiveTimerMode(mode);
+    try { localStorage.setItem('human_os_timer_mode_v1', mode); } catch(e) {}
+
+    const targetDurationMins = mode === 'lecture' ? lectureDuration : reviewDuration;
+    const secs = targetDurationMins * 60;
+    const nextState = {
+      isRunning: false,
+      isPaused: false,
+      duration: secs,
+      timeLeft: secs,
+      endTime: 0,
+      currentSubject: selectedSubjectRef.current || timerState.currentSubject,
+      currentActivityType: mode
+    };
+    setTimerState(nextState);
+    localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
+    setCustomDuration('');
+  };
 
   const [notifPermission, setNotifPermission] = useState('default');
 
@@ -236,8 +284,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
 
       const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
+      const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
 
-      storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, mins, startTimeStr, subjectToLog);
+      storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, mins, startTimeStr, subjectToLog, activityTypeToLog);
       refreshData();
       window.dispatchEvent(new CustomEvent('xp-updated'));
       if (onUpdate) onUpdate();
@@ -249,7 +298,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         endTime: 0,
         duration: nextDuration,
         timeLeft: nextDuration,
-        currentSubject: subjectToLog
+        currentSubject: subjectToLog,
+        currentActivityType: activityTypeToLog
       };
       setTimerState(nextState);
       localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -529,21 +579,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
 
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
+    const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
 
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog);
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
 
     // Reset back to selected study time
-    const nextDuration = (customDuration ? parseInt(customDuration, 10) : selectedDuration) * 60;
+    const curDuration = activeTimerMode === 'lecture' ? lectureDuration : reviewDuration;
+    const nextDuration = (customDuration ? parseInt(customDuration, 10) : curDuration) * 60;
     const nextState = {
       isRunning: false,
       isPaused: false,
       endTime: 0,
       duration: nextDuration,
       timeLeft: nextDuration,
-      currentSubject: subjectToLog
+      currentSubject: subjectToLog,
+      currentActivityType: activityTypeToLog
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -634,12 +687,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       }
     }
 
+    const targetActivityType = (activeTimerMode === 'lecture') ? 'lecture' : 'review';
     const nextState = {
       ...timerState,
       isRunning: true,
       isPaused: false,
       endTime,
-      currentSubject: targetSubject
+      currentSubject: targetSubject,
+      currentActivityType: targetActivityType
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -704,20 +759,23 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5);
 
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
+    const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
 
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog);
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
 
-    const nextDuration = (customDuration ? parseInt(customDuration, 10) : selectedDuration) * 60;
+    const curDuration = activeTimerMode === 'lecture' ? lectureDuration : reviewDuration;
+    const nextDuration = (customDuration ? parseInt(customDuration, 10) : curDuration) * 60;
     const nextState = {
       isRunning: false,
       isPaused: false,
       endTime: 0,
       duration: nextDuration,
       timeLeft: nextDuration,
-      currentSubject: subjectToLog
+      currentSubject: subjectToLog,
+      currentActivityType: activityTypeToLog
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -726,7 +784,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const resetTimer = () => {
     isCompletingRef.current = false;
     playSound('click');
-    const targetMins = customDuration ? parseInt(customDuration, 10) : selectedDuration;
+    const curDuration = activeTimerMode === 'lecture' ? lectureDuration : reviewDuration;
+    const targetMins = customDuration ? parseInt(customDuration, 10) : curDuration;
     const secs = targetMins * 60;
     const nextState = {
       isRunning: false,
@@ -734,7 +793,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       duration: secs,
       timeLeft: secs,
       endTime: 0,
-      currentSubject: selectedSubjectRef.current || timerState.currentSubject
+      currentSubject: selectedSubjectRef.current || timerState.currentSubject,
+      currentActivityType: activeTimerMode === 'lecture' ? 'lecture' : 'review'
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -743,13 +803,21 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   const applyDuration = (mins) => {
     if (timerState.isRunning || timerState.isPaused) return;
     const secs = mins * 60;
+    if (activeTimerMode === 'lecture') {
+      setLectureDuration(mins);
+      try { localStorage.setItem('human_os_lecture_duration_v1', mins.toString()); } catch(e) {}
+    } else {
+      setReviewDuration(mins);
+      try { localStorage.setItem('human_os_review_duration_v1', mins.toString()); } catch(e) {}
+    }
     const nextState = {
       isRunning: false,
       isPaused: false,
       duration: secs,
       timeLeft: secs,
       endTime: 0,
-      currentSubject: selectedSubjectRef.current || timerState.currentSubject
+      currentSubject: selectedSubjectRef.current || timerState.currentSubject,
+      currentActivityType: activeTimerMode === 'lecture' ? 'lecture' : 'review'
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -775,13 +843,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
     const subjectToLog = selectedSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
 
-    storage.addCustomPomodoroWithMinutes(selectedDate, endTimeStr, mins, customTime, subjectToLog);
+    storage.addCustomPomodoroWithMinutes(selectedDate, endTimeStr, mins, customTime, subjectToLog, manualActivityType);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
     setCustomTime('');
     const subLabel = subjectToLog ? `[${subjectToLog}] ` : '';
-    alert(`🍅 ${selectedDate} ${subLabel}[${format12H(customTime)} ~ ${format12H(endTimeStr)}] (${mins}분) 공부 기록이 추가되었습니다!`);
+    const typeLabel = manualActivityType === 'lecture' ? '🎧 강의' : '📖 복습';
+    alert(`⏱️ ${selectedDate} ${subLabel}${typeLabel} [${format12H(customTime)} ~ ${format12H(endTimeStr)}] (${mins}분) 공부 기록이 추가되었습니다!`);
   };
 
   const handleDeleteTimestamp = (index) => {
@@ -798,13 +867,15 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const minutesVal = typeof ts === 'object' && ts.minutes ? ts.minutes : 25;
     const timeOnly = timeLabel.includes('T') ? timeLabel.split('T')[1].substring(0, 5) : timeLabel.substring(0, 5);
     const subject = typeof ts === 'object' && ts.subject ? ts.subject : null;
+    const activityType = typeof ts === 'object' && ts.activityType ? ts.activityType : 'review';
 
     if (typeof ts === 'object' && ts.startTime && ts.endTime) {
       return {
         startTime: ts.startTime,
         endTime: ts.endTime,
         minutes: minutesVal,
-        subject
+        subject,
+        activityType
       };
     }
 
@@ -820,7 +891,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       startTime: startStr,
       endTime: timeOnly,
       minutes: minutesVal,
-      subject
+      subject,
+      activityType
     };
   };
 
@@ -915,19 +987,26 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
   const activeMinutes = customDuration ? parseInt(customDuration, 10) : selectedDuration;
 
+  const todayLectureMins = (todayData.timestamps || []).reduce((s, ts) => (ts.activityType === 'lecture' ? s + (ts.minutes || 25) : s), 0);
+  const todayReviewMins = (todayData.timestamps || []).reduce((s, ts) => (ts.activityType !== 'lecture' ? s + (ts.minutes || 25) : s), 0);
+  const todayMealMins = (todayMeals || []).reduce((s, m) => s + (m.minutes || 0), 0);
+
   return (
     <div className="glass-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <h2 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, color: 'var(--text-primary)' }}>
           <span>🎯</span> 공부 사냥터
         </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '0.88rem', color: 'var(--accent-primary)', fontWeight: 'bold' }}>
-            오늘 집중: {Math.floor(todayData.totalMinutes / 60)}시간 {todayData.totalMinutes % 60}분
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#818cf8', background: 'rgba(99, 102, 241, 0.15)', padding: '0.2rem 0.55rem', borderRadius: '6px' }}>
+            🎧 강의 {Math.floor(todayLectureMins / 60)}h {todayLectureMins % 60}m
           </div>
-          {todayMeals && todayMeals.length > 0 && (
-            <div style={{ fontSize: '0.8rem', color: '#fb923c', fontWeight: 'bold', background: 'rgba(251, 146, 60, 0.12)', padding: '0.15rem 0.45rem', borderRadius: '6px' }}>
-              🍱 식사 {todayMeals.reduce((s, m) => s + (m.minutes || 0), 0)}분
+          <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#34d399', background: 'rgba(16, 185, 129, 0.15)', padding: '0.2rem 0.55rem', borderRadius: '6px' }}>
+            📖 복습 {Math.floor(todayReviewMins / 60)}h {todayReviewMins % 60}m
+          </div>
+          {todayMealMins > 0 && (
+            <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: '#fb923c', background: 'rgba(251, 146, 60, 0.15)', padding: '0.2rem 0.55rem', borderRadius: '6px' }}>
+              🍱 식사 {todayMealMins}m
             </div>
           )}
         </div>
@@ -954,34 +1033,63 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         </div>
       )}
 
-      {/* Mode Selector: [🍅 공부 뽀모도로] vs [🍱 식사 시간] */}
+      {/* Mode Selector: [🎧 강의 수강] vs [📖 복습·자습] vs [🍱 식사 시간] */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.85rem' }}>
         <div style={{
           display: 'inline-flex',
-          background: 'rgba(0,0,0,0.4)',
-          padding: '0.2rem',
+          background: 'rgba(0,0,0,0.45)',
+          padding: '0.25rem',
           borderRadius: '24px',
-          border: '1px solid rgba(255,255,255,0.08)'
+          border: '1px solid rgba(255,255,255,0.08)',
+          gap: '0.25rem'
         }}>
           <button
             type="button"
-            onClick={() => handleSwitchMode('study')}
+            onClick={() => handleSwitchMode('lecture')}
             style={{
               padding: '0.35rem 0.95rem',
               borderRadius: '20px',
               border: 'none',
-              background: activeTimerMode === 'study' ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
-              color: activeTimerMode === 'study' ? '#34d399' : 'var(--text-muted)',
+              background: activeTimerMode === 'lecture' ? 'rgba(99, 102, 241, 0.3)' : 'transparent',
+              color: activeTimerMode === 'lecture' ? '#a5b4fc' : 'var(--text-muted)',
               fontWeight: 'bold',
               fontSize: '0.82rem',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '0.35rem',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              boxShadow: activeTimerMode === 'lecture' ? '0 0 10px rgba(99, 102, 241, 0.25)' : 'none'
             }}
           >
-            🍅 공부 집중
+            <Headphones size={13} color={activeTimerMode === 'lecture' ? '#a5b4fc' : 'var(--text-muted)'} /> 강의 수강
+            {(timerState.isRunning && (timerState.currentActivityType === 'lecture' || activeTimerMode === 'lecture')) && (
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#818cf8', display: 'inline-block' }} />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSwitchMode('review')}
+            style={{
+              padding: '0.35rem 0.95rem',
+              borderRadius: '20px',
+              border: 'none',
+              background: activeTimerMode === 'review' ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+              color: activeTimerMode === 'review' ? '#34d399' : 'var(--text-muted)',
+              fontWeight: 'bold',
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              transition: 'all 0.2s',
+              boxShadow: activeTimerMode === 'review' ? '0 0 10px rgba(16, 185, 129, 0.2)' : 'none'
+            }}
+          >
+            <BookOpen size={13} color={activeTimerMode === 'review' ? '#34d399' : 'var(--text-muted)'} /> 복습·자습
+            {(timerState.isRunning && (timerState.currentActivityType === 'review' || (!timerState.currentActivityType && activeTimerMode === 'review'))) && (
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#34d399', display: 'inline-block' }} />
+            )}
           </button>
           <button
             type="button"
@@ -998,7 +1106,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               display: 'flex',
               alignItems: 'center',
               gap: '0.35rem',
-              transition: 'all 0.2s'
+              transition: 'all 0.2s',
+              boxShadow: activeTimerMode === 'meal' ? '0 0 10px rgba(249, 115, 22, 0.2)' : 'none'
             }}
           >
             <UtensilsCrossed size={13} color={activeTimerMode === 'meal' ? '#fb923c' : 'var(--text-muted)'} /> 식사 시간
@@ -1016,9 +1125,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         padding: '1.25rem 1rem',
         textAlign: 'center',
         marginBottom: '1.25rem',
-        border: activeTimerMode === 'meal' ? '1px solid rgba(249, 115, 22, 0.25)' : '1px solid rgba(255,255,255,0.08)'
+        border: activeTimerMode === 'meal'
+          ? '1px solid rgba(249, 115, 22, 0.25)'
+          : (activeTimerMode === 'lecture' ? '1px solid rgba(129, 140, 248, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)')
       }}>
-        {activeTimerMode === 'study' ? (
+        {activeTimerMode !== 'meal' ? (
           <>
             {/* Subject Indicator / Selection Chips */}
             {timerState.isRunning || timerState.isPaused ? (
@@ -1042,7 +1153,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   boxShadow: `0 0 8px ${getSubjectColor(timerState.currentSubject || selectedSubject, subjects)}`
                 }} />
                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#fff' }}>
-                  집중 과목: <span style={{ color: getSubjectColor(timerState.currentSubject || selectedSubject, subjects) }}>{(timerState.currentSubject || selectedSubject) || '미지정'}</span>
+                  {activeTimerMode === 'lecture' ? '🎧 강의' : '📖 복습'} 과목: <span style={{ color: getSubjectColor(timerState.currentSubject || selectedSubject, subjects) }}>{(timerState.currentSubject || selectedSubject) || '미지정'}</span>
                 </span>
               </div>
             ) : (
@@ -1093,37 +1204,52 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               </div>
             )}
 
-            <div style={{ fontSize: '3.8rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--text-primary)', letterSpacing: '2px', textShadow: '0 0 20px rgba(16, 185, 129, 0.3)', lineHeight: 1 }}>
+            <div style={{
+              fontSize: '3.8rem',
+              fontWeight: 'bold',
+              fontFamily: 'monospace',
+              color: 'var(--text-primary)',
+              letterSpacing: '2px',
+              textShadow: activeTimerMode === 'lecture' ? '0 0 20px rgba(129, 140, 248, 0.4)' : '0 0 20px rgba(16, 185, 129, 0.3)',
+              lineHeight: 1
+            }}>
               {formatTimeDisplay(timerState.timeLeft)}
             </div>
 
             {/* Preset Selector */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.15rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>집중:</span>
-              {[30, 60].map(mins => (
-                <button
-                  key={mins}
-                  onClick={() => {
-                    if (timerState.isRunning || timerState.isPaused) return;
-                    setSelectedDuration(mins);
-                    setCustomDuration('');
-                    applyDuration(mins);
-                  }}
-                  disabled={timerState.isRunning || timerState.isPaused}
-                  style={{
-                    padding: '0.3rem 0.75rem',
-                    borderRadius: '20px',
-                    border: selectedDuration === mins && !customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
-                    background: selectedDuration === mins && !customDuration ? 'var(--accent-primary)' : 'rgba(255,255,255,0.05)',
-                    color: selectedDuration === mins && !customDuration ? '#000' : 'var(--text-secondary)',
-                    fontWeight: selectedDuration === mins && !customDuration ? 'bold' : 'normal',
-                    fontSize: '0.85rem',
-                    cursor: timerState.isRunning || timerState.isPaused ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {mins}분
-                </button>
-              ))}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.4rem', marginTop: '1rem', marginBottom: '1.15rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                {activeTimerMode === 'lecture' ? '🎧 강의 시간:' : '📖 복습 시간:'}
+              </span>
+              {(activeTimerMode === 'lecture' ? [40, 50, 60, 75, 90] : [15, 25, 30, 45, 60]).map(mins => {
+                const isSelected = selectedDuration === mins && !customDuration;
+                const activeColor = activeTimerMode === 'lecture' ? '#818cf8' : 'var(--accent-primary)';
+                const activeTextColor = activeTimerMode === 'lecture' ? '#fff' : '#000';
+                return (
+                  <button
+                    key={mins}
+                    onClick={() => {
+                      if (timerState.isRunning || timerState.isPaused) return;
+                      setCustomDuration('');
+                      applyDuration(mins);
+                    }}
+                    disabled={timerState.isRunning || timerState.isPaused}
+                    style={{
+                      padding: '0.28rem 0.65rem',
+                      borderRadius: '20px',
+                      border: isSelected ? `1px solid ${activeColor}` : '1px solid rgba(255,255,255,0.1)',
+                      background: isSelected ? activeColor : 'rgba(255,255,255,0.05)',
+                      color: isSelected ? activeTextColor : 'var(--text-secondary)',
+                      fontWeight: isSelected ? 'bold' : 'normal',
+                      fontSize: '0.82rem',
+                      cursor: timerState.isRunning || timerState.isPaused ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {mins}분
+                  </button>
+                );
+              })}
 
               {/* Custom Duration Input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
@@ -1143,17 +1269,17 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                     }
                   }}
                   style={{
-                    width: '60px',
-                    padding: '0.3rem 0.5rem',
+                    width: '55px',
+                    padding: '0.25rem 0.45rem',
                     borderRadius: '4px',
-                    border: customDuration ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.1)',
+                    border: customDuration ? (activeTimerMode === 'lecture' ? '1px solid #818cf8' : '1px solid var(--accent-primary)') : '1px solid rgba(255,255,255,0.1)',
                     background: 'rgba(0,0,0,0.4)',
                     color: '#fff',
-                    fontSize: '0.85rem',
+                    fontSize: '0.82rem',
                     textAlign: 'center'
                   }}
                 />
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>분</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>분</span>
               </div>
             </div>
 
@@ -1395,11 +1521,26 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                       <span style={{
-                        background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', fontSize: '0.7rem',
-                        fontWeight: 'bold', padding: '0.1rem 0.4rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)'
+                        background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', fontSize: '0.7rem',
+                        fontWeight: 'bold', padding: '0.1rem 0.4rem', borderRadius: '4px'
                       }}>
                         {idx + 1}회
                       </span>
+                      {sessionInfo.activityType === 'lecture' ? (
+                        <span style={{
+                          background: 'rgba(99, 102, 241, 0.2)', color: '#a5b4fc', fontSize: '0.7rem',
+                          fontWeight: 'bold', padding: '0.1rem 0.45rem', borderRadius: '4px', border: '1px solid rgba(129, 140, 248, 0.35)'
+                        }}>
+                          🎧 강의
+                        </span>
+                      ) : (
+                        <span style={{
+                          background: 'rgba(16, 185, 129, 0.18)', color: '#6ee7b7', fontSize: '0.7rem',
+                          fontWeight: 'bold', padding: '0.1rem 0.45rem', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)'
+                        }}>
+                          📖 복습
+                        </span>
+                      )}
                       {sessionInfo.subject && (
                         <span style={{
                           background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontSize: '0.7rem',
@@ -1412,7 +1553,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                         {format12H(sessionInfo.startTime)} ~ {format12H(sessionInfo.endTime)}
                       </span>
                       <span style={{
-                        fontSize: '0.72rem', color: 'var(--accent-primary)', background: 'rgba(16, 185, 129, 0.1)',
+                        fontSize: '0.72rem', color: sessionInfo.activityType === 'lecture' ? '#a5b4fc' : 'var(--accent-primary)', background: sessionInfo.activityType === 'lecture' ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.1)',
                         padding: '0.08rem 0.4rem', borderRadius: '4px', fontWeight: 'bold'
                       }}>
                         {sessionInfo.minutes}분
@@ -1439,6 +1580,42 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           {/* Collapsible Manual Entry Form */}
           {showManualForm && (
             <form onSubmit={handleManualSubmit} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)', animation: 'fadeIn 0.2s ease', flexWrap: 'wrap' }}>
+              {/* Activity Type Toggle for Manual Input */}
+              <div style={{ display: 'inline-flex', background: 'rgba(0,0,0,0.5)', padding: '0.15rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', gap: '0.2rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setManualActivityType('lecture')}
+                  style={{
+                    padding: '0.2rem 0.45rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: manualActivityType === 'lecture' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                    color: manualActivityType === 'lecture' ? '#a5b4fc' : 'var(--text-muted)',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🎧 강의
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualActivityType('review')}
+                  style={{
+                    padding: '0.2rem 0.45rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: manualActivityType === 'review' ? 'rgba(16, 185, 129, 0.35)' : 'transparent',
+                    color: manualActivityType === 'review' ? '#34d399' : 'var(--text-muted)',
+                    fontSize: '0.72rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  📖 복습
+                </button>
+              </div>
+
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>시작:</span>
               <input
                 type="time"
@@ -1514,8 +1691,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               </button>
             </div>
 
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.85rem' }}>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                background: activeTimerMode === 'lecture' ? 'rgba(99, 102, 241, 0.18)' : 'rgba(16, 185, 129, 0.18)',
+                border: activeTimerMode === 'lecture' ? '1px solid rgba(129, 140, 248, 0.4)' : '1px solid rgba(16, 185, 129, 0.4)',
+                padding: '0.3rem 0.85rem',
+                borderRadius: '20px'
+              }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: activeTimerMode === 'lecture' ? '#a5b4fc' : '#6ee7b7' }}>
+                  {activeTimerMode === 'lecture' ? '🎧 강의 수강 세션' : '📖 복습·자습 세션'} ({activeMinutes}분)
+                </span>
+              </div>
+            </div>
+
             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0', lineHeight: 1.45 }}>
-              이번 집중 세션(<strong style={{ color: '#fff' }}>{activeMinutes}분</strong>)에서 공부할 과목을 선택하면 타이머가 즉시 시작됩니다.
+              공부할 과목을 선택하면 타이머가 즉시 시작됩니다.
             </p>
 
             {/* Subject Selection Buttons Grid */}
