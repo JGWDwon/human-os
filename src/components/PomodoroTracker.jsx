@@ -33,7 +33,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   // Separate duration presets for Lecture vs Review
   const [lectureDuration, setLectureDuration] = useState(() => {
     const saved = localStorage.getItem('human_os_lecture_duration_v1');
-    return saved ? parseInt(saved, 10) : 60; // 60 min default for lectures
+    if (!saved || saved === '60') return 30; // 30 min default for lectures
+    return parseInt(saved, 10);
   });
 
   const [reviewDuration, setReviewDuration] = useState(() => {
@@ -203,6 +204,15 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
             timeLeft: remaining,
             isRunning: true
           };
+        }
+        if (!parsed.isRunning && !parsed.isPaused) {
+          if (parsed.currentActivityType === 'lecture' && (parsed.duration === 3600 || !parsed.duration)) {
+            return {
+              ...parsed,
+              duration: 1800,
+              timeLeft: 1800
+            };
+          }
         }
         return parsed;
       } catch (e) {}
@@ -1221,7 +1231,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                 {activeTimerMode === 'lecture' ? '🎧 강의 시간:' : '📖 복습 시간:'}
               </span>
-              {(activeTimerMode === 'lecture' ? [40, 50, 60, 75, 90] : [15, 25, 30, 45, 60]).map(mins => {
+              {(activeTimerMode === 'lecture' ? [25, 30, 45, 50, 60, 90] : [15, 25, 30, 45, 60]).map(mins => {
                 const isSelected = selectedDuration === mins && !customDuration;
                 const activeColor = activeTimerMode === 'lecture' ? '#818cf8' : 'var(--accent-primary)';
                 const activeTextColor = activeTimerMode === 'lecture' ? '#fff' : '#000';
