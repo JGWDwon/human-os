@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BookOpen, Plus, Check, ChevronLeft, ChevronRight, Trash2, Calendar, BrainCircuit, RotateCcw, Palmtree, ArrowRight, Wand2, Settings, CheckCircle2, ChevronDown, ChevronUp, ArrowLeft, X, Sparkles, Flame, Layers } from 'lucide-react';
-import { storage } from '../utils/storage';
+import { storage, getSubjectColor } from '../utils/storage';
 import confetti from 'canvas-confetti';
 import SubjectModal from './SubjectModal';
 
@@ -574,33 +574,46 @@ export default function EbbinghausPlanner({ onClose }) {
                       {rev.isCompleted && <Check size={13} color="#000" strokeWidth={3} />}
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.12rem' }}>
-                        <span style={{ fontSize: '0.68rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.15)', padding: '0.05rem 0.35rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                          {rev.subject}
-                        </span>
-                        <span style={{ 
-                          fontSize: '0.68rem', 
-                          color: badge.color, 
-                          background: badge.bg, 
-                          border: `1px solid ${badge.border}`, 
-                          padding: '0.05rem 0.35rem', 
-                          borderRadius: '3px', 
-                          fontWeight: 'bold',
-                          letterSpacing: '-0.2px'
-                        }}>
-                          {badge.label}
-                        </span>
-                        {rev.isCompleted && rev.difficulty === 'easy' && (
-                          <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                            😊 마스터
-                          </span>
-                        )}
-                        {rev.isCompleted && rev.difficulty === 'hard' && (
-                          <span style={{ fontSize: '0.65rem', color: '#fb923c', background: 'rgba(249, 115, 22, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                            🔥 약점
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const subColor = getSubjectColor(rev.subject, registeredSubjects);
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.12rem' }}>
+                            <span style={{ 
+                              fontSize: '0.68rem', 
+                              color: subColor, 
+                              background: `${subColor}1e`, 
+                              border: `1px solid ${subColor}4d`,
+                              padding: '0.05rem 0.35rem', 
+                              borderRadius: '3px', 
+                              fontWeight: 'bold' 
+                            }}>
+                              {rev.subject}
+                            </span>
+                            <span style={{ 
+                              fontSize: '0.68rem', 
+                              color: badge.color, 
+                              background: badge.bg, 
+                              border: `1px solid ${badge.border}`, 
+                              padding: '0.05rem 0.35rem', 
+                              borderRadius: '3px', 
+                              fontWeight: 'bold',
+                              letterSpacing: '-0.2px'
+                            }}>
+                              {badge.label}
+                            </span>
+                            {rev.isCompleted && rev.difficulty === 'easy' && (
+                              <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                😊 마스터
+                              </span>
+                            )}
+                            {rev.isCompleted && rev.difficulty === 'hard' && (
+                              <span style={{ fontSize: '0.65rem', color: '#fb923c', background: 'rgba(249, 115, 22, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                🔥 약점
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div style={{
                         fontSize: '0.85rem',
                         fontWeight: 'bold',
@@ -814,16 +827,22 @@ export default function EbbinghausPlanner({ onClose }) {
                     >
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' }}>
-                          <span style={{
-                            fontSize: '0.68rem',
-                            color: '#93c5fd',
-                            background: 'rgba(59, 130, 246, 0.15)',
-                            padding: '0.05rem 0.35rem',
-                            borderRadius: '3px',
-                            fontWeight: 'bold'
-                          }}>
-                            {item.subject}
-                          </span>
+                          {(() => {
+                            const subColor = getSubjectColor(item.subject, registeredSubjects);
+                            return (
+                              <span style={{
+                                fontSize: '0.68rem',
+                                color: subColor,
+                                background: `${subColor}1e`,
+                                border: `1px solid ${subColor}4d`,
+                                padding: '0.05rem 0.35rem',
+                                borderRadius: '3px',
+                                fontWeight: 'bold'
+                              }}>
+                                {item.subject}
+                              </span>
+                            );
+                          })()}
                           <span style={{
                             fontSize: '0.66rem',
                             color: isDone ? '#34d399' : '#fb923c',
@@ -990,40 +1009,68 @@ export default function EbbinghausPlanner({ onClose }) {
         </button>
       </div>
 
-      {/* Ebbinghaus Cycle Badges Legend */}
+      {/* Ebbinghaus Cycle Badges & Subject Legend */}
       <div style={{ 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '0.4rem', 
+        gap: '0.6rem', 
         marginBottom: '0.75rem',
-        padding: '0.35rem 0.75rem',
-        background: 'rgba(0,0,0,0.2)',
+        padding: '0.4rem 0.75rem',
+        background: 'rgba(0,0,0,0.25)',
         borderRadius: '7px',
-        border: '1px solid rgba(255,255,255,0.05)'
+        border: '1px solid rgba(255,255,255,0.06)'
       }}>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
-          복습 주기 구분:
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-          {[1, 4, 7, 14, 30].map(offset => {
-            const b = getDayOffsetBadgeStyle(offset);
-            return (
-              <span key={offset} style={{
-                fontSize: '0.66rem',
-                padding: '0.06rem 0.35rem',
-                borderRadius: '3px',
-                background: b.bg,
-                border: `1px solid ${b.border}`,
-                color: b.color,
-                fontWeight: 'bold'
-              }}>
-                {b.label}
-              </span>
-            );
-          })}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
+            복습 주기:
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+            {[1, 4, 7, 14, 30].map(offset => {
+              const b = getDayOffsetBadgeStyle(offset);
+              return (
+                <span key={offset} style={{
+                  fontSize: '0.66rem',
+                  padding: '0.06rem 0.35rem',
+                  borderRadius: '3px',
+                  background: b.bg,
+                  border: `1px solid ${b.border}`,
+                  color: b.color,
+                  fontWeight: 'bold'
+                }}>
+                  {b.label}
+                </span>
+              );
+            })}
+          </div>
         </div>
+
+        {registeredSubjects.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
+              과목 색상:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+              {registeredSubjects.map(s => {
+                const col = getSubjectColor(s, registeredSubjects);
+                return (
+                  <span key={s} style={{
+                    fontSize: '0.66rem',
+                    padding: '0.06rem 0.35rem',
+                    borderRadius: '3px',
+                    background: `${col}1e`,
+                    border: `1px solid ${col}4d`,
+                    color: col,
+                    fontWeight: 'bold'
+                  }}>
+                    {s}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Weekly Grid */}
@@ -1077,6 +1124,7 @@ export default function EbbinghausPlanner({ onClose }) {
               ) : (
                 day.reviews.map(rev => {
                   const badge = getDayOffsetBadgeStyle(rev.dayOffset);
+                  const subColor = getSubjectColor(rev.subject, registeredSubjects);
                   return (
                     <div 
                       key={rev.id}
@@ -1153,8 +1201,21 @@ export default function EbbinghausPlanner({ onClose }) {
                       </div>
                     </div>
                     
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: '0.05rem' }}>
-                      {rev.subject}
+                    <div style={{ marginBottom: '0.14rem' }}>
+                      <span style={{ 
+                        fontSize: '0.67rem', 
+                        fontWeight: 'bold', 
+                        color: subColor,
+                        background: `${subColor}1e`,
+                        border: `1px solid ${subColor}4d`,
+                        padding: '0.04rem 0.35rem',
+                        borderRadius: '3px',
+                        display: 'inline-block',
+                        lineHeight: 1.25,
+                        letterSpacing: '-0.2px'
+                      }}>
+                        {rev.subject}
+                      </span>
                     </div>
                     <div style={{ 
                       fontSize: '0.78rem', 

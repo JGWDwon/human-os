@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BookOpen, Plus, Trash2, X, Check } from 'lucide-react';
-import { storage } from '../utils/storage';
+import { storage, getSubjectColor } from '../utils/storage';
 
 export default function SubjectModal({ isOpen, onClose }) {
   const [subjects, setSubjects] = useState([]);
@@ -69,35 +69,38 @@ export default function SubjectModal({ isOpen, onClose }) {
             등록된 과목 목록 ({subjects.length}개)
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', minHeight: '44px', padding: '0.5rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-            {subjects.map(s => (
-              <span
-                key={s}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  background: 'rgba(56, 189, 248, 0.15)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  color: '#38bdf8',
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '14px',
-                  fontSize: '0.82rem',
-                  fontWeight: 'bold'
-                }}
-              >
-                {s}
-                <button
-                  type="button"
-                  onClick={() => handleDelete(s)}
-                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
-                  title={`${s} 삭제`}
-                  onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
+            {subjects.map(s => {
+              const col = getSubjectColor(s, subjects);
+              return (
+                <span
+                  key={s}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    background: `${col}1e`,
+                    border: `1px solid ${col}4d`,
+                    color: col,
+                    padding: '0.2rem 0.55rem',
+                    borderRadius: '14px',
+                    fontSize: '0.82rem',
+                    fontWeight: 'bold'
+                  }}
                 >
-                  <X size={13} />
-                </button>
-              </span>
-            ))}
+                  {s}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(s)}
+                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                    title={`${s} 삭제`}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
+                  >
+                    <X size={13} />
+                  </button>
+                </span>
+              );
+            })}
           </div>
         </div>
 
