@@ -1331,6 +1331,15 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               >
                 <RotateCcw size={18} />
               </button>
+
+              <button
+                onClick={() => playSound('complete')}
+                className="btn btn-secondary"
+                style={{ padding: '0.65rem', borderRadius: '8px', color: '#fbbf24' }}
+                title="종소리 미리듣기 (테스트)"
+              >
+                <Bell size={18} />
+              </button>
             </div>
           </>
         ) : (
