@@ -1456,7 +1456,7 @@ export const storage = {
     this._dispatchSync();
   },
 
-  completeReview(lectureId, reviewId) {
+  completeReview(lectureId, reviewId, difficulty = null) {
     const lectures = this.getLectures();
     let found = false;
     
@@ -1466,6 +1466,18 @@ export const storage = {
           if (rev.id === reviewId && !rev.isCompleted) {
             rev.isCompleted = true;
             rev.completedAt = new Date().toISOString();
+            if (difficulty) {
+              rev.difficulty = difficulty; // 'easy' | 'hard'
+              if (difficulty === 'hard') {
+                rev.needsReReview = true;
+                rev.reReviewStatus = 'pending'; // 'pending' | 'completed'
+                rev.hardRecordedAt = new Date().toISOString();
+              } else if (difficulty === 'easy') {
+                rev.needsReReview = false;
+                rev.reReviewStatus = 'mastered';
+                rev.easyRecordedAt = new Date().toISOString();
+              }
+            }
             found = true;
           }
         });
@@ -1490,6 +1502,12 @@ export const storage = {
           if (rev.id === reviewId && rev.isCompleted) {
             rev.isCompleted = false;
             rev.completedAt = null;
+            delete rev.difficulty;
+            delete rev.needsReReview;
+            delete rev.reReviewStatus;
+            delete rev.hardRecordedAt;
+            delete rev.easyRecordedAt;
+            delete rev.reReviewCompletedAt;
             found = true;
           }
         });
@@ -1499,6 +1517,81 @@ export const storage = {
     if (found) {
       localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
       this.addXP(-15);
+      this._dispatchSync();
+    }
+    return lectures;
+  },
+
+  // 약점 극복 재복습함 (Re-Review Vault) API
+  getReReviewList() {
+    const lectures = this.getLectures();
+    const list = [];
+    lectures.forEach(lec => {
+      lec.reviews.forEach(rev => {
+        if (rev.needsReReview || (rev.difficulty === 'hard' && rev.reReviewStatus)) {
+          list.push({
+            lectureId: lec.id,
+            subject: lec.subject,
+            title: lec.title,
+            dateAdded: lec.dateAdded,
+            reviewId: rev.id,
+            targetDate: rev.targetDate,
+            completedAt: rev.completedAt,
+            dayOffset: rev.dayOffset,
+            difficulty: rev.difficulty,
+            needsReReview: rev.needsReReview,
+            reReviewStatus: rev.reReviewStatus || 'pending',
+            reReviewCompletedAt: rev.reReviewCompletedAt || null,
+            hardRecordedAt: rev.hardRecordedAt || rev.completedAt
+          });
+        }
+      });
+    });
+    return list.sort((a, b) => new Date(b.hardRecordedAt || 0) - new Date(a.hardRecordedAt || 0));
+  },
+
+  toggleReReviewComplete(lectureId, reviewId) {
+    const lectures = this.getLectures();
+    let found = false;
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId) {
+            if (rev.reReviewStatus === 'completed') {
+              rev.reReviewStatus = 'pending';
+              rev.reReviewCompletedAt = null;
+            } else {
+              rev.reReviewStatus = 'completed';
+              rev.reReviewCompletedAt = new Date().toISOString();
+            }
+            found = true;
+          }
+        });
+      }
+    });
+    if (found) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return lectures;
+  },
+
+  removeReReview(lectureId, reviewId) {
+    const lectures = this.getLectures();
+    let found = false;
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId) {
+            rev.needsReReview = false;
+            rev.reReviewStatus = 'dismissed';
+            found = true;
+          }
+        });
+      }
+    });
+    if (found) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
       this._dispatchSync();
     }
     return lectures;
