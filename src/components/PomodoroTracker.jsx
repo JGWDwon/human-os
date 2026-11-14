@@ -123,7 +123,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   });
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showSubjectConfirmModal, setShowSubjectConfirmModal] = useState(false);
+  const [showSleepModal, setShowSleepModal] = useState(false);
+  const [modalBedTime, setModalBedTime] = useState('23:30');
+  const [modalWakeTime, setModalWakeTime] = useState('06:30');
+  const pendingTimerStartRef = useRef(false);
   const selectedSubjectRef = useRef(selectedSubject);
+
+  // New day check on mount: prompt sleep input if not recorded and not on vacation
+  useEffect(() => {
+    const actualToday = getTodayStr();
+    const isVac = storage.isVacationDate(actualToday);
+    const todayLog = storage.getDailyLogByDate(actualToday);
+    const hasSleep = !!(todayLog && todayLog.bedTime && todayLog.wakeTime);
+    if (!isVac && !hasSleep) {
+      if (todayLog?.bedTime) setModalBedTime(todayLog.bedTime);
+      if (todayLog?.wakeTime) setModalWakeTime(todayLog.wakeTime);
+      setShowSleepModal(true);
+    }
+  }, []);
 
   const handleSelectSubject = (sub) => {
     if (!sub) return;
@@ -632,7 +649,39 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       // Resuming existing paused session
       executeStartTimer();
     } else {
+      // Check if today's sleep is recorded (required unless today is vacation)
+      const actualToday = getTodayStr();
+      const isVac = storage.isVacationDate(actualToday);
+      const todayLog = storage.getDailyLogByDate(actualToday);
+      const hasSleep = !!(todayLog && todayLog.bedTime && todayLog.wakeTime);
+
+      if (!isVac && !hasSleep) {
+        if (todayLog?.bedTime) setModalBedTime(todayLog.bedTime);
+        if (todayLog?.wakeTime) setModalWakeTime(todayLog.wakeTime);
+        pendingTimerStartRef.current = true;
+        setShowSleepModal(true);
+        return;
+      }
+
       // Starting new session: prompt for subject confirmation/selection
+      setShowSubjectConfirmModal(true);
+    }
+  };
+
+  const handleSaveSleepFromModal = (e) => {
+    if (e) e.preventDefault();
+    if (!modalBedTime || !modalWakeTime) {
+      alert("취침 시각과 기상 시각을 모두 입력해주세요.");
+      return;
+    }
+    const actualToday = getTodayStr();
+    storage.saveDailyLog(actualToday, { bedTime: modalBedTime, wakeTime: modalWakeTime });
+    setShowSleepModal(false);
+    playSound('click');
+
+    // If timer was pending start, proceed to subject selection
+    if (pendingTimerStartRef.current) {
+      pendingTimerStartRef.current = false;
       setShowSubjectConfirmModal(true);
     }
   };
@@ -1265,28 +1314,27 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               {formatTimeDisplay(timerState.timeLeft)}
             </div>
 
-            {/* Preset Selector */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.4rem', marginTop: '1rem', marginBottom: '1.15rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Preset Selector (기본 30분 단일 선택 + 직접 입력) */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '1.15rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                 {activeTimerMode === 'lecture' ? '🎧 강의 시간:' : '📖 복습 시간:'}
               </span>
-              {(activeTimerMode === 'lecture' ? [25, 30, 45, 50, 60, 90] : [15, 25, 30, 45, 60]).map(mins => {
-                const isSelected = selectedDuration === mins && !customDuration;
+              {(() => {
+                const isSelected = selectedDuration === 30 && !customDuration;
                 const activeColor = activeTimerMode === 'lecture' ? '#818cf8' : 'var(--accent-primary)';
                 const activeTextColor = activeTimerMode === 'lecture' ? '#fff' : '#000';
                 return (
                   <button
-                    key={mins}
                     onClick={() => {
                       if (timerState.isRunning || timerState.isPaused) return;
                       setCustomDuration('');
-                      applyDuration(mins);
+                      applyDuration(30);
                     }}
                     disabled={timerState.isRunning || timerState.isPaused}
                     style={{
-                      padding: '0.28rem 0.65rem',
+                      padding: '0.28rem 0.85rem',
                       borderRadius: '20px',
-                      border: isSelected ? `1px solid ${activeColor}` : '1px solid rgba(255,255,255,0.1)',
+                      border: isSelected ? `1.5px solid ${activeColor}` : '1px solid rgba(255,255,255,0.15)',
                       background: isSelected ? activeColor : 'rgba(255,255,255,0.05)',
                       color: isSelected ? activeTextColor : 'var(--text-secondary)',
                       fontWeight: isSelected ? 'bold' : 'normal',
@@ -1295,13 +1343,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                       transition: 'all 0.15s'
                     }}
                   >
-                    {mins}분
+                    30분 (기본)
                   </button>
                 );
-              })}
+              })()}
 
               {/* Custom Duration Input */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <input
                   type="number"
                   min="1"
@@ -1318,10 +1366,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                     }
                   }}
                   style={{
-                    width: '55px',
+                    width: '60px',
                     padding: '0.25rem 0.45rem',
-                    borderRadius: '4px',
-                    border: customDuration ? (activeTimerMode === 'lecture' ? '1px solid #818cf8' : '1px solid var(--accent-primary)') : '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '6px',
+                    border: customDuration ? (activeTimerMode === 'lecture' ? '1.5px solid #818cf8' : '1.5px solid var(--accent-primary)') : '1px solid rgba(255,255,255,0.15)',
                     background: 'rgba(0,0,0,0.4)',
                     color: '#fff',
                     fontSize: '0.82rem',
@@ -2050,6 +2098,164 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               >
                 취소
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Sleep Input Modal (새로운 하루 시작 및 뽀모도로 시작 전 필수 입력) */}
+      {showSleepModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10003,
+          padding: '1rem'
+        }}>
+          <div className="glass-panel animate-fade-in" style={{
+            maxWidth: '430px',
+            width: '100%',
+            background: '#0f172a',
+            border: '2px solid #8b5cf6',
+            borderRadius: '18px',
+            padding: '1.75rem',
+            boxShadow: '0 15px 40px rgba(0,0,0,0.7), 0 0 25px rgba(139, 92, 246, 0.35)',
+            textAlign: 'center'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.4rem' }}>🛌</span>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', color: '#c084fc', fontWeight: 800 }}>
+                  오늘의 수면 기록
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  pendingTimerStartRef.current = false;
+                  setShowSleepModal(false);
+                }}
+                className="btn btn-secondary"
+                style={{ padding: '0.25rem 0.5rem', border: 'none', background: 'transparent', color: 'var(--text-muted)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 1.25rem 0' }}>
+              새로운 하루 공부를 시작하기 전, 규칙적인 생활 패턴과 컨디션 분석을 위해 <strong>어젯밤 취침 시각</strong>과 <strong>오늘 기상 시각</strong>을 입력해주세요.
+            </p>
+
+            <form onSubmit={handleSaveSleepFromModal}>
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.35)',
+                padding: '1rem',
+                borderRadius: '12px',
+                border: '1px solid rgba(139, 92, 246, 0.25)',
+                marginBottom: '1.25rem'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.3rem' }}>
+                    <label style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold' }}>🌙 취침 시각</label>
+                    <input
+                      type="time"
+                      required
+                      value={modalBedTime}
+                      onChange={(e) => setModalBedTime(e.target.value)}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1.5px solid rgba(139, 92, 246, 0.5)',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        padding: '0.45rem 0.65rem',
+                        fontSize: '0.95rem',
+                        fontWeight: 'bold',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <span style={{ color: 'var(--text-muted)', fontSize: '1.2rem', marginTop: '1.2rem' }}>~</span>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.3rem' }}>
+                    <label style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold' }}>☀️ 기상 시각</label>
+                    <input
+                      type="time"
+                      required
+                      value={modalWakeTime}
+                      onChange={(e) => setModalWakeTime(e.target.value)}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1.5px solid rgba(139, 92, 246, 0.5)',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        padding: '0.45rem 0.65rem',
+                        fontSize: '0.95rem',
+                        fontWeight: 'bold',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Live calculated sleep duration */}
+                {(() => {
+                  const dur = calculateSleepDuration(modalBedTime, modalWakeTime);
+                  return (
+                    <div style={{ marginTop: '0.85rem' }}>
+                      {dur ? (
+                        <span style={{
+                          fontSize: '0.82rem',
+                          color: '#c084fc',
+                          background: 'rgba(139, 92, 246, 0.2)',
+                          border: '1px solid rgba(139, 92, 246, 0.4)',
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '14px',
+                          fontWeight: 'bold',
+                          display: 'inline-block'
+                        }}>
+                          💤 총 {dur.hours}시간 {dur.mins > 0 ? `${dur.mins}분 ` : ''}수면
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          취침과 기상 시각을 입력하면 수면 시간이 계산됩니다.
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  fontSize: '0.95rem',
+                  fontWeight: 'bold',
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                  border: 'none',
+                  color: '#fff',
+                  boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.45rem'
+                }}
+              >
+                <Check size={18} /> 수면 기록 저장하고 집중 시작하기
+              </button>
+            </form>
+
+            <div style={{ marginTop: '0.85rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              🌴 휴가 기간에는 수면 기록 없이도 뽀모도로를 바로 시작할 수 있습니다.
             </div>
           </div>
         </div>
