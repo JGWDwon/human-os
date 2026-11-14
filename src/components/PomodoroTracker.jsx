@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones } from 'lucide-react';
-import { storage, getSubjectColor } from '../utils/storage';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun } from 'lucide-react';
+import { storage, getSubjectColor, calculateSleepDuration } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
 import { Capacitor } from '@capacitor/core';
@@ -61,13 +61,27 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     return { isRunning: false, startTimeMs: null, startTimeStr: null, elapsedSeconds: 0 };
   });
 
+  const [mealMenuInput, setMealMenuInput] = useState('');
   const [todayMeals, setTodayMeals] = useState(() => storage.getMealsByDate(selectedDate));
+  const [dailyLog, setDailyLog] = useState(() => storage.getDailyLogByDate(selectedDate));
 
   useEffect(() => {
     setTodayMeals(storage.getMealsByDate(selectedDate));
+    setDailyLog(storage.getDailyLogByDate(selectedDate));
+
     const handleMeals = () => setTodayMeals(storage.getMealsByDate(selectedDate));
+    const handleDailyLogs = (e) => {
+      if (!e.detail || e.detail.date === selectedDate) {
+        setDailyLog(storage.getDailyLogByDate(selectedDate));
+      }
+    };
+
     window.addEventListener('meals-updated', handleMeals);
-    return () => window.removeEventListener('meals-updated', handleMeals);
+    window.addEventListener('daily-logs-updated', handleDailyLogs);
+    return () => {
+      window.removeEventListener('meals-updated', handleMeals);
+      window.removeEventListener('daily-logs-updated', handleDailyLogs);
+    };
   }, [selectedDate]);
 
   // Meal Timer ticker
@@ -951,7 +965,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     const startTimeStr = mealTimerState.startTimeStr || new Date(mealTimerState.startTimeMs || (now.getTime() - mins * 60 * 1000)).toTimeString().split(' ')[0].substring(0, 5);
     const actualToday = getTodayStr();
 
-    storage.addMeal(actualToday, startTimeStr, endTimeStr, mins);
+    storage.addMeal(actualToday, startTimeStr, endTimeStr, mins, mealMenuInput);
+    setMealMenuInput('');
     playSound('complete');
 
     confetti({
@@ -993,6 +1008,30 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
       refreshData();
       if (onUpdate) onUpdate();
     }
+  };
+
+  const handleSleepTimeChange = (field, val) => {
+    const updated = storage.saveDailyLog(selectedDate, { [field]: val });
+    setDailyLog(updated);
+    if (onUpdate) onUpdate();
+  };
+
+  const handleSatisfactionSelect = (level) => {
+    const newLevel = dailyLog.satisfaction === level ? null : level;
+    const updated = storage.saveDailyLog(selectedDate, { satisfaction: newLevel });
+    setDailyLog(updated);
+    if (newLevel) {
+      playSound('click');
+      if (newLevel === 'high') {
+        confetti({
+          particleCount: 35,
+          spread: 55,
+          origin: { y: 0.85 },
+          colors: ['#f97316', '#ef4444', '#10b981']
+        });
+      }
+    }
+    if (onUpdate) onUpdate();
   };
 
   const activeMinutes = customDuration ? parseInt(customDuration, 10) : selectedDuration;
@@ -1368,10 +1407,32 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
             </div>
 
             {mealTimerState.isRunning && (
-              <p style={{ fontSize: '0.82rem', color: '#fb923c', margin: '0 0 1rem 0', fontWeight: 'bold' }}>
+              <p style={{ fontSize: '0.82rem', color: '#fb923c', margin: '0 0 0.75rem 0', fontWeight: 'bold' }}>
                 시작: {mealTimerState.startTimeStr}
               </p>
             )}
+
+            {/* Optional Meal Menu Input Field */}
+            <div style={{ maxWidth: '320px', margin: '0 auto 1rem auto', width: '100%' }}>
+              <input
+                type="text"
+                placeholder="식사 메뉴 (선택, 예: 키토김밥, 계란2개)"
+                value={mealMenuInput}
+                onChange={(e) => setMealMenuInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.45rem 0.75rem',
+                  fontSize: '0.82rem',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(249, 115, 22, 0.35)',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  color: '#fff',
+                  outline: 'none',
+                  textAlign: 'center',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
 
             {/* Meal Control Buttons */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -1452,7 +1513,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                         color: '#fdba74'
                       }}
                     >
-                      <span>🍱 {m.startTime} ~ {m.endTime} ({m.minutes}분)</span>
+                      <span>🍱 {m.startTime} ~ {m.endTime} ({m.minutes}분){m.menu ? ` · ${m.menu}` : ''}</span>
                       <button
                         onClick={() => handleDeleteMeal(m.id)}
                         style={{
@@ -1662,6 +1723,181 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           )}
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 하루 마무리 (수면 기록 직접 기입 & 오늘의 성취도 상/중/하) */}
+      {/* ========================================================================= */}
+      {(() => {
+        const sleepDur = calculateSleepDuration(dailyLog?.bedTime, dailyLog?.wakeTime);
+        return (
+          <div className="glass-panel" style={{
+            marginTop: '1.25rem',
+            padding: '1.15rem 1.25rem',
+            borderTop: '3px solid #8b5cf6',
+            background: 'rgba(15, 23, 42, 0.75)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+              <h4 style={{
+                fontSize: '0.95rem',
+                color: '#c084fc',
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                fontWeight: 800
+              }}>
+                <Moon size={16} color="#c084fc" /> 하루 마무리 · 수면 & 성취도
+              </h4>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                {selectedDate}
+              </span>
+            </div>
+
+            {/* 1. 수면 기록 직접 기입 방식 */}
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.25)',
+              padding: '0.75rem 0.9rem',
+              borderRadius: '10px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              marginBottom: '0.85rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.8rem', color: '#e2e8f0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  🛌 수면 시간 기록
+                </span>
+                {sleepDur ? (
+                  <span style={{
+                    fontSize: '0.75rem',
+                    color: '#a78bfa',
+                    background: 'rgba(139, 92, 246, 0.18)',
+                    border: '1px solid rgba(139, 92, 246, 0.35)',
+                    padding: '0.15rem 0.55rem',
+                    borderRadius: '12px',
+                    fontWeight: 'bold'
+                  }}>
+                    💤 총 {sleepDur.hours}시간 {sleepDur.mins > 0 ? `${sleepDur.mins}분 ` : ''}수면
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    취침·기상 시각 직접 입력
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>취침:</span>
+                  <input
+                    type="time"
+                    value={dailyLog?.bedTime || ''}
+                    onChange={(e) => handleSleepTimeChange('bedTime', e.target.value)}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.45)',
+                      border: '1px solid rgba(139, 92, 246, 0.35)',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.8rem'
+                    }}
+                  />
+                </div>
+
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>~</span>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>기상:</span>
+                  <input
+                    type="time"
+                    value={dailyLog?.wakeTime || ''}
+                    onChange={(e) => handleSleepTimeChange('wakeTime', e.target.value)}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.45)',
+                      border: '1px solid rgba(139, 92, 246, 0.35)',
+                      borderRadius: '6px',
+                      color: '#fff',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.8rem'
+                    }}
+                  />
+                </div>
+
+                {(dailyLog?.bedTime || dailyLog?.wakeTime) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSleepTimeChange('bedTime', '');
+                      handleSleepTimeChange('wakeTime', '');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      fontSize: '0.72rem',
+                      cursor: 'pointer',
+                      marginLeft: 'auto',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 2. 오늘의 주관적 성취도 (상 / 중 / 하 3단계 버튼) */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: '#e2e8f0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  ✨ 오늘의 성취도
+                </span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  하루 공부 마무리 주관적 평가
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                {[
+                  { key: 'high', label: '상 (만족)', icon: '🔥', desc: '몰입 완료', activeColor: '#f97316', bg: 'rgba(249, 115, 22, 0.2)', border: '#f97316' },
+                  { key: 'mid', label: '중 (보통)', icon: '🌿', desc: '무난한 완주', activeColor: '#10b981', bg: 'rgba(16, 185, 129, 0.2)', border: '#10b981' },
+                  { key: 'low', label: '하 (아쉬움)', icon: '🌱', desc: '재충전 필요', activeColor: '#64748b', bg: 'rgba(100, 116, 139, 0.25)', border: '#94a3b8' }
+                ].map((item) => {
+                  const isSelected = dailyLog?.satisfaction === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => handleSatisfactionSelect(item.key)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0.65rem 0.5rem',
+                        borderRadius: '8px',
+                        border: isSelected ? `2px solid ${item.border}` : '1px solid rgba(255, 255, 255, 0.08)',
+                        background: isSelected ? item.bg : 'rgba(255, 255, 255, 0.02)',
+                        color: isSelected ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isSelected ? `0 0 12px ${item.border}55` : 'none'
+                      }}
+                    >
+                      <span style={{ fontSize: '1.25rem', marginBottom: '0.2rem' }}>{item.icon}</span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: isSelected ? '800' : '600', color: isSelected ? '#fff' : 'inherit' }}>
+                        {item.label}
+                      </span>
+                      <span style={{ fontSize: '0.68rem', color: isSelected ? 'rgba(255,255,255,0.85)' : 'var(--text-muted)', marginTop: '0.1rem' }}>
+                        {item.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Subject Confirmation Modal before Timer Start */}
       {showSubjectConfirmModal && (

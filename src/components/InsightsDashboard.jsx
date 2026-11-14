@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart2, Trophy, Timer, Zap, Calendar, ArrowLeft, Flame, CheckCircle2, Clock, ChevronLeft, ChevronRight, RotateCcw, BookOpen, PieChart } from 'lucide-react';
-import { storage, getSubjectColor, SUBJECT_COLORS } from '../utils/storage';
+import { storage, getSubjectColor, SUBJECT_COLORS, calculateSleepDuration } from '../utils/storage';
 import StudyTimetable from './StudyTimetable';
 import SubjectModal from './SubjectModal';
 
@@ -550,6 +550,8 @@ export default function InsightsDashboard({ onClose }) {
         {activeDayForDetail && (() => {
           const dayMeals = storage.getMealsByDate(activeDayForDetail.dateStr) || [];
           const dayMealMins = dayMeals.reduce((s, m) => s + (m.minutes || 0), 0);
+          const dayDailyLog = storage.getDailyLogByDate(activeDayForDetail.dateStr);
+          const daySleepDur = calculateSleepDuration(dayDailyLog?.bedTime, dayDailyLog?.wakeTime);
           const dayLectureMins = (activeDayPomo?.timestamps || []).reduce((s, ts) => {
             const mins = typeof ts === 'object' && ts.minutes ? Number(ts.minutes) : 25;
             const type = typeof ts === 'object' && ts.activityType ? ts.activityType : 'review';
@@ -569,7 +571,7 @@ export default function InsightsDashboard({ onClose }) {
               padding: '0.9rem 1.1rem'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                   <Clock size={16} color="var(--accent-primary)" />
                   <span style={{ fontSize: '0.88rem', fontWeight: 'bold', color: '#fff' }}>
                     {activeDayForDetail.dayLabel} 상세 집중 세션
@@ -577,6 +579,24 @@ export default function InsightsDashboard({ onClose }) {
                   {activeDayForDetail.isToday && (
                     <span style={{ fontSize: '0.68rem', color: '#c084fc', background: 'rgba(192, 132, 252, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
                       오늘
+                    </span>
+                  )}
+                  {daySleepDur && (
+                    <span style={{ fontSize: '0.72rem', color: '#c084fc', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '0.08rem 0.45rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                      💤 수면 {dayDailyLog.bedTime}~{dayDailyLog.wakeTime} ({daySleepDur.hours}h{daySleepDur.mins > 0 ? `${daySleepDur.mins}m` : ''})
+                    </span>
+                  )}
+                  {dayDailyLog?.satisfaction && (
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 'bold',
+                      color: dayDailyLog.satisfaction === 'high' ? '#fb923c' : dayDailyLog.satisfaction === 'mid' ? '#34d399' : '#94a3b8',
+                      background: dayDailyLog.satisfaction === 'high' ? 'rgba(249, 115, 22, 0.15)' : dayDailyLog.satisfaction === 'mid' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      padding: '0.08rem 0.45rem',
+                      borderRadius: '4px'
+                    }}>
+                      {dayDailyLog.satisfaction === 'high' ? '🔥 성취도: 상' : dayDailyLog.satisfaction === 'mid' ? '🌿 성취도: 중' : '🌱 성취도: 하'}
                     </span>
                   )}
                 </div>
@@ -663,7 +683,7 @@ export default function InsightsDashboard({ onClose }) {
                         fontWeight: 'bold'
                       }}
                     >
-                      🍱 {m.startTime}~{m.endTime} ({m.minutes}분 식사)
+                      🍱 {m.startTime}~{m.endTime} ({m.minutes}분 식사){m.menu ? ` · ${m.menu}` : ''}
                     </span>
                   ))}
                 </div>

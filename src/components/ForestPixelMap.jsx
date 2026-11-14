@@ -74,11 +74,26 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     const m = totalMins % 60;
     const timeDisplay = totalMins === 0 ? '0분' : h > 0 ? `${h}시간 ${m > 0 ? m + '분' : ''}` : `${m}분`;
     
-    if (dayData.status === 'hibernation') return `🌴 휴무/휴가 일자 (집중시간: ${timeDisplay})`;
-    if (totalMins >= 480) return `🌲 8시간 이상 달성! (울창, 집중시간: ${timeDisplay})`;
-    if (totalMins >= 360) return `🌿 6시간 이상 달성! (성장, 집중시간: ${timeDisplay})`;
-    if (totalMins >= 240) return `🌱 4시간 이상 달성! (새싹, 집중시간: ${timeDisplay})`;
-    return `집중시간: ${timeDisplay} (4시간 달성 시 새싹 🌱)`;
+    let base = '';
+    if (dayData.status === 'hibernation') base = `🌴 휴무/휴가 일자 (집중시간: ${timeDisplay})`;
+    else if (totalMins >= 480) base = `🌲 8시간 이상 달성! (울창, 집중시간: ${timeDisplay})`;
+    else if (totalMins >= 360) base = `🌿 6시간 이상 달성! (성장, 집중시간: ${timeDisplay})`;
+    else if (totalMins >= 240) base = `🌱 4시간 이상 달성! (새싹, 집중시간: ${timeDisplay})`;
+    else base = `집중시간: ${timeDisplay} (4시간 달성 시 새싹 🌱)`;
+
+    const dLog = storage.getDailyLogByDate(dayData.date);
+    const extras = [];
+    if (dLog?.bedTime && dLog?.wakeTime) {
+      extras.push(`수면: ${dLog.bedTime}~${dLog.wakeTime}`);
+    }
+    if (dLog?.satisfaction) {
+      const satText = dLog.satisfaction === 'high' ? '🔥 상' : dLog.satisfaction === 'mid' ? '🌿 중' : '🌱 하';
+      extras.push(`성취도: ${satText}`);
+    }
+    if (extras.length > 0) {
+      return `${base} · ${extras.join(' · ')}`;
+    }
+    return base;
   };
 
   const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];

@@ -9,8 +9,31 @@ const STORAGE_KEYS = {
   STUDY_SESSIONS: 'human_os_study_sessions_v1',
   SUBJECTS: 'human_os_subjects_v1',
   DDAYS: 'human_os_ddays_v1',
-  MEALS: 'human_os_meals_v1'
+  MEALS: 'human_os_meals_v1',
+  DAILY_LOGS: 'human_os_daily_logs_v1'
 };
+
+export function calculateSleepDuration(bedTime, wakeTime) {
+  if (!bedTime || !wakeTime) return null;
+  const bParts = bedTime.split(':').map(Number);
+  const wParts = wakeTime.split(':').map(Number);
+  if (bParts.length < 2 || wParts.length < 2) return null;
+  const [bH, bM] = bParts;
+  const [wH, wM] = wParts;
+  if (isNaN(bH) || isNaN(bM) || isNaN(wH) || isNaN(wM)) return null;
+
+  let bedMinutes = bH * 60 + bM;
+  let wakeMinutes = wH * 60 + wM;
+
+  // 익일 기상 (자정 넘김, 예: 23:30 취침 -> 06:30 기상)
+  if (wakeMinutes <= bedMinutes) {
+    wakeMinutes += 24 * 60;
+  }
+  const diffMinutes = wakeMinutes - bedMinutes;
+  const hours = Math.floor(diffMinutes / 60);
+  const mins = diffMinutes % 60;
+  return { hours, mins, totalMinutes: diffMinutes };
+}
 
 function safeParse(str, fallback = {}) {
   try {
@@ -600,9 +623,10 @@ export const storage = {
       ddays: localStorage.getItem(STORAGE_KEYS.DDAYS),
       selectedSubject: localStorage.getItem('human_os_selected_subject_v1'),
       meals: localStorage.getItem(STORAGE_KEYS.MEALS),
+      dailyLogs: localStorage.getItem(STORAGE_KEYS.DAILY_LOGS),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
-      version: '1.2'
+      version: '1.3'
     };
   },
 
@@ -627,6 +651,7 @@ export const storage = {
     if (jsonData.ddays) localStorage.setItem(STORAGE_KEYS.DDAYS, ensureString(jsonData.ddays));
     if (jsonData.selectedSubject) localStorage.setItem('human_os_selected_subject_v1', ensureString(jsonData.selectedSubject));
     if (jsonData.meals) localStorage.setItem(STORAGE_KEYS.MEALS, ensureString(jsonData.meals));
+    if (jsonData.dailyLogs) localStorage.setItem(STORAGE_KEYS.DAILY_LOGS, ensureString(jsonData.dailyLogs));
     if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
@@ -772,7 +797,7 @@ export const storage = {
     return all[dateStr] || [];
   },
 
-  addMeal(dateStr, startTime, endTime, minutes) {
+  addMeal(dateStr, startTime, endTime, minutes, menu = '') {
     if (!dateStr) {
       const d = new Date();
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -785,6 +810,7 @@ export const storage = {
       startTime: startTime || '12:00',
       endTime: endTime || '12:30',
       minutes: Math.max(1, Math.round(minutes)),
+      menu: (menu || '').trim(),
       timestamp: Date.now()
     };
 
@@ -818,6 +844,47 @@ export const storage = {
       list.forEach(m => { total += (m.minutes || 0); });
     }
     return total;
+  },
+
+  // --- Daily Logs (수면 기록 bedTime / wakeTime & 오늘의 성취도 satisfaction) ---
+  getDailyLogs() {
+    const raw = localStorage.getItem(STORAGE_KEYS.DAILY_LOGS);
+    return safeParse(raw, {});
+  },
+
+  getDailyLogByDate(dateStr) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const all = this.getDailyLogs();
+    return all[dateStr] || { bedTime: '', wakeTime: '', satisfaction: null };
+  },
+
+  saveDailyLog(dateStr, logData) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const all = this.getDailyLogs();
+    const existing = all[dateStr] || { bedTime: '', wakeTime: '', satisfaction: null };
+    all[dateStr] = {
+      ...existing,
+      ...logData,
+      updatedAt: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEYS.DAILY_LOGS, JSON.stringify(all));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('daily-logs-updated', { detail: { date: dateStr, log: all[dateStr] } }));
+    return all[dateStr];
+  },
+
+  setSatisfaction(dateStr, satisfaction) {
+    return this.saveDailyLog(dateStr, { satisfaction });
+  },
+
+  setSleepTimes(dateStr, bedTime, wakeTime) {
+    return this.saveDailyLog(dateStr, { bedTime, wakeTime });
   },
 
   getWeeklyGraphData(weeks = 8) {
