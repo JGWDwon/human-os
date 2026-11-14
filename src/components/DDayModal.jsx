@@ -59,10 +59,6 @@ export default function DDayModal({ isOpen, onClose }) {
           </button>
         </div>
 
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0', lineHeight: 1.4 }}>
-          목표하는 1차 및 2차 시험 날짜를 지정하면 메인 화면 상단에 D-Day 카운트다운이 표시됩니다.
-        </p>
-
         <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* 1차 시험 설정 */}
           <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '10px', padding: '0.85rem' }}>

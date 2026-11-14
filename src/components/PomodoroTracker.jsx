@@ -1331,15 +1331,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               >
                 <RotateCcw size={18} />
               </button>
-
-              <button
-                onClick={() => playSound('complete')}
-                className="btn btn-secondary"
-                style={{ padding: '0.65rem', borderRadius: '8px', color: '#fbbf24' }}
-                title="종소리 미리듣기 (테스트)"
-              >
-                <Bell size={18} />
-              </button>
             </div>
           </>
         ) : (
@@ -1376,11 +1367,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               {formatMealTimeDisplay(mealTimerState.elapsedSeconds)}
             </div>
 
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0' }}>
-              {mealTimerState.isRunning
-                ? `시작: ${mealTimerState.startTimeStr} ~ 맛있게 식사하시고 완료를 눌러주세요 🍽️`
-                : '식사 시작을 누르면 스톱워치가 차오르며, 멈추면 성장일지 및 JSON에 자동 기록됩니다.'}
-            </p>
+            {mealTimerState.isRunning && (
+              <p style={{ fontSize: '0.82rem', color: '#fb923c', margin: '0 0 1rem 0', fontWeight: 'bold' }}>
+                시작: {mealTimerState.startTimeStr}
+              </p>
+            )}
 
             {/* Meal Control Buttons */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -1725,10 +1716,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 </span>
               </div>
             </div>
-
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0', lineHeight: 1.45 }}>
-              공부할 과목을 선택하면 타이머가 즉시 시작됩니다.
-            </p>
 
             {/* Subject Selection Buttons Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem', marginBottom: '1.25rem' }}>

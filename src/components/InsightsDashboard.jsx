@@ -187,9 +187,6 @@ export default function InsightsDashboard({ onClose }) {
             <BarChart2 size={22} color="var(--accent-secondary)" />
             나의 공부 성장 리포트
           </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.2rem', margin: 0 }}>
-            핵심 공부 데이터와 주간 스터디 타임테이블을 한눈에 관찰합니다.
-          </p>
         </div>
 
         <button 

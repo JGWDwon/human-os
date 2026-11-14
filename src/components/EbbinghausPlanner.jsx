@@ -425,9 +425,6 @@ export default function EbbinghausPlanner({ onClose }) {
             <BrainCircuit size={22} color="#8b5cf6" />
             에빙하우스 복습 플래너
           </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.2rem', margin: 0 }}>
-            1·4·7·14·30일 주기 장기기억 복습 관리
-          </p>
         </div>
 
         {/* Action Controls */}
@@ -784,17 +781,14 @@ export default function EbbinghausPlanner({ onClose }) {
           <div style={{ marginTop: '0.85rem' }}>
             {reReviewList.length === 0 ? (
               <div style={{
-                padding: '0.9rem',
+                padding: '0.75rem',
                 textAlign: 'center',
                 color: 'var(--text-muted)',
                 fontSize: '0.82rem',
                 background: 'rgba(0,0,0,0.2)',
                 borderRadius: '8px'
               }}>
-                🌱 아직 약점 보관함에 등록된 항목이 없습니다.<br />
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                  (30일차 5회독 복습 완료 시 <b>'어려움'</b>을 선택하면 이곳에 자동으로 모여 언제든 집중 재학습할 수 있습니다)
-                </span>
+                🌱 등록된 약점 재복습 항목이 없습니다.
               </div>
             ) : filteredReReviews.length === 0 ? (
               <div style={{
@@ -1620,12 +1614,8 @@ export default function EbbinghausPlanner({ onClose }) {
                 </button>
               </div>
               <h3 style={{ margin: '0.2rem 0', fontSize: '1.15rem', color: '#fff', fontWeight: 'bold' }}>
-                복습 이해도 진단
+                30일차 복습 이해도 진단
               </h3>
-              <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                5회독 복습을 마친 이번 분량의 이해도는 어떠셨나요?<br />
-                선택 결과에 따라 완벽 마스터 처리되거나 약점 보관함에 보관됩니다.
-              </p>
             </div>
 
             {/* Target lecture card */}

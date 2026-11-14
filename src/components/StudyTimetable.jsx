@@ -498,10 +498,6 @@ export default function StudyTimetable({
             </div>
           </div>
 
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 0.65rem 0' }}>
-            이번 주 일요일부터 토요일까지 10분 그리드 및 5분 반칸으로 과목별 색상에 맞춰 자동 색칠됩니다.
-          </p>
-
           {/* Subject Color Legend */}
           {registeredSubjects && registeredSubjects.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '0.35rem 0.65rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>

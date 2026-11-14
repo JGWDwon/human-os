@@ -59,10 +59,6 @@ export default function SubjectModal({ isOpen, onClose }) {
           </button>
         </div>
 
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 1rem 0', lineHeight: 1.4 }}>
-          자주 공부하는 과목을 등록해두면 타이머와 에빙하우스 복습에서 한 번의 클릭으로 빠르게 선택하고, 과목별 공부시간 밸런스를 측정할 수 있습니다.
-        </p>
-
         {/* Current Subjects List */}
         <div style={{ marginBottom: '1.25rem' }}>
           <label style={{ display: 'block', fontSize: '0.74rem', color: '#94a3b8', marginBottom: '0.4rem', fontWeight: 'bold' }}>

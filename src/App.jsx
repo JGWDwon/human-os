@@ -554,10 +554,6 @@ function App() {
                 </button>
               </div>
 
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: '0 0 1.25rem 0', lineHeight: 1.4 }}>
-                공부 시간을 쌓아 레벨업하면 상위 랭크 배지가 자동으로 승급됩니다.
-              </p>
-
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 {[
                   { level: 2, name: '브론즈 (Bronze)', range: 'Lv.1 ~ Lv.9', desc: '시작하는 도전자 · 습관 형성', color: '#cd7f32' },
@@ -630,7 +626,7 @@ function App() {
               border: updateAvailable ? '1.5px solid #ec4899' : '1px solid rgba(255,255,255,0.08)',
               boxShadow: updateAvailable ? '0 0 15px rgba(236, 72, 153, 0.25)' : 'none'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <RotateCw size={16} color={updateAvailable ? '#ec4899' : '#38bdf8'} />
                   앱 최신 버전 업데이트 및 새로고침
@@ -640,9 +636,6 @@ function App() {
                     새 버전 발견! 🚀
                   </span>
                 )}
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                홈 화면에 설치된 웹앱(PWA) 또는 브라우저 캐시를 최신 상태로 갱신하여 방금 반영된 최신 기능들을 즉시 불러옵니다.
               </div>
               <button 
                 onClick={handleApplyUpdate}
@@ -667,10 +660,9 @@ function App() {
               </button>
             </div>
 
-            {/* 백업 및 복구 영역 (리포트에서 설정으로 깔끔하게 이동) */}
+            {/* 백업 및 복구 영역 */}
             <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem' }}>
-              <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem', marginBottom: '0.3rem' }}>데이터 백업 및 복구</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>공부 기록과 통계를 안전하게 파일로 저장하거나 복원합니다.</div>
+              <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem', marginBottom: '0.75rem' }}>데이터 백업 및 복구</div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button 
                   onClick={handleExport}
@@ -698,10 +690,7 @@ function App() {
 
             {/* 시험 목표(D-Day) 및 과목 설정 */}
             <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem', borderRadius: '8px', marginBottom: '1.25rem' }}>
-              <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem', marginBottom: '0.3rem' }}>시험 목표(D-Day) 및 공부 과목 설정</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                1차/2차 시험 목표 날짜와 뽀모도로 및 에빙하우스 복습에 사용할 과목을 관리합니다.
-              </div>
+              <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '0.9rem', marginBottom: '0.75rem' }}>시험 목표(D-Day) 및 공부 과목 설정</div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button 
                   onClick={() => setShowDDayModal(true)}
