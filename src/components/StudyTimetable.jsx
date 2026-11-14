@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
-import { storage, getSubjectColor } from '../utils/storage';
+import { storage, getSubjectColor, calculateSleepDuration } from '../utils/storage';
 
 // 24 Hours starting at 06:00 to 05:00 next morning (matching traditional Korean 10-minute study planner)
 const PLANNER_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5];
@@ -69,7 +69,67 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
 
   let totalLectureMinutes = 0;
   let totalReviewMinutes = 0;
+  let totalMealMinutes = 0;
+  let totalSleepMinutes = 0;
 
+  // 1. Map sleep session first (lifestyle foundation) in calm violet (#8b5cf6)
+  const dLog = storage.getDailyLogByDate(dateStr);
+  if (dLog && dLog.bedTime && dLog.wakeTime) {
+    const sleepDur = calculateSleepDuration(dLog.bedTime, dLog.wakeTime);
+    if (sleepDur && sleepDur.totalMinutes > 0) {
+      totalSleepMinutes = sleepDur.totalMinutes;
+
+      const [startH, startM] = dLog.bedTime.split(':').map(Number);
+      const [endH, endM] = dLog.wakeTime.split(':').map(Number);
+
+      if (!isNaN(startH) && !isNaN(endH)) {
+        const startTotal = startH * 60 + startM;
+        let endTotal = endH * 60 + endM;
+        if (endTotal <= startTotal) {
+          endTotal += 1440; // crosses midnight
+        }
+
+        const sleepColor = '#8b5cf6';
+        const sleepSubject = '수면';
+
+        for (let h = 0; h < 24; h++) {
+          for (let b = 0; b < 6; b++) {
+            const blockStart = h * 60 + b * 10;
+
+            const leftStart = blockStart;
+            const leftEnd = blockStart + 5;
+            const leftOverlap = Math.max(0, Math.min(endTotal, leftEnd) - Math.max(startTotal, leftStart));
+            const leftWrapped = endTotal > 1440
+              ? Math.max(0, Math.min(endTotal - 1440, leftEnd) - Math.max(startTotal - 1440, leftStart))
+              : 0;
+
+            if (leftOverlap >= 2.5 || leftWrapped >= 2.5) {
+              matrix[h][b].left = true;
+              matrix[h][b].leftColor = sleepColor;
+              matrix[h][b].leftSubject = sleepSubject;
+              matrix[h][b].leftType = 'sleep';
+            }
+
+            const rightStart = blockStart + 5;
+            const rightEnd = blockStart + 10;
+            const rightOverlap = Math.max(0, Math.min(endTotal, rightEnd) - Math.max(startTotal, rightStart));
+            const rightWrapped = endTotal > 1440
+              ? Math.max(0, Math.min(endTotal - 1440, rightEnd) - Math.max(startTotal - 1440, rightStart))
+              : 0;
+
+            if (rightOverlap >= 2.5 || rightWrapped >= 2.5) {
+              matrix[h][b].right = true;
+              matrix[h][b].rightColor = sleepColor;
+              matrix[h][b].rightSubject = sleepSubject;
+              matrix[h][b].rightType = 'sleep';
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Map study sessions (lecture / review) over sleep if any
   timestamps.forEach(ts => {
     const { startTime, endTime } = getSessionRange(ts);
     const subject = typeof ts === 'object' && ts.subject ? ts.subject : null;
@@ -133,7 +193,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
 
   // Map meal sessions onto timetable in distinct warm orange
   const meals = storage.getMealsByDate(dateStr) || [];
-  let totalMealMinutes = 0;
+  totalMealMinutes = 0;
   meals.forEach(m => {
     const startTime = m.startTime || '12:00';
     const endTime = m.endTime || '12:30';
@@ -191,6 +251,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
     totalLectureMinutes,
     totalReviewMinutes,
     totalMealMinutes,
+    totalSleepMinutes,
     sessionCount: timestamps.length,
     matrix
   };
@@ -207,6 +268,9 @@ const getBlockTooltip = (prefix, h, b, cell) => {
 
   if (type === 'meal' || sub === '식사') {
     return `${prefix} [🍱 식사] ${startStr} ~ ${endStr}`;
+  }
+  if (type === 'sleep' || sub === '수면') {
+    return `${prefix} [💤 수면] ${startStr} ~ ${endStr}`;
   }
 
   const typeBadge = type === 'lecture' ? '🎧 강의' : '📖 복습';
@@ -226,11 +290,14 @@ const getBlockTooltip = (prefix, h, b, cell) => {
   return `${prefix} ${startStr} ~ ${endStr} (휴식)`;
 };
 
-// Helper to compute fill style: hatched stripes for lecture, solid for review/meal
+// Helper to compute fill style: hatched stripes for lecture, solid for review/meal/sleep
 const getBlockFillStyle = (isActive, color, type) => {
   if (!isActive) return 'transparent';
   if (type === 'lecture') {
     return `repeating-linear-gradient(45deg, ${color}, ${color} 3px, rgba(0,0,0,0.42) 3px, rgba(0,0,0,0.42) 6px)`;
+  }
+  if (type === 'sleep') {
+    return '#8b5cf6';
   }
   return color;
 };
@@ -298,15 +365,19 @@ export default function StudyTimetable({
 
   const [registeredSubjects, setRegisteredSubjects] = useState(() => storage.getSubjects());
   const [mealTick, setMealTick] = useState(0);
+  const [dailyLogTick, setDailyLogTick] = useState(0);
 
   useEffect(() => {
     const handleSubs = () => setRegisteredSubjects(storage.getSubjects());
     const handleMeals = () => setMealTick(prev => prev + 1);
+    const handleDailyLogs = () => setDailyLogTick(prev => prev + 1);
     window.addEventListener('subjects-updated', handleSubs);
     window.addEventListener('meals-updated', handleMeals);
+    window.addEventListener('daily-logs-updated', handleDailyLogs);
     return () => {
       window.removeEventListener('subjects-updated', handleSubs);
       window.removeEventListener('meals-updated', handleMeals);
+      window.removeEventListener('daily-logs-updated', handleDailyLogs);
     };
   }, []);
 
@@ -350,24 +421,27 @@ export default function StudyTimetable({
     const rangeLabel = `${sunday.getFullYear()}년 ${sunday.getMonth() + 1}월 ${sunday.getDate()}일 ~ ${saturday.getMonth() + 1}월 ${saturday.getDate()}일`;
 
     return { weekDays: days, weekRangeLabel: rangeLabel };
-  }, [todayObj, todayStr, weekOffset, registeredSubjects, mealTick]);
+  }, [todayObj, todayStr, weekOffset, registeredSubjects, mealTick, dailyLogTick]);
 
-  const { totalWeeklyMinutes, totalWeeklyLectureMinutes, totalWeeklyReviewMinutes, totalWeeklyMealMinutes } = useMemo(() => {
+  const { totalWeeklyMinutes, totalWeeklyLectureMinutes, totalWeeklyReviewMinutes, totalWeeklyMealMinutes, totalWeeklySleepMinutes } = useMemo(() => {
     let tot = 0;
     let lec = 0;
     let rev = 0;
     let meal = 0;
+    let sleep = 0;
     weekDays.forEach(d => {
       tot += (d.data?.totalMinutes || 0);
       lec += (d.data?.totalLectureMinutes || 0);
       rev += (d.data?.totalReviewMinutes || 0);
       meal += (d.data?.totalMealMinutes || 0);
+      sleep += (d.data?.totalSleepMinutes || 0);
     });
     return {
       totalWeeklyMinutes: tot,
       totalWeeklyLectureMinutes: lec,
       totalWeeklyReviewMinutes: rev,
-      totalWeeklyMealMinutes: meal
+      totalWeeklyMealMinutes: meal,
+      totalWeeklySleepMinutes: sleep
     };
   }, [weekDays]);
 
@@ -447,6 +521,13 @@ export default function StudyTimetable({
                 </span>
               </div>
             )}
+            {totalWeeklySleepMinutes > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.3)', padding: '0.35rem 0.6rem', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.75rem', color: '#c084fc', fontWeight: 'bold' }}>
+                  💤 수면 {formatTimeRange(totalWeeklySleepMinutes)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -459,7 +540,7 @@ export default function StudyTimetable({
               일~토 주간 타임테이블 (10분 그리드 · 5분 반칸 지원)
             </h3>
           </div>
-            {/* Legend showing Review, Lecture, Half, Meal, and Break */}
+            {/* Legend showing Review, Lecture, Half, Meal, Sleep and Break */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <span style={{ width: '12px', height: '11px', background: '#34d399', borderRadius: '2px', display: 'inline-block' }}></span>
@@ -490,6 +571,10 @@ export default function StudyTimetable({
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <span style={{ width: '12px', height: '11px', background: '#fb923c', borderRadius: '2px', display: 'inline-block' }}></span>
                 🍱 식사 (오렌지)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ width: '12px', height: '11px', background: '#8b5cf6', borderRadius: '2px', display: 'inline-block' }}></span>
+                💤 수면 (보라)
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <span style={{ width: '12px', height: '11px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', display: 'inline-block' }}></span>
@@ -562,6 +647,11 @@ export default function StudyTimetable({
                             {day.data.totalReviewMinutes > 0 && (
                               <span style={{ color: '#6ee7b7' }}>📖{formatTimeRange(day.data.totalReviewMinutes)}</span>
                             )}
+                          </div>
+                        )}
+                        {day.data.totalSleepMinutes > 0 && (
+                          <div style={{ fontSize: '0.62rem', color: '#c084fc', marginTop: '0.12rem', fontWeight: 'bold' }}>
+                            💤 {formatTimeRange(day.data.totalSleepMinutes)}
                           </div>
                         )}
                       </div>

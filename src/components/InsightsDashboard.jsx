@@ -11,6 +11,7 @@ export default function InsightsDashboard({ onClose }) {
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [subjects, setSubjects] = useState(() => storage.getSubjects());
   const [mealTick, setMealTick] = useState(0);
+  const [dailyLogTick, setDailyLogTick] = useState(0);
 
   useEffect(() => {
     const allStats = storage.getAllTimeStats();
@@ -18,11 +19,14 @@ export default function InsightsDashboard({ onClose }) {
 
     const handleSubs = () => setSubjects(storage.getSubjects());
     const handleMeals = () => setMealTick(p => p + 1);
+    const handleDailyLogs = () => setDailyLogTick(p => p + 1);
     window.addEventListener('subjects-updated', handleSubs);
     window.addEventListener('meals-updated', handleMeals);
+    window.addEventListener('daily-logs-updated', handleDailyLogs);
     return () => {
       window.removeEventListener('subjects-updated', handleSubs);
       window.removeEventListener('meals-updated', handleMeals);
+      window.removeEventListener('daily-logs-updated', handleDailyLogs);
     };
   }, []);
 
@@ -134,6 +138,23 @@ export default function InsightsDashboard({ onClose }) {
     });
     return sum;
   }, [weeklyTrend, mealTick]);
+
+  // Weekly Sleep Total
+  const { weeklySleepTotalMins, weeklySleepRecordedDays } = useMemo(() => {
+    let sum = 0;
+    let daysWithSleep = 0;
+    weeklyTrend.forEach(d => {
+      const dLog = storage.getDailyLogByDate(d.dateStr);
+      if (dLog && dLog.bedTime && dLog.wakeTime) {
+        const dur = calculateSleepDuration(dLog.bedTime, dLog.wakeTime);
+        if (dur && dur.totalMinutes > 0) {
+          sum += dur.totalMinutes;
+          daysWithSleep++;
+        }
+      }
+    });
+    return { weeklySleepTotalMins: sum, weeklySleepRecordedDays: daysWithSleep };
+  }, [weeklyTrend, dailyLogTick]);
 
   // Weekly Lecture vs Review Breakdown
   const { weeklyLectureMins, weeklyReviewMins } = useMemo(() => {
@@ -370,6 +391,21 @@ export default function InsightsDashboard({ onClose }) {
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
                 (일평균 {Math.round(weeklyMealTotalMins / 7)}분)
               </span>
+            </div>
+          </div>
+
+          {/* Weekly Sleep Card */}
+          <div style={{ background: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
+            <div style={{ fontSize: '0.72rem', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              💤 수면 시간 (주간)
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#a78bfa', marginTop: '0.15rem' }}>
+              {weeklySleepTotalMins > 0 ? formatTime(weeklySleepTotalMins) : '-'}
+              {weeklySleepRecordedDays > 0 && (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: '0.25rem' }}>
+                  (일평균 {(weeklySleepTotalMins / weeklySleepRecordedDays / 60).toFixed(1)}h)
+                </span>
+              )}
             </div>
           </div>
         </div>
