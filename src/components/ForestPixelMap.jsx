@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon, Check, Edit3 } from 'lucide-react';
+import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon, Check, Edit3, Save } from 'lucide-react';
 import { storage, calculateSleepDuration } from '../utils/storage';
 import confetti from 'canvas-confetti';
 
@@ -81,6 +81,16 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     setDailyLog(updated);
     setDiarySavedStatus(true);
     setTimeout(() => setDiarySavedStatus(false), 2000);
+  };
+
+  const handleManualSaveDiary = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    const updated = storage.saveDailyLog(selectedDate, { diary: diaryText, note: diaryText });
+    setDailyLog(updated);
+    setDiarySavedStatus(true);
+    setTimeout(() => setDiarySavedStatus(false), 2500);
   };
 
   const getDiaryPlaceholder = (satisfaction) => {
@@ -580,22 +590,15 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           display: 'flex',
           flexDirection: 'column',
           flex: 1,
-          minHeight: '95px'
+          minHeight: '105px'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
             <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <Edit3 size={13} color="#c084fc" /> 오늘의 한줄평 · 짧은 일기
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              {diarySavedStatus && (
-                <span style={{ fontSize: '0.68rem', color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                  <Check size={11} /> 저장됨
-                </span>
-              )}
-              <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
-                {(diaryText || '').length}자
-              </span>
-            </div>
+            <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
+              {(diaryText || '').length}자
+            </span>
           </div>
 
           <textarea
@@ -603,6 +606,12 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
             value={diaryText}
             onChange={(e) => handleDiaryChange(e.target.value)}
             onBlur={handleDiaryBlur}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                handleManualSaveDiary();
+              }
+            }}
             placeholder={getDiaryPlaceholder(dailyLog?.satisfaction)}
             style={{
               width: '100%',
@@ -630,6 +639,45 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
               e.target.style.boxShadow = 'none';
             }}
           />
+
+          {/* 저장 버튼 및 피드백 알림 행 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
+            <div>
+              {diarySavedStatus ? (
+                <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Check size={12} /> 저장 완료! (JSON 동기화됨)
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>
+                  Ctrl+Enter로도 저장 가능
+                </span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleManualSaveDiary}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                border: '1px solid rgba(192, 132, 252, 0.4)',
+                borderRadius: '5px',
+                color: '#fff',
+                fontSize: '0.72rem',
+                fontWeight: 'bold',
+                padding: '0.25rem 0.65rem',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(124, 58, 237, 0.35)',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              <Save size={12} /> 저장
+            </button>
+          </div>
         </div>
       </div>
     </div>
