@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun, Edit2 } from 'lucide-react';
 import { storage, getSubjectColor, calculateSleepDuration } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
@@ -62,6 +62,8 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
   });
 
   const [mealMenuInput, setMealMenuInput] = useState('');
+  const [editingMealId, setEditingMealId] = useState(null);
+  const [editingMealMenu, setEditingMealMenu] = useState('');
   const [todayMeals, setTodayMeals] = useState(() => storage.getMealsByDate(selectedDate));
   const [dailyLog, setDailyLog] = useState(() => storage.getDailyLogByDate(selectedDate));
 
@@ -1059,6 +1061,19 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     }
   };
 
+  const handleStartEditMeal = (meal) => {
+    setEditingMealId(meal.id);
+    setEditingMealMenu(meal.menu || '');
+  };
+
+  const handleSaveMealMenu = (mealId) => {
+    storage.updateMeal(selectedDate, mealId, { menu: editingMealMenu.trim() });
+    setEditingMealId(null);
+    setEditingMealMenu('');
+    refreshData();
+    if (onUpdate) onUpdate();
+  };
+
   const handleSleepTimeChange = (field, val) => {
     const updated = storage.saveDailyLog(selectedDate, { [field]: val });
     setDailyLog(updated);
@@ -1874,39 +1889,140 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   </span>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', justifyContent: 'center' }}>
-                  {todayMeals.map((m) => (
-                    <div
-                      key={m.id}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        fontSize: '0.75rem',
-                        background: 'rgba(251, 146, 60, 0.12)',
-                        border: '1px solid rgba(251, 146, 60, 0.3)',
-                        padding: '0.25rem 0.6rem',
-                        borderRadius: '6px',
-                        color: '#fdba74'
-                      }}
-                    >
-                      <span>🍱 {m.startTime} ~ {m.endTime} ({m.minutes}분){m.menu ? ` · ${m.menu}` : ''}</span>
-                      <button
-                        onClick={() => handleDeleteMeal(m.id)}
+                  {todayMeals.map((m) => {
+                    const isEditing = editingMealId === m.id;
+
+                    return (
+                      <div
+                        key={m.id}
                         style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#f87171',
-                          cursor: 'pointer',
-                          padding: '0 0.1rem',
-                          display: 'flex',
-                          alignItems: 'center'
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          fontSize: '0.75rem',
+                          background: 'rgba(251, 146, 60, 0.12)',
+                          border: isEditing ? '1px solid #fb923c' : '1px solid rgba(251, 146, 60, 0.3)',
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '6px',
+                          color: '#fdba74'
                         }}
-                        title="기록 삭제"
                       >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
+                        {isEditing ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <span style={{ fontSize: '0.72rem' }}>🍱 {m.startTime}~{m.endTime}</span>
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingMealMenu}
+                              onChange={(e) => setEditingMealMenu(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveMealMenu(m.id);
+                                if (e.key === 'Escape') setEditingMealId(null);
+                              }}
+                              placeholder="식사 메뉴 입력"
+                              style={{
+                                background: 'rgba(0,0,0,0.6)',
+                                border: '1px solid #fb923c',
+                                borderRadius: '4px',
+                                color: '#fff',
+                                fontSize: '0.72rem',
+                                padding: '0.15rem 0.4rem',
+                                width: '130px'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveMealMenu(m.id)}
+                              style={{
+                                background: '#ea580c',
+                                border: 'none',
+                                borderRadius: '3px',
+                                color: '#fff',
+                                fontSize: '0.68rem',
+                                padding: '0.15rem 0.4rem',
+                                cursor: 'pointer',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              저장
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingMealId(null)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: 'var(--text-muted)',
+                                fontSize: '0.68rem',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              취소
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span
+                              onClick={() => handleStartEditMeal(m)}
+                              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                              title="클릭하여 메뉴 수정"
+                            >
+                              <span>🍱 {m.startTime} ~ {m.endTime} ({m.minutes}분)</span>
+                              {m.menu ? (
+                                <strong style={{ color: '#fff', borderBottom: '1px dashed rgba(251, 146, 60, 0.5)' }}>
+                                  · {m.menu}
+                                </strong>
+                              ) : (
+                                <span style={{
+                                  color: '#facc15',
+                                  background: 'rgba(234, 179, 8, 0.18)',
+                                  padding: '0.05rem 0.35rem',
+                                  borderRadius: '3px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 'bold'
+                                }}>
+                                  + 메뉴 입력
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditMeal(m)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#fb923c',
+                                cursor: 'pointer',
+                                padding: '0 0.15rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                opacity: 0.85
+                              }}
+                              title="메뉴 수정"
+                            >
+                              <Edit2 size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMeal(m.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#f87171',
+                                cursor: 'pointer',
+                                padding: '0 0.1rem',
+                                display: 'flex',
+                                alignItems: 'center'
+                              }}
+                              title="기록 삭제"
+                            >
+                              <X size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

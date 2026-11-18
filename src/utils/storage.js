@@ -836,6 +836,29 @@ export const storage = {
     return true;
   },
 
+  updateMeal(dateStr, mealId, updates) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+    const all = this.getMeals();
+    if (!all[dateStr]) return null;
+    const idx = all[dateStr].findIndex(m => m.id === mealId);
+    if (idx === -1) return null;
+    all[dateStr][idx] = {
+      ...all[dateStr][idx],
+      ...updates,
+      updatedAt: Date.now()
+    };
+    if (updates.startTime) {
+      all[dateStr].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    }
+    localStorage.setItem(STORAGE_KEYS.MEALS, JSON.stringify(all));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('meals-updated'));
+    return all[dateStr][idx];
+  },
+
   getWeeklyMealMinutes(sundayDateStr) {
     const all = this.getMeals();
     let total = 0;
@@ -862,7 +885,7 @@ export const storage = {
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     }
     const all = this.getDailyLogs();
-    return all[dateStr] || { bedTime: '', wakeTime: '', satisfaction: null };
+    return all[dateStr] || { bedTime: '', wakeTime: '', satisfaction: null, diary: '', note: '' };
   },
 
   saveDailyLog(dateStr, logData) {
@@ -871,7 +894,7 @@ export const storage = {
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     }
     const all = this.getDailyLogs();
-    const existing = all[dateStr] || { bedTime: '', wakeTime: '', satisfaction: null };
+    const existing = all[dateStr] || { bedTime: '', wakeTime: '', satisfaction: null, diary: '', note: '' };
     all[dateStr] = {
       ...existing,
       ...logData,

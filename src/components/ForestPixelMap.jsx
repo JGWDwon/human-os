@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon, Check, Edit3 } from 'lucide-react';
 import { storage, calculateSleepDuration } from '../utils/storage';
 import confetti from 'canvas-confetti';
 
@@ -9,6 +9,13 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
   const [calendarInfo, setCalendarInfo] = useState({ year: 2026, month: 8, firstDay: 0 }); // month is 0-indexed
   const [viewDate, setViewDate] = useState(() => new Date());
   const [dailyLog, setDailyLog] = useState(() => storage.getDailyLogByDate(selectedDate));
+  const [diaryText, setDiaryText] = useState(() => {
+    const l = storage.getDailyLogByDate(selectedDate);
+    return l?.diary || l?.note || '';
+  });
+  const [diarySavedStatus, setDiarySavedStatus] = useState(false);
+  const diaryInputRef = useRef(null);
+  const saveTimeoutRef = useRef(null);
 
   const handlePrevMonth = () => {
     setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -28,12 +35,19 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
   };
 
   useEffect(() => {
-    setDailyLog(storage.getDailyLogByDate(selectedDate));
+    const log = storage.getDailyLogByDate(selectedDate);
+    setDailyLog(log);
+    setDiaryText(log?.diary || log?.note || '');
+    setDiarySavedStatus(false);
   }, [selectedDate, refreshTrigger]);
 
   useEffect(() => {
-    const handleDailyLogsUpdate = () => {
-      setDailyLog(storage.getDailyLogByDate(selectedDate));
+    const handleDailyLogsUpdate = (e) => {
+      if (!e.detail || e.detail.date === selectedDate) {
+        const log = storage.getDailyLogByDate(selectedDate);
+        setDailyLog(log);
+        setDiaryText(log?.diary || log?.note || '');
+      }
     };
     window.addEventListener('daily-logs-updated', handleDailyLogsUpdate);
     return () => window.removeEventListener('daily-logs-updated', handleDailyLogsUpdate);
@@ -42,6 +56,44 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
   const handleSleepTimeChange = (field, value) => {
     const updated = storage.saveDailyLog(selectedDate, { [field]: value });
     setDailyLog(updated);
+  };
+
+  const handleDiaryChange = (value) => {
+    setDiaryText(value);
+    setDiarySavedStatus(false);
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      const updated = storage.saveDailyLog(selectedDate, { diary: value, note: value });
+      setDailyLog(updated);
+      setDiarySavedStatus(true);
+      setTimeout(() => setDiarySavedStatus(false), 2000);
+    }, 400);
+  };
+
+  const handleDiaryBlur = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    const updated = storage.saveDailyLog(selectedDate, { diary: diaryText, note: diaryText });
+    setDailyLog(updated);
+    setDiarySavedStatus(true);
+    setTimeout(() => setDiarySavedStatus(false), 2000);
+  };
+
+  const getDiaryPlaceholder = (satisfaction) => {
+    if (satisfaction === 'high') {
+      return '🔥 대만족! 오늘 가장 몰입되고 뿌듯했던 순간이나 배운 점을 한 줄로 기록해보세요.';
+    }
+    if (satisfaction === 'mid') {
+      return '🌿 적당함! 꾸준히 나아간 오늘 하루, 기억하고 싶은 생각이나 내일의 계획을 적어보세요.';
+    }
+    if (satisfaction === 'low') {
+      return '🌱 아쉬움! 지치거나 아쉬웠던 점, 또는 내일 다시 시작할 다짐을 가볍게 남겨보세요.';
+    }
+    return '오늘 하루의 한줄평이나 짧은 공부 일기를 자유롭게 남겨보세요. (자동 저장)';
   };
 
   const handleSelectSatisfaction = (level) => {
@@ -57,6 +109,11 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           colors: ['#f97316', '#ef4444', '#10b981']
         });
       }
+      setTimeout(() => {
+        if (diaryInputRef.current) {
+          diaryInputRef.current.focus();
+        }
+      }, 80);
     }
   };
 
@@ -125,6 +182,10 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     if (dLog?.satisfaction) {
       const satText = dLog.satisfaction === 'high' ? '🔥 상' : dLog.satisfaction === 'mid' ? '🌿 중' : '🌱 하';
       extras.push(`성취도: ${satText}`);
+    }
+    if (dLog?.diary || dLog?.note) {
+      const d = (dLog.diary || dLog.note).trim();
+      extras.push(`한줄평: "${d.length > 20 ? d.slice(0, 20) + '...' : d}"`);
     }
     if (extras.length > 0) {
       return `${base} · ${extras.join(' · ')}`;
@@ -306,16 +367,21 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>🌱 4h+ (새싹)</span>
       </div>
 
-      {/* 4. Integrated Daily Log: 수면 기록 직접 기입 & 성취도 상/중/하 (빈 공간 완벽 해소 & 날짜 연동) */}
+      {/* 4. Integrated Daily Log: 수면 기록 직접 기입, 성취도 & 오늘의 한줄평/일기 (자연스러운 높이 연동) */}
       <div style={{
-        marginTop: 'auto',
-        padding: '0.85rem 1rem',
+        marginTop: '0.4rem',
+        padding: '0.75rem 0.95rem',
         borderRadius: '10px',
         background: 'rgba(0, 0, 0, 0.35)',
         border: '1px solid rgba(139, 92, 246, 0.25)',
-        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)'
+        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        gap: '0.5rem'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
           <h4 style={{
             fontSize: '0.88rem',
             color: '#c084fc',
@@ -335,12 +401,11 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         {/* 수면 시간 직접 기입 (취침 ~ 기상) */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.03)',
-          padding: '0.6rem 0.75rem',
+          padding: '0.55rem 0.75rem',
           borderRadius: '8px',
-          border: '1px solid rgba(255, 255, 255, 0.06)',
-          marginBottom: '0.65rem'
+          border: '1px solid rgba(255, 255, 255, 0.06)'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.35rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.35rem' }}>
             <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold' }}>
               🛌 수면 시간 기록
             </span>
@@ -425,12 +490,12 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
 
         {/* 오늘의 성취도 (상 / 중 / 하 3단계 버튼) */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
             <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold' }}>
               ⭐ 오늘의 공부 성취도
             </span>
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              하루를 마무리하며 평가
+              하루를 마무리하며 평가 (클릭 시 일기 작성)
             </span>
           </div>
 
@@ -504,6 +569,67 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
               <span style={{ fontSize: '0.74rem' }}>하 (아쉬움)</span>
             </button>
           </div>
+        </div>
+
+        {/* 오늘의 한줄평 · 짧은 일기 */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          padding: '0.55rem 0.75rem',
+          borderRadius: '8px',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: '95px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+            <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <Edit3 size={13} color="#c084fc" /> 오늘의 한줄평 · 짧은 일기
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              {diarySavedStatus && (
+                <span style={{ fontSize: '0.68rem', color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                  <Check size={11} /> 저장됨
+                </span>
+              )}
+              <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
+                {(diaryText || '').length}자
+              </span>
+            </div>
+          </div>
+
+          <textarea
+            ref={diaryInputRef}
+            value={diaryText}
+            onChange={(e) => handleDiaryChange(e.target.value)}
+            onBlur={handleDiaryBlur}
+            placeholder={getDiaryPlaceholder(dailyLog?.satisfaction)}
+            style={{
+              width: '100%',
+              flex: 1,
+              minHeight: '65px',
+              resize: 'none',
+              background: 'rgba(0, 0, 0, 0.45)',
+              border: '1px solid rgba(139, 92, 246, 0.25)',
+              borderRadius: '6px',
+              color: '#f8fafc',
+              fontSize: '0.78rem',
+              lineHeight: '1.45',
+              padding: '0.45rem 0.55rem',
+              fontFamily: 'inherit',
+              outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'all 0.15s ease'
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#c084fc';
+              e.target.style.boxShadow = '0 0 8px rgba(192, 132, 252, 0.25)';
+            }}
+            onBlurCapture={(e) => {
+              e.target.style.borderColor = 'rgba(139, 92, 246, 0.25)';
+              e.target.style.boxShadow = 'none';
+            }}
+          />
         </div>
       </div>
     </div>
