@@ -1135,141 +1135,275 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         </div>
       )}
 
-      {/* Dual Goal Progress HUD: 일간 목표 (6h~8h 차등) & 주간 목표 (36h~42h 휴가 반영) */}
+      {/* Dual Goal Progress HUD: 일간 목표 (6h~8h 차등) & 주간 목표 (36h~42h 휴가 반영) - 정밀 눈금 연동 */}
       <div style={{
         background: 'rgba(0, 0, 0, 0.35)',
         border: '1px solid rgba(255, 255, 255, 0.08)',
         borderRadius: '12px',
-        padding: '0.75rem 0.95rem',
+        padding: '0.8rem 1rem',
         marginBottom: '0.9rem',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        display: 'flex',
+        flexDirection: 'column',
         gap: '0.85rem'
       }}>
-        {/* 일간 목표 카드 (6h, 7h, 8h 차등 표시) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span>🎯</span> 일간 순공 목표 (6~8h)
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <span style={{
-                fontSize: '0.7rem',
-                padding: '0.1rem 0.45rem',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-                background: dailyGoal.level === 3 ? 'rgba(16, 185, 129, 0.25)' : dailyGoal.level === 2 ? 'rgba(5, 150, 105, 0.25)' : dailyGoal.level === 1 ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-                color: dailyGoal.level === 3 ? '#34d399' : dailyGoal.level === 2 ? '#10b981' : dailyGoal.level === 1 ? '#38bdf8' : 'var(--text-muted)'
-              }}>
-                {dailyGoal.level === 3 ? '🌲 3단계(8h) 완벽' : dailyGoal.level === 2 ? '🌳 2단계(7h) 우수' : dailyGoal.level === 1 ? '🌿 1단계(6h) 달성' : '🌱 도약 중'}
-              </span>
-              <span style={{ fontSize: '0.86rem', fontWeight: 'bold', color: '#fff' }}>
-                {dailyGoal.hours}h {dailyGoal.minsRemainder}m
-              </span>
-            </div>
-          </div>
+        {/* ========================================================================= */}
+        {/* 1. 일간 순공 목표 카드 (6h, 7h, 8h 정밀 백분율 눈금 연동) */}
+        {/* ========================================================================= */}
+        {(() => {
+          // 일간 기준: 총 480분 (8시간) = 100%
+          // 6시간 (360분) = 75.0%
+          // 7시간 (420분) = 87.5%
+          // 8시간 (480분) = 100%
+          const dailyTotalScaleMins = 480;
+          const dailyFillPct = Math.min(100, (todayStudyMins / dailyTotalScaleMins) * 100);
 
-          {/* 3-Tier Multi-segment Progress Bar (6h=360m, 7h=420m, 8h=480m) */}
-          <div style={{ display: 'flex', gap: '3px', height: '8px', width: '100%', marginTop: '0.15rem' }}>
-            {/* Segment 1: 0~360m (6h) */}
-            <div style={{ flex: 6, background: 'rgba(255,255,255,0.08)', borderRadius: '4px 0 0 4px', overflow: 'hidden' }}>
-              <div style={{
-                width: `${Math.min(100, (todayStudyMins / 360) * 100)}%`,
-                height: '100%',
-                background: todayStudyMins >= 360 ? '#38bdf8' : 'linear-gradient(90deg, #0284c7, #38bdf8)',
-                transition: 'width 0.3s'
-              }} />
-            </div>
-            {/* Segment 2: 360~420m (7h) */}
-            <div style={{ flex: 1, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-              <div style={{
-                width: `${todayStudyMins <= 360 ? 0 : Math.min(100, ((todayStudyMins - 360) / 60) * 100)}%`,
-                height: '100%',
-                background: todayStudyMins >= 420 ? '#10b981' : 'linear-gradient(90deg, #059669, #10b981)',
-                transition: 'width 0.3s'
-              }} />
-            </div>
-            {/* Segment 3: 420~480m (8h) */}
-            <div style={{ flex: 1, background: 'rgba(255,255,255,0.08)', borderRadius: '0 4px 4px 0', overflow: 'hidden' }}>
-              <div style={{
-                width: `${todayStudyMins <= 420 ? 0 : Math.min(100, ((todayStudyMins - 420) / 60) * 100)}%`,
-                height: '100%',
-                background: todayStudyMins >= 480 ? '#34d399' : 'linear-gradient(90deg, #10b981, #34d399)',
-                transition: 'width 0.3s'
-              }} />
-            </div>
-          </div>
+          let dailyBarGradient = 'linear-gradient(90deg, #0284c7, #38bdf8)';
+          if (todayStudyMins >= 480) {
+            dailyBarGradient = 'linear-gradient(90deg, #10b981, #34d399)'; // 8h+ 완벽
+          } else if (todayStudyMins >= 420) {
+            dailyBarGradient = 'linear-gradient(90deg, #059669, #10b981)'; // 7h+ 우수
+          } else if (todayStudyMins >= 360) {
+            dailyBarGradient = 'linear-gradient(90deg, #38bdf8, #10b981)'; // 6h+ 기본
+          }
 
-          {/* Stepped Scale Labels & Status */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-            <span>0h</span>
-            <span style={{ color: todayStudyMins >= 360 ? '#38bdf8' : 'inherit', fontWeight: todayStudyMins >= 360 ? 'bold' : 'normal' }}>6h🌿</span>
-            <span style={{ color: todayStudyMins >= 420 ? '#10b981' : 'inherit', fontWeight: todayStudyMins >= 420 ? 'bold' : 'normal' }}>7h🌳</span>
-            <span style={{ color: todayStudyMins >= 480 ? '#34d399' : 'inherit', fontWeight: todayStudyMins >= 480 ? 'bold' : 'normal' }}>8h+🌲</span>
-          </div>
-          <div style={{ fontSize: '0.7rem', color: dailyGoal.level > 0 ? '#34d399' : 'var(--text-muted)' }}>
-            {dailyGoal.level === 3 ? (
-              <span>👑 8시간 울창 달성 완료! 최고의 집중도입니다.</span>
-            ) : dailyGoal.level === 2 ? (
-              <span>🌳 2단계(7h) 우수 달성! 3단계(8h)까지 {dailyGoal.remainingMins}분 남음</span>
-            ) : dailyGoal.level === 1 ? (
-              <span>🌿 1단계(6h) 달성 완료! 2단계(7h)까지 {dailyGoal.remainingMins}분 남음</span>
-            ) : (
-              <span>⏳ 1단계(6h) 달성까지 {dailyGoal.remainingMins}분 남음</span>
-            )}
-          </div>
-        </div>
-
-        {/* 주간 목표 카드 (36h~42h + 휴가기간 자동 보정) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: '0.85rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span>📅</span> 주간 목표 ({weeklyGoal.targetMinHours}~{weeklyGoal.targetMaxHours}h)
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              {weeklyGoal.vacationDaysCount > 0 && (
-                <span style={{
-                  fontSize: '0.67rem',
-                  padding: '0.1rem 0.4rem',
-                  borderRadius: '4px',
-                  background: 'rgba(234, 179, 8, 0.18)',
-                  color: '#facc15',
-                  fontWeight: 'bold'
-                }}>
-                  🌴 휴가 {weeklyGoal.vacationDaysCount}일 반영
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span>🎯</span> 일간 순공 목표 (6~8h)
                 </span>
-              )}
-              <span style={{ fontSize: '0.86rem', fontWeight: 'bold', color: weeklyGoal.isMinReached ? '#34d399' : '#fff' }}>
-                {weeklyGoal.weeklyHours}h
-              </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    padding: '0.1rem 0.45rem',
+                    borderRadius: '4px',
+                    fontWeight: 'bold',
+                    background: dailyGoal.level === 3 ? 'rgba(16, 185, 129, 0.25)' : dailyGoal.level === 2 ? 'rgba(5, 150, 105, 0.25)' : dailyGoal.level === 1 ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                    color: dailyGoal.level === 3 ? '#34d399' : dailyGoal.level === 2 ? '#10b981' : dailyGoal.level === 1 ? '#38bdf8' : 'var(--text-muted)'
+                  }}>
+                    {dailyGoal.level === 3 ? '🌲 3단계(8h) 완벽' : dailyGoal.level === 2 ? '🌳 2단계(7h) 우수' : dailyGoal.level === 1 ? '🌿 1단계(6h) 달성' : '🌱 도약 중'}
+                  </span>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 'bold', color: '#fff' }}>
+                    {dailyGoal.hours}h {dailyGoal.minsRemainder}m
+                  </span>
+                </div>
+              </div>
+
+              {/* 정밀 눈금 연동 일체형 프로그레스 바 (0~480분 기준, 6h=75%, 7h=87.5%) */}
+              <div style={{
+                position: 'relative',
+                height: '8px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                borderRadius: '4px',
+                overflow: 'hidden',
+                width: '100%',
+                marginTop: '0.15rem'
+              }}>
+                {/* 진행 게이지 채움 */}
+                <div style={{
+                  width: `${dailyFillPct}%`,
+                  height: '100%',
+                  background: dailyBarGradient,
+                  transition: 'width 0.3s ease'
+                }} />
+
+                {/* 6h (75%) 분할 구분선 */}
+                <div style={{
+                  position: 'absolute',
+                  left: '75%',
+                  top: 0,
+                  bottom: 0,
+                  width: '2px',
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  zIndex: 2
+                }} />
+
+                {/* 7h (87.5%) 분할 구분선 */}
+                <div style={{
+                  position: 'absolute',
+                  left: '87.5%',
+                  top: 0,
+                  bottom: 0,
+                  width: '2px',
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  zIndex: 2
+                }} />
+              </div>
+
+              {/* 눈금 라벨 (정확한 백분율 위치에 absolute 배치하여 100% 일치) */}
+              <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                <span style={{ position: 'absolute', left: 0 }}>0h</span>
+                
+                <span style={{
+                  position: 'absolute',
+                  left: '75%',
+                  transform: 'translateX(-50%)',
+                  color: todayStudyMins >= 360 ? '#38bdf8' : 'var(--text-muted)',
+                  fontWeight: todayStudyMins >= 360 ? 'bold' : 'normal',
+                  whiteSpace: 'nowrap'
+                }}>
+                  6h🌿
+                </span>
+
+                <span style={{
+                  position: 'absolute',
+                  left: '87.5%',
+                  transform: 'translateX(-50%)',
+                  color: todayStudyMins >= 420 ? '#10b981' : 'var(--text-muted)',
+                  fontWeight: todayStudyMins >= 420 ? 'bold' : 'normal',
+                  whiteSpace: 'nowrap'
+                }}>
+                  7h🌳
+                </span>
+
+                <span style={{
+                  position: 'absolute',
+                  right: 0,
+                  color: todayStudyMins >= 480 ? '#34d399' : 'var(--text-muted)',
+                  fontWeight: todayStudyMins >= 480 ? 'bold' : 'normal'
+                }}>
+                  8h+🌲
+                </span>
+              </div>
+
+              {/* 일간 상태 메시지 */}
+              <div style={{ fontSize: '0.7rem', color: dailyGoal.level > 0 ? '#34d399' : 'var(--text-muted)' }}>
+                {dailyGoal.level === 3 ? (
+                  <span>👑 8시간 울창 달성 완료! 최고의 집중도입니다.</span>
+                ) : dailyGoal.level === 2 ? (
+                  <span>🌳 2단계(7h) 우수 달성! 3단계(8h)까지 {dailyGoal.remainingMins}분 남음</span>
+                ) : dailyGoal.level === 1 ? (
+                  <span>🌿 1단계(6h) 달성 완료! 2단계(7h)까지 {dailyGoal.remainingMins}분 남음</span>
+                ) : (
+                  <span>⏳ 1단계(6h) 달성까지 {dailyGoal.remainingMins}분 남음</span>
+                )}
+              </div>
             </div>
-          </div>
+          );
+        })()}
 
-          {/* Weekly Progress Bar */}
-          <div style={{ height: '8px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', width: '100%', marginTop: '0.15rem' }}>
+        {/* ========================================================================= */}
+        {/* 2. 주간 목표 카드 (36h~42h / 휴가 보정, 기본 및 최대 목표 정밀 눈금 연동) */}
+        {/* ========================================================================= */}
+        {(() => {
+          // 주간 기준: 최대 목표(targetMaxMins) = 100%
+          // 기본 목표(targetMinMins) = (targetMinMins / targetMaxMins) * 100% (약 85.7%)
+          const maxMins = weeklyGoal.targetMaxMins || 2520;
+          const minMins = weeklyGoal.targetMinMins || 2160;
+          const weeklyMinPct = maxMins > 0 ? (minMins / maxMins) * 100 : 85.7;
+          const weeklyFillPct = maxMins > 0 ? Math.min(100, (weeklyGoal.weeklyMinutes / maxMins) * 100) : 0;
+          const basicAchievementPct = minMins > 0 ? Math.round((weeklyGoal.weeklyMinutes / minMins) * 100) : 100;
+
+          let weeklyBarGradient = 'linear-gradient(90deg, #6366f1, #a855f7)';
+          if (weeklyGoal.isMaxReached) {
+            weeklyBarGradient = 'linear-gradient(90deg, #10b981, #34d399)'; // 최대 초과 달성
+          } else if (weeklyGoal.isMinReached) {
+            weeklyBarGradient = '#10b981'; // 기본 목표 달성
+          }
+
+          return (
             <div style={{
-              width: `${Math.min(100, weeklyGoal.targetMinMins > 0 ? (weeklyGoal.weeklyMinutes / weeklyGoal.targetMinMins) * 100 : 100)}%`,
-              height: '100%',
-              background: weeklyGoal.isMaxReached ? 'linear-gradient(90deg, #10b981, #34d399)' : weeklyGoal.isMinReached ? '#10b981' : 'linear-gradient(90deg, #6366f1, #a855f7)',
-              transition: 'width 0.3s'
-            }} />
-          </div>
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.35rem',
+              borderTop: '1px solid rgba(255, 255, 255, 0.07)',
+              paddingTop: '0.75rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span>📅</span> 주간 목표 ({weeklyGoal.targetMinHours}~{weeklyGoal.targetMaxHours}h)
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  {weeklyGoal.vacationDaysCount > 0 && (
+                    <span style={{
+                      fontSize: '0.67rem',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '4px',
+                      background: 'rgba(234, 179, 8, 0.18)',
+                      color: '#facc15',
+                      fontWeight: 'bold'
+                    }}>
+                      🌴 휴가 {weeklyGoal.vacationDaysCount}일 반영
+                    </span>
+                  )}
+                  <span style={{ fontSize: '0.86rem', fontWeight: 'bold', color: weeklyGoal.isMinReached ? '#34d399' : '#fff' }}>
+                    {weeklyGoal.weeklyHours}h
+                  </span>
+                </div>
+              </div>
 
-          {/* Weekly Info & Status Text */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-            <span>목표: {weeklyGoal.targetMinHours}h ~ {weeklyGoal.targetMaxHours}h</span>
-            <span>달성률: {weeklyGoal.progressPct}%</span>
-          </div>
-          <div style={{ fontSize: '0.7rem', color: weeklyGoal.isMinReached ? '#34d399' : 'var(--text-muted)' }}>
-            {weeklyGoal.isMaxReached ? (
-              <span>🎉 주간 최대 목표({weeklyGoal.targetMaxHours}h) 초과 달성!</span>
-            ) : weeklyGoal.isMinReached ? (
-              <span>✨ 주간 기본 목표({weeklyGoal.targetMinHours}h) 달성 완료!</span>
-            ) : (
-              <span>🎯 주간 기본 목표({weeklyGoal.targetMinHours}h)까지 {Math.floor(weeklyGoal.remainingToMinMins / 60)}시간 {weeklyGoal.remainingToMinMins % 60}분 남음</span>
-            )}
-          </div>
-        </div>
+              {/* 정밀 주간 프로그레스 바 (0~최대목표 기준, 기본목표 분할선 표시) */}
+              <div style={{
+                position: 'relative',
+                height: '8px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                borderRadius: '4px',
+                overflow: 'hidden',
+                width: '100%',
+                marginTop: '0.15rem'
+              }}>
+                <div style={{
+                  width: `${weeklyFillPct}%`,
+                  height: '100%',
+                  background: weeklyBarGradient,
+                  transition: 'width 0.3s ease'
+                }} />
+
+                {/* 기본 목표 분할선 */}
+                <div style={{
+                  position: 'absolute',
+                  left: `${weeklyMinPct}%`,
+                  top: 0,
+                  bottom: 0,
+                  width: '2px',
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  zIndex: 2
+                }} />
+              </div>
+
+              {/* 눈금 라벨 (정확한 위치 매핑) */}
+              <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                <span style={{ position: 'absolute', left: 0 }}>0h</span>
+
+                <span style={{
+                  position: 'absolute',
+                  left: `${weeklyMinPct}%`,
+                  transform: 'translateX(-50%)',
+                  color: weeklyGoal.isMinReached ? '#34d399' : 'var(--text-muted)',
+                  fontWeight: weeklyGoal.isMinReached ? 'bold' : 'normal',
+                  whiteSpace: 'nowrap'
+                }}>
+                  기본 {weeklyGoal.targetMinHours}h
+                </span>
+
+                <span style={{
+                  position: 'absolute',
+                  right: 0,
+                  color: weeklyGoal.isMaxReached ? '#34d399' : 'var(--text-muted)',
+                  fontWeight: weeklyGoal.isMaxReached ? 'bold' : 'normal'
+                }}>
+                  최대 {weeklyGoal.targetMaxHours}h
+                </span>
+              </div>
+
+              {/* 주간 정보 및 달성률 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                <span>목표: {weeklyGoal.targetMinHours}h ~ {weeklyGoal.targetMaxHours}h</span>
+                <span>기본 목표 달성률: <strong style={{ color: weeklyGoal.isMinReached ? '#34d399' : '#e2e8f0' }}>{basicAchievementPct}%</strong></span>
+              </div>
+
+              <div style={{ fontSize: '0.7rem', color: weeklyGoal.isMinReached ? '#34d399' : 'var(--text-muted)' }}>
+                {weeklyGoal.isMaxReached ? (
+                  <span>🎉 주간 최대 목표({weeklyGoal.targetMaxHours}h) 초과 달성!</span>
+                ) : weeklyGoal.isMinReached ? (
+                  <span>✨ 주간 기본 목표({weeklyGoal.targetMinHours}h) 달성 완료! ({weeklyGoal.targetMaxHours}h 도약 중)</span>
+                ) : (
+                  <span>🎯 주간 기본 목표({weeklyGoal.targetMinHours}h)까지 {Math.floor(weeklyGoal.remainingToMinMins / 60)}시간 {weeklyGoal.remainingToMinMins % 60}분 남음</span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Mode Selector: [🎧 강의 수강] vs [📖 복습·자습] vs [🍱 식사 시간] */}
