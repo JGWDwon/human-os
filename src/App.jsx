@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen, Target, RotateCw } from 'lucide-react';
+import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen, Target, RotateCw, Bookmark } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import PomodoroTracker from './components/PomodoroTracker';
 import ForestPixelMap from './components/ForestPixelMap';
@@ -7,6 +7,7 @@ import InsightsDashboard from './components/InsightsDashboard';
 import EbbinghausPlanner from './components/EbbinghausPlanner';
 import DDayModal from './components/DDayModal';
 import SubjectModal from './components/SubjectModal';
+import SupplementaryModal from './components/SupplementaryModal';
 import { storage } from './utils/storage';
 import TierBadge from './components/TierBadge';
 import { Capacitor } from '@capacitor/core';
@@ -31,6 +32,10 @@ function App() {
   const [showTierModal, setShowTierModal] = useState(false);
   const [showDDayModal, setShowDDayModal] = useState(false);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
+  const [showSupplementaryModal, setShowSupplementaryModal] = useState(false);
+  const [pendingSlotsCount, setPendingSlotsCount] = useState(() => {
+    return storage.getSupplementarySlots().filter(s => !s.isCompleted).length;
+  });
   const [dDays, setDDays] = useState(() => storage.getDDays());
   const fileInputRef = useRef(null);
 
@@ -99,11 +104,22 @@ function App() {
     };
     window.addEventListener('ddays-updated', handleDDaysUpdated);
 
+    const handleSlotsUpdated = () => {
+      setPendingSlotsCount(storage.getSupplementarySlots().filter(s => !s.isCompleted).length);
+    };
+    const handleOpenSlotsModal = () => {
+      setShowSupplementaryModal(true);
+    };
+    window.addEventListener('supplementary-slots-updated', handleSlotsUpdated);
+    window.addEventListener('open-supplementary-modal', handleOpenSlotsModal);
+
     return () => {
       window.removeEventListener('xp-updated', handleXpUpdate);
       window.removeEventListener('level-up', handleLevelUp);
       window.removeEventListener('milestone-achieved', handleMilestone);
       window.removeEventListener('ddays-updated', handleDDaysUpdated);
+      window.removeEventListener('supplementary-slots-updated', handleSlotsUpdated);
+      window.removeEventListener('open-supplementary-modal', handleOpenSlotsModal);
     };
   }, []);
 
@@ -270,6 +286,38 @@ function App() {
               >
                 <BookOpen size={15} />
                 <span>에빙하우스 복습</span>
+              </button>
+
+              <button
+                onClick={() => setShowSupplementaryModal(true)}
+                className="btn btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.82rem',
+                  padding: '0.4rem 0.75rem',
+                  background: pendingSlotsCount > 0 ? 'rgba(245, 158, 11, 0.16)' : 'rgba(255, 255, 255, 0.05)',
+                  color: pendingSlotsCount > 0 ? '#fbbf24' : 'var(--text-secondary)',
+                  border: pendingSlotsCount > 0 ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid rgba(255, 255, 255, 0.1)'
+                }}
+                title="복습 중 막힌 문제 나중에 풀기 / 주말 보충"
+              >
+                <Bookmark size={15} color={pendingSlotsCount > 0 ? '#f59e0b' : 'currentColor'} />
+                <span>보충 슬롯</span>
+                {pendingSlotsCount > 0 && (
+                  <span style={{
+                    background: '#f59e0b',
+                    color: '#000',
+                    fontSize: '0.68rem',
+                    fontWeight: 900,
+                    padding: '0.05rem 0.4rem',
+                    borderRadius: '10px',
+                    marginLeft: '0.1rem'
+                  }}>
+                    {pendingSlotsCount}
+                  </span>
+                )}
               </button>
 
               <button
@@ -790,7 +838,11 @@ function App() {
           }}>
             {/* Left Column: Pomodoro Timer */}
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-              <PomodoroTracker selectedDate={selectedDate} onUpdate={triggerRefresh} />
+              <PomodoroTracker 
+                selectedDate={selectedDate} 
+                onUpdate={triggerRefresh} 
+                onOpenSupplementary={() => setShowSupplementaryModal(true)} 
+              />
             </div>
             
             {/* Right Column: Calendar Forest (4h/6h/8h Study Goal Pixel Map) */}
@@ -800,9 +852,10 @@ function App() {
           </div>
         )}
 
-        {/* Global D-Day & Subject Management Modals */}
+        {/* Global D-Day, Subject, & Supplementary Modals */}
         <DDayModal isOpen={showDDayModal} onClose={() => setShowDDayModal(false)} />
         <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
+        <SupplementaryModal isOpen={showSupplementaryModal} onClose={() => setShowSupplementaryModal(false)} />
       </div>
     </>
   );

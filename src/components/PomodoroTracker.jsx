@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun, Edit2 } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun, Edit2, Bookmark, CheckSquare, Square, ExternalLink } from 'lucide-react';
 import { storage, getSubjectColor, calculateSleepDuration } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
@@ -22,7 +22,7 @@ const loadBellSound = async (audioCtx) => {
   }
 };
 
-export default function PomodoroTracker({ selectedDate, onUpdate }) {
+export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSupplementary }) {
   // Timer Mode: 'lecture' (🎧 강의 수강) | 'review' (📖 복습·자습) | 'meal' (🍱 식사 시간)
   const [activeTimerMode, setActiveTimerMode] = useState(() => {
     const saved = localStorage.getItem('human_os_timer_mode_v1');
@@ -182,6 +182,53 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
     window.addEventListener('subjects-updated', handleSubjectsUpdated);
     return () => window.removeEventListener('subjects-updated', handleSubjectsUpdated);
   }, []);
+
+  // Supplementary Slots (막힌 문제 나중에 풀기/주말 보충)
+  const [supplementarySlots, setSupplementarySlots] = useState(() => storage.getSupplementarySlots());
+  const [quickSlotTitle, setQuickSlotTitle] = useState('');
+  const [quickSlotTarget, setQuickSlotTarget] = useState('weekend');
+
+  useEffect(() => {
+    const handleSlotsUpdated = () => {
+      setSupplementarySlots(storage.getSupplementarySlots());
+    };
+    window.addEventListener('supplementary-slots-updated', handleSlotsUpdated);
+    return () => window.removeEventListener('supplementary-slots-updated', handleSlotsUpdated);
+  }, []);
+
+  const handleQuickAddSlot = (e) => {
+    e?.preventDefault();
+    const trimmed = quickSlotTitle.trim();
+    if (!trimmed) return;
+
+    storage.addSupplementarySlot({
+      title: trimmed,
+      subject: selectedSubject || '기타',
+      targetTime: quickSlotTarget,
+      memo: ''
+    });
+    setQuickSlotTitle('');
+  };
+
+  const handleQuickToggleSlot = (slotId) => {
+    storage.toggleSupplementarySlot(slotId);
+  };
+
+  const handleQuickDeleteSlot = (slotId) => {
+    storage.removeSupplementarySlot(slotId);
+  };
+
+  const handleOpenSupplementaryModal = () => {
+    if (typeof onOpenSupplementary === 'function') {
+      onOpenSupplementary();
+    } else {
+      window.dispatchEvent(new CustomEvent('open-supplementary-modal'));
+    }
+  };
+
+  const pendingSlots = useMemo(() => {
+    return (supplementarySlots || []).filter(s => !s.isCompleted);
+  }, [supplementarySlots]);
 
   const sessionStartTsRef = useRef(null);
   const pauseStartTsRef = useRef(null);
@@ -2032,6 +2079,240 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
       {/* Daily Timestamped Log & Collapsible Manual Input */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1 }}>
+        {/* Supplementary Problem Slot (막힌 문제 보충 슬롯 - 나중에 풀기/주말 보충) */}
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.65)',
+          padding: '0.85rem 1rem',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          boxShadow: '0 4px 15px rgba(0, 0, 0, 0.25)'
+        }}>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <Bookmark size={16} color="#f59e0b" />
+              <h3 style={{ fontSize: '0.92rem', color: '#f8fafc', margin: 0, fontWeight: 'bold' }}>
+                막힌 문제 보충 슬롯
+              </h3>
+              <span style={{
+                fontSize: '0.7rem',
+                color: '#f59e0b',
+                background: 'rgba(245, 158, 11, 0.15)',
+                padding: '0.12rem 0.45rem',
+                borderRadius: '10px',
+                fontWeight: 'bold'
+              }}>
+                대기 {pendingSlots.length}건
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenSupplementaryModal}
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: '#cbd5e1',
+                fontSize: '0.72rem',
+                padding: '0.2rem 0.55rem',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                transition: 'all 0.15s'
+              }}
+              title="전체 보충 슬롯 관리"
+            >
+              <span>전체 관리</span>
+              <ExternalLink size={12} />
+            </button>
+          </div>
+
+          {/* Quick Input Bar */}
+          <form onSubmit={handleQuickAddSlot} style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.65rem' }}>
+            <input
+              type="text"
+              placeholder={selectedSubject ? `막힌 문제 (예: ${selectedSubject}12장05번)` : '막힌 문제 킵 (예: 셈회12장05번)'}
+              value={quickSlotTitle}
+              onChange={(e) => setQuickSlotTitle(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                padding: '0.38rem 0.65rem',
+                borderRadius: '6px',
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                color: '#fff',
+                fontSize: '0.8rem',
+                outline: 'none'
+              }}
+            />
+
+            <select
+              value={quickSlotTarget}
+              onChange={(e) => setQuickSlotTarget(e.target.value)}
+              style={{
+                padding: '0.38rem 0.45rem',
+                borderRadius: '6px',
+                background: 'rgba(0,0,0,0.4)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                color: quickSlotTarget === 'weekend' ? '#f59e0b' : '#818cf8',
+                fontSize: '0.75rem',
+                outline: 'none'
+              }}
+            >
+              <option value="weekend">🌴 주말 보충</option>
+              <option value="today_end">🌙 오늘 끝난 뒤</option>
+              <option value="anytime">⏳ 여유 시</option>
+            </select>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{
+                padding: '0.38rem 0.75rem',
+                fontSize: '0.78rem',
+                fontWeight: 'bold',
+                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '6px',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.2rem'
+              }}
+            >
+              <Plus size={14} /> 킵
+            </button>
+          </form>
+
+          {/* Quick Pending Slots List */}
+          {pendingSlots.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {pendingSlots.slice(0, 3).map((slot) => {
+                const subCol = getSubjectColor(slot.subject, subjects);
+                return (
+                  <div
+                    key={slot.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.5rem',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)',
+                      borderRadius: '6px',
+                      padding: '0.35rem 0.55rem',
+                      fontSize: '0.78rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0, flex: 1 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickToggleSlot(slot.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#94a3b8'
+                        }}
+                        title="해결 완료로 체크"
+                      >
+                        <Square size={16} />
+                      </button>
+
+                      <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 'bold',
+                        padding: '0.08rem 0.35rem',
+                        borderRadius: '3px',
+                        color: subCol,
+                        background: `${subCol}1f`,
+                        border: `1px solid ${subCol}40`,
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {slot.subject}
+                      </span>
+
+                      <span style={{
+                        fontSize: '0.65rem',
+                        color: slot.targetTime === 'weekend' ? '#f59e0b' : '#818cf8',
+                        background: slot.targetTime === 'weekend' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(129, 140, 248, 0.12)',
+                        padding: '0.08rem 0.35rem',
+                        borderRadius: '3px',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {slot.targetTime === 'weekend' ? '🌴 주말' : slot.targetTime === 'today_end' ? '🌙 오늘끝' : '⏳ 여유'}
+                      </span>
+
+                      <span style={{
+                        color: '#f1f5f9',
+                        fontWeight: 'bold',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {slot.title}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDeleteSlot(slot.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#94a3b8',
+                        cursor: 'pointer',
+                        padding: '0.1rem',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                      title="삭제"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {pendingSlots.length > 3 && (
+                <button
+                  type="button"
+                  onClick={handleOpenSupplementaryModal}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#f59e0b',
+                    fontSize: '0.72rem',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    padding: '0.2rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  + 외 {pendingSlots.length - 3}건 더 보기 (전체 관리)
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{
+              fontSize: '0.72rem',
+              color: 'var(--text-muted)',
+              textAlign: 'center',
+              padding: '0.35rem 0',
+              fontStyle: 'italic'
+            }}>
+              💡 복습 중 막히는 문제는 대충 넘기지 말고 1초 만에 여기에 킵해두세요.
+            </div>
+          )}
+        </div>
+
         <div style={{ background: 'rgba(0,0,0,0.25)', padding: '1rem 1.1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.06)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>

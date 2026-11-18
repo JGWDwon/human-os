@@ -10,7 +10,8 @@ const STORAGE_KEYS = {
   SUBJECTS: 'human_os_subjects_v1',
   DDAYS: 'human_os_ddays_v1',
   MEALS: 'human_os_meals_v1',
-  DAILY_LOGS: 'human_os_daily_logs_v1'
+  DAILY_LOGS: 'human_os_daily_logs_v1',
+  SUPPLEMENTARY_SLOTS: 'human_os_supplementary_slots_v1'
 };
 
 export function calculateSleepDuration(bedTime, wakeTime) {
@@ -628,6 +629,7 @@ export const storage = {
       selectedSubject: localStorage.getItem('human_os_selected_subject_v1'),
       meals: localStorage.getItem(STORAGE_KEYS.MEALS),
       dailyLogs: localStorage.getItem(STORAGE_KEYS.DAILY_LOGS),
+      supplementarySlots: localStorage.getItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
       version: '1.3'
@@ -656,6 +658,7 @@ export const storage = {
     if (jsonData.selectedSubject) localStorage.setItem('human_os_selected_subject_v1', ensureString(jsonData.selectedSubject));
     if (jsonData.meals) localStorage.setItem(STORAGE_KEYS.MEALS, ensureString(jsonData.meals));
     if (jsonData.dailyLogs) localStorage.setItem(STORAGE_KEYS.DAILY_LOGS, ensureString(jsonData.dailyLogs));
+    if (jsonData.supplementarySlots) localStorage.setItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS, ensureString(jsonData.supplementarySlots));
     if (jsonData.theme) localStorage.setItem('dairy_theme', ensureString(jsonData.theme));
     
     if (jsonData.profile) {
@@ -912,6 +915,81 @@ export const storage = {
 
   setSleepTimes(dateStr, bedTime, wakeTime) {
     return this.saveDailyLog(dateStr, { bedTime, wakeTime });
+  },
+
+  // --- Supplementary Slots (막힌 문제 보충 슬롯 - 나중에 풀기/주말 보충) ---
+  getSupplementarySlots() {
+    const raw = localStorage.getItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS);
+    return safeParse(raw, []);
+  },
+
+  addSupplementarySlot({ title, subject = '', targetTime = 'weekend', memo = '' }) {
+    if (!title || !title.trim()) return null;
+    const slots = this.getSupplementarySlots();
+    const now = new Date();
+    const dateStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    
+    // Auto-detect subject from title if not explicitly given
+    let detectedSubject = (subject || '').trim();
+    if (!detectedSubject) {
+      const subjects = this.getSubjects();
+      for (const s of subjects) {
+        if (title.includes(s)) {
+          detectedSubject = s;
+          break;
+        }
+      }
+    }
+
+    const newSlot = {
+      id: `slot_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: title.trim(),
+      subject: detectedSubject || '기타',
+      targetTime: targetTime || 'weekend', // 'today_end' (오늘 공부 후) | 'weekend' (주말) | 'anytime' (나중에)
+      memo: (memo || '').trim(),
+      date: dateStr,
+      isCompleted: false,
+      completedAt: null,
+      createdAt: Date.now()
+    };
+
+    slots.unshift(newSlot);
+    localStorage.setItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS, JSON.stringify(slots));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('supplementary-slots-updated'));
+    return newSlot;
+  },
+
+  toggleSupplementarySlot(slotId) {
+    const slots = this.getSupplementarySlots();
+    const idx = slots.findIndex(s => s.id === slotId);
+    if (idx === -1) return null;
+    slots[idx].isCompleted = !slots[idx].isCompleted;
+    slots[idx].completedAt = slots[idx].isCompleted ? Date.now() : null;
+    localStorage.setItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS, JSON.stringify(slots));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('supplementary-slots-updated'));
+    return slots[idx];
+  },
+
+  removeSupplementarySlot(slotId) {
+    let slots = this.getSupplementarySlots();
+    slots = slots.filter(s => s.id !== slotId);
+    localStorage.setItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS, JSON.stringify(slots));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('supplementary-slots-updated'));
+    return true;
+  },
+
+  updateSupplementarySlot(slotId, updates) {
+    const slots = this.getSupplementarySlots();
+    const idx = slots.findIndex(s => s.id === slotId);
+    if (idx === -1) return null;
+    slots[idx] = { ...slots[idx], ...updates, updatedAt: Date.now() };
+    localStorage.setItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS, JSON.stringify(slots));
+    this._dispatchSync();
+    window.dispatchEvent(new CustomEvent('supplementary-slots-updated'));
+    return slots[idx];
   },
 
   // --- Daily Goals (일간 목표 6h, 7h, 8h 차등) & Weekly Goals (주간 목표 36~42h + 휴가 반영) ---
