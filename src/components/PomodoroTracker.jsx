@@ -354,15 +354,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         if (Capacitor.isNativePlatform()) {
           const result = await LocalNotifications.checkPermissions();
           setNotifPermission(result.display === 'granted' ? 'granted' : 'default');
-
-          // Clean up legacy channels so native MainActivity v6 channel (USAGE_ALARM 강제 알람) takes effect
-          try {
-            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v5' }).catch(() => {});
-            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v4' }).catch(() => {});
-            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v3' }).catch(() => {});
-          } catch (channelErr) {
-            console.warn('Channel cleanup error:', channelErr);
-          }
         } else if (typeof window !== 'undefined' && 'Notification' in window) {
           setNotifPermission(window.Notification.permission);
         }
@@ -479,19 +470,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         const granted = result.display === 'granted';
         setNotifPermission(granted ? 'granted' : 'denied');
         if (granted) {
-          try {
-            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v5' }).catch(() => {});
-            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v4' }).catch(() => {});
-            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v3' }).catch(() => {});
-          } catch (e) {}
-
           await LocalNotifications.schedule({
             notifications: [{
               id: 9999,
               title: '알림 활성화 완료! 🍅',
               body: '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.',
               schedule: { at: new Date(Date.now() + 500) },
-              channelId: 'pomodoro-alarm-v6',
+              channelId: 'pomodoro-alarm-v7',
               sound: 'bell2'
             }]
           });
@@ -760,7 +745,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   title: '성장의 숲 🍅',
                   body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
                   schedule: { at: new Date(endTime), allowWhileIdle: true },
-                  channelId: 'pomodoro-alarm-v6',
+                  channelId: 'pomodoro-alarm-v7',
                   sound: 'bell2',
                   vibrationPattern: [200, 100, 200, 100, 400],
                   actionTypeId: 'OPEN_APP',
