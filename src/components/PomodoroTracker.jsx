@@ -710,17 +710,42 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Play Completion Sound (Bell 2 Chime) - only once when not catching up from background
-    if (!isFromCatchUp) {
-      playSound('complete');
+    // 1. Cancel any pending scheduled alarm (id:1001) to prevent duplicate
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
+      } catch (e) {}
     }
 
-    // 2. Trigger Haptic Vibration
-    try {
-      if ('vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200, 100, 400]);
+    // 2. Play Sound + Show Heads-Up Popup
+    if (Capacitor.isNativePlatform() && !isFromCatchUp) {
+      // On native: fire immediate notification → popup slides down + alarm sound (single source)
+      try {
+        const channelId = await getEffectiveAlarmChannelId();
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1002,
+              title: '성장의 숲 🍅 집중 완료!',
+              body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+              schedule: { at: new Date(Date.now() + 50) },
+              channelId: channelId,
+              sound: 'bell2',
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
+        });
+      } catch (e) {
+        // Fallback: if native notification fails, play JS sound
+        playSound('complete');
       }
-    } catch (e) {}
+    } else if (!Capacitor.isNativePlatform()) {
+      // On browser/PWA: play JS sound
+      playSound('complete');
+    }
+    // isFromCatchUp on native: id:1001 already played sound+popup in background, skip
 
     // 3. Show In-App Slide-Down Heads-Up Popup Banner
     setCompletionBanner({
@@ -738,12 +763,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       });
     } catch (e) {}
 
-    // 5. Cancel any pending native background notification (prevent duplicate alarms)
-    if (Capacitor.isNativePlatform()) {
-      try {
-        await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
-      } catch (e) {}
-    }
+    // 5. Haptic Vibration
+    try {
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 400]);
+      }
+    } catch (e) {}
 
     // 6. Web / ServiceWorker Notification (Browser / PWA fallback only)
     if (!Capacitor.isNativePlatform() && 'Notification' in window && Notification.permission === 'granted') {
