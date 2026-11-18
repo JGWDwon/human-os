@@ -26,41 +26,42 @@ public class MainActivity extends BridgeActivity {
       NotificationManager notificationManager =
         (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
       if (notificationManager != null) {
-        // 기존 채널 삭제하여 새로 설정 적용
+        // 기존 테스트 채널 삭제하여 새로 설정 적용
         try {
           notificationManager.deleteNotificationChannel("pomodoro-alerts");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v2");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v3");
-          notificationManager.deleteNotificationChannel("pomodoro-alarm-v4");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v5");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v6");
         } catch (Exception e) {}
 
-        String channelId = "pomodoro-alarm-v7";
-        CharSequence channelName = "Pomodoro Alarm (무음 뚫는 강제 알람)";
-        String channelDesc = "알람 완료 시 무음/방해금지 모드에서도 강제로 슬라이드 팝업과 소리가 울리는 채널";
-        int importance = NotificationManager.IMPORTANCE_HIGH;
+        String[] channelIds = new String[]{"pomodoro-alarm-v4", "pomodoro-alarm-v7"};
+        for (String channelId : channelIds) {
+          CharSequence channelName = "Pomodoro Alarm (무음 뚫는 강제 알람)";
+          String channelDesc = "알람 완료 시 무음/방해금지 모드에서도 강제로 슬라이드 팝업과 소리가 울리는 채널";
+          int importance = NotificationManager.IMPORTANCE_HIGH;
 
-        NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
-        channel.setDescription(channelDesc);
-        channel.enableVibration(true);
-        channel.setVibrationPattern(new long[]{0, 200, 100, 200, 100, 400});
-        channel.setShowBadge(true);
-        channel.setBypassDnd(true); // 방해금지 모드 우회
-        channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+          NotificationChannel channel = new NotificationChannel(channelId, channelName, importance);
+          channel.setDescription(channelDesc);
+          channel.enableVibration(true);
+          channel.setVibrationPattern(new long[]{0, 200, 100, 200, 100, 400});
+          channel.setShowBadge(true);
+          channel.setBypassDnd(true); // 방해금지 모드 우회
+          channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
 
-        // USAGE_ALARM + AUDIBILITY_ENFORCED 속성으로 무음 모드 강제 뚫기
-        Uri soundUri = Uri.parse(
-          "android.resource://" + getPackageName() + "/raw/bell2"
-        );
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-          .setUsage(AudioAttributes.USAGE_ALARM)
-          .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
-          .build();
-        channel.setSound(soundUri, audioAttributes);
+          // USAGE_ALARM + AUDIBILITY_ENFORCED 속성으로 무음 모드 강제 뚫기
+          Uri soundUri = Uri.parse(
+            "android.resource://" + getPackageName() + "/raw/bell2"
+          );
+          AudioAttributes audioAttributes = new AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+            .build();
+          channel.setSound(soundUri, audioAttributes);
 
-        notificationManager.createNotificationChannel(channel);
+          notificationManager.createNotificationChannel(channel);
+        }
       }
     }
   }

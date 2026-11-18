@@ -210,6 +210,12 @@ input:focus, textarea:focus {
   to { transform: translateX(0); opacity: 1; }
 }
 
+@keyframes slideDownBounce {
+  0% { transform: translate(-50%, -100%); opacity: 0; }
+  70% { transform: translate(-50%, 8px); opacity: 1; }
+  100% { transform: translate(-50%, 0); opacity: 1; }
+}
+
 @media (max-width: 600px) {
   .hide-on-mobile {
     display: none !important;

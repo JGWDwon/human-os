@@ -14,11 +14,46 @@ let decodedBellBuffer = null;
 const loadBellSound = async (audioCtx) => {
   if (decodedBellBuffer) return;
   try {
-    const response = await fetch(`${bell2Sound}?v=20261118_v2`);
+    const response = await fetch(`${bell2Sound}?v=20261118_v3`);
     const arrayBuffer = await response.arrayBuffer();
     decodedBellBuffer = await audioCtx.decodeAudioData(arrayBuffer);
   } catch (e) {
     console.error('Failed to load/decode bell2.mp3:', e);
+  }
+};
+
+const getEffectiveAlarmChannelId = async () => {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const res = await LocalNotifications.listChannels();
+    const existing = (res?.channels || []).map(c => c.id);
+    console.log('[Notification] Existing channels on device:', existing);
+
+    // 1. If pomodoro-alarm-v4 exists (the native USAGE_ALARM channel in the installed APK)
+    if (existing.includes('pomodoro-alarm-v4')) return 'pomodoro-alarm-v4';
+    // 2. If pomodoro-alarm-v7 exists
+    if (existing.includes('pomodoro-alarm-v7')) return 'pomodoro-alarm-v7';
+    // 3. Any other pomodoro channel
+    const anyChannel = existing.find(id => id && id.startsWith('pomodoro-alarm-'));
+    if (anyChannel) return anyChannel;
+
+    // 4. Fallback: if no pomodoro channel found in listChannels, create pomodoro-alarm-v4 and pomodoro-alarm-v7
+    for (const id of ['pomodoro-alarm-v4', 'pomodoro-alarm-v7']) {
+      await LocalNotifications.createChannel({
+        id,
+        name: 'Pomodoro Alarm (강제 알람)',
+        description: '알람 완료 시 무음/방해금지 모드에서도 강제로 울리는 채널',
+        importance: 5,
+        visibility: 1,
+        sound: 'bell2',
+        vibration: true,
+        lights: true
+      }).catch(() => {});
+    }
+    return 'pomodoro-alarm-v4';
+  } catch (e) {
+    console.warn('[Notification] Failed to inspect channels, defaulting to pomodoro-alarm-v4:', e);
+    return 'pomodoro-alarm-v4';
   }
 };
 
@@ -126,10 +161,20 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showSubjectConfirmModal, setShowSubjectConfirmModal] = useState(false);
   const [showSleepModal, setShowSleepModal] = useState(false);
+  const [completionBanner, setCompletionBanner] = useState({ show: false, subject: '', minutes: 0 });
   const [modalBedTime, setModalBedTime] = useState('23:30');
   const [modalWakeTime, setModalWakeTime] = useState('06:30');
   const pendingTimerStartRef = useRef(false);
   const selectedSubjectRef = useRef(selectedSubject);
+
+  useEffect(() => {
+    if (completionBanner.show) {
+      const timer = setTimeout(() => {
+        setCompletionBanner(prev => ({ ...prev, show: false }));
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [completionBanner.show]);
 
   // New day check on mount: prompt sleep input if not recorded and not on vacation
   useEffect(() => {
@@ -429,6 +474,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         if (Capacitor.isNativePlatform()) {
           const result = await LocalNotifications.checkPermissions();
           setNotifPermission(result.display === 'granted' ? 'granted' : 'default');
+          await getEffectiveAlarmChannelId();
         } else if (typeof window !== 'undefined' && 'Notification' in window) {
           setNotifPermission(window.Notification.permission);
         }
@@ -545,13 +591,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         const granted = result.display === 'granted';
         setNotifPermission(granted ? 'granted' : 'denied');
         if (granted) {
+          const channelId = await getEffectiveAlarmChannelId();
           await LocalNotifications.schedule({
             notifications: [{
               id: 9999,
               title: '알림 활성화 완료! 🍅',
               body: '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.',
               schedule: { at: new Date(Date.now() + 500) },
-              channelId: 'pomodoro-alarm-v7',
+              channelId: channelId,
               sound: 'bell2'
             }]
           });
@@ -577,12 +624,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const playSound = async (type = 'complete') => {
     if (type === 'complete') {
       const now = Date.now();
-      if (now - lastBellPlayTsRef.current < 2500) {
-        console.log("Prevented duplicate bell sound playback within 2.5s");
+      if (now - lastBellPlayTsRef.current < 2000) {
+        console.log("Prevented duplicate bell sound playback within 2.0s");
         return;
       }
       lastBellPlayTsRef.current = now;
 
+      let played = false;
       try {
         if (!globalAudioCtx && typeof window !== 'undefined') {
           globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -591,24 +639,33 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
           await globalAudioCtx.resume();
         }
         const audioCtx = globalAudioCtx;
-        if (!audioCtx) return;
-
-        if (!decodedBellBuffer) {
-          await loadBellSound(audioCtx);
-        }
-
-        if (decodedBellBuffer) {
-          const source = audioCtx.createBufferSource();
-          source.buffer = decodedBellBuffer;
-          source.connect(audioCtx.destination);
-          source.start(0);
-        } else {
-          const audio = new Audio(`${bell2Sound}?v=20261118_v2`);
-          audio.volume = 1.0;
-          audio.play().catch(e => console.log('Bell audio play failed:', e));
+        if (audioCtx) {
+          if (!decodedBellBuffer) {
+            await loadBellSound(audioCtx);
+          }
+          if (decodedBellBuffer) {
+            const source = audioCtx.createBufferSource();
+            source.buffer = decodedBellBuffer;
+            source.connect(audioCtx.destination);
+            source.start(0);
+            played = true;
+          }
         }
       } catch (e) {
-        console.log('Bell audio unavailable:', e);
+        console.warn('WebAudio playback failed, trying HTML5 Audio fallback:', e);
+      }
+
+      if (!played) {
+        try {
+          const audio = new Audio(`${bell2Sound}?v=20261118_v3`);
+          audio.volume = 1.0;
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(e => console.warn('HTML5 Audio fallback play error:', e));
+          }
+        } catch (e) {
+          console.warn('Audio fallback error:', e);
+        }
       }
       return;
     }
@@ -644,22 +701,70 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     }
   };
 
-  const handleTimerComplete = (isFromCatchUp = false) => {
+  const handleTimerComplete = async (isFromCatchUp = false) => {
     if (isCompletingRef.current) return;
     isCompletingRef.current = true;
 
     if (intervalRef.current) clearInterval(intervalRef.current);
 
-    if (!Capacitor.isNativePlatform() || !isFromCatchUp) {
-      playSound('complete');
+    const minutesCompleted = Math.round(timerState.duration / 60);
+    const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
+
+    // 1. Play Completion Sound (Bell 2 Chime)
+    playSound('complete');
+
+    // 2. Trigger Haptic Vibration
+    try {
+      if ('vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 400]);
+      }
+    } catch (e) {}
+
+    // 3. Show In-App Slide-Down Heads-Up Popup Banner
+    setCompletionBanner({
+      show: true,
+      subject: subjectToLog,
+      minutes: minutesCompleted
+    });
+
+    // 4. Trigger celebration confetti
+    try {
+      confetti({
+        particleCount: 65,
+        spread: 75,
+        origin: { y: 0.3 }
+      });
+    } catch (e) {}
+
+    // 5. Native Immediate Heads-Up Notification (Android status bar)
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const channelId = await getEffectiveAlarmChannelId();
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }] }).catch(() => {});
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1002,
+              title: '성장의 숲 🍅 집중 완료!',
+              body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+              schedule: { at: new Date(Date.now() + 50) },
+              channelId: channelId,
+              sound: 'bell2',
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
+        });
+      } catch (e) {
+        console.error('Failed to trigger immediate native notification:', e);
+      }
     }
 
-    const minutesCompleted = Math.round(timerState.duration / 60);
-
-    // Send Browser Notification
+    // 6. Web / ServiceWorker Notification (Browser / PWA fallback)
     if ('Notification' in window && Notification.permission === 'granted') {
-      const title = '성장의 숲 🍅';
-      const body = `🎉 ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`;
+      const title = '성장의 숲 🍅 집중 완료!';
+      const body = `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`;
       const iconUrl = new URL(mushroomImg, window.location.href).href;
       
       if ('serviceWorker' in navigator) {
@@ -669,11 +774,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
             registration.showNotification(title, { 
               body, 
               icon: iconUrl,
+              badge: iconUrl,
               vibrate: [200, 100, 200, 100, 400],
               requireInteraction: true,
               tag: 'pomodoro-' + Date.now()
             }).catch(err => {
-              console.error("Service worker notification error:", err);
               try { new Notification(title, { body, icon: iconUrl }); } catch(e) {}
             });
           });
@@ -694,7 +799,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const startObj = new Date(targetEndTimeMs - minutesCompleted * 60 * 1000);
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
 
-    const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
     const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
 
     storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog);
@@ -819,25 +923,33 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     // Schedule native local notification
     if (Capacitor.isNativePlatform()) {
       try {
-        LocalNotifications.requestPermissions().then(result => {
-          if (result.display === 'granted') {
-            LocalNotifications.schedule({
-              notifications: [
-                {
-                  id: 1001,
-                  title: '성장의 숲 🍅',
-                  body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-                  schedule: { at: new Date(endTime), allowWhileIdle: true },
-                  channelId: 'pomodoro-alarm-v7',
-                  sound: 'bell2',
-                  vibrationPattern: [200, 100, 200, 100, 400],
-                  actionTypeId: 'OPEN_APP',
-                  extra: { route: '/' }
-                }
-              ]
-            });
+        const channelId = await getEffectiveAlarmChannelId();
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
+
+        const perm = await LocalNotifications.checkPermissions();
+        if (perm.display !== 'granted') {
+          const req = await LocalNotifications.requestPermissions();
+          if (req.display !== 'granted') {
+            console.warn('[Notification] Permission not granted');
           }
+        }
+
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1001,
+              title: '성장의 숲 🍅',
+              body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+              schedule: { at: new Date(endTime), allowWhileIdle: true },
+              channelId: channelId,
+              sound: 'bell2',
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
         });
+        console.log(`[Notification] Scheduled notification on channel: ${channelId}`);
       } catch (e) {
         console.error('Failed to schedule native local notification:', e);
       }
@@ -873,7 +985,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
     if (Capacitor.isNativePlatform()) {
       try {
-        LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
+        LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] });
       } catch (e) {}
     }
 
@@ -896,7 +1008,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
     if (Capacitor.isNativePlatform()) {
       try {
-        LocalNotifications.cancel({ notifications: [{ id: 1001 }] });
+        LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] });
       } catch (e) {}
     }
     
@@ -916,6 +1028,20 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
     const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
+
+    setCompletionBanner({
+      show: true,
+      subject: subjectToLog,
+      minutes: minutesCompleted
+    });
+
+    try {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.3 }
+      });
+    } catch (e) {}
 
     storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog);
     refreshData();
@@ -940,6 +1066,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const resetTimer = () => {
     isCompletingRef.current = false;
     playSound('click');
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] });
+      } catch (e) {}
+    }
     const curDuration = activeTimerMode === 'lecture' ? lectureDuration : reviewDuration;
     const targetMins = customDuration ? parseInt(customDuration, 10) : curDuration;
     const secs = targetMins * 60;
@@ -3063,6 +3195,95 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
       {/* Subject Management Modal */}
       <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
+
+      {/* Heads-up In-App Completion Banner */}
+      {completionBanner.show && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10009,
+            width: '92%',
+            maxWidth: '480px',
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.96) 0%, rgba(30, 41, 59, 0.98) 100%)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1.5px solid rgba(16, 185, 129, 0.6)',
+            borderRadius: '16px',
+            padding: '1rem 1.25rem',
+            boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.6), 0 0 20px rgba(16, 185, 129, 0.35)',
+            animation: 'slideDownBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.35) 100%)',
+                border: '1px solid rgba(16, 185, 129, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.4rem',
+                flexShrink: 0
+              }}
+            >
+              🍅
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+                <span style={{ fontSize: '0.92rem', fontWeight: 'bold', color: '#10b981' }}>
+                  집중 완료!
+                </span>
+                <span style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 'bold',
+                  padding: '0.1rem 0.4rem',
+                  borderRadius: '4px',
+                  background: `${getSubjectColor(completionBanner.subject, subjects)}22`,
+                  color: getSubjectColor(completionBanner.subject, subjects),
+                  border: `1px solid ${getSubjectColor(completionBanner.subject, subjects)}55`
+                }}>
+                  {completionBanner.subject || '공부'}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.3' }}>
+                🎉 {completionBanner.minutes}분 집중 완료! 기록이 안전하게 저장되었습니다.
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setCompletionBanner(prev => ({ ...prev, show: false }))}
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '8px',
+              padding: '0.45rem 0.75rem',
+              color: '#f8fafc',
+              fontSize: '0.78rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              transition: 'all 0.15s'
+            }}
+          >
+            확인
+          </button>
+        </div>
+      )}
     </div>
   );
 }
