@@ -19,6 +19,15 @@ const formatTimeRange = (minutes) => {
   return `${m}분`;
 };
 
+const formatCompactTime = (minutes) => {
+  if (!minutes || minutes <= 0) return '0분';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+};
+
 // Extract or compute session time range
 const getSessionRange = (ts) => {
   const timeLabel = typeof ts === 'string' ? ts : (ts.time || '');
@@ -603,10 +612,10 @@ export default function StudyTimetable({
           <div style={{ overflowX: 'auto', paddingBottom: '0.5rem' }}>
             <div style={{ display: 'inline-flex', flexDirection: 'column', minWidth: '650px', width: '100%', background: '#0a0f1d', borderRadius: '10px', padding: '0.75rem', border: '1px solid rgba(255,255,255,0.08)' }}>
               
-              {/* Header Row: Days of Week */}
-              <div style={{ display: 'flex', borderBottom: '2px solid rgba(255,255,255,0.12)', paddingBottom: '0.5rem', marginBottom: '0.35rem' }}>
+              {/* Header Row: Days of Week (통일된 78px 높이 및 3단 레이아웃) */}
+              <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: '2px solid rgba(255,255,255,0.12)', paddingBottom: '0.45rem', marginBottom: '0.35rem' }}>
                 {/* Time Label Column Header */}
-                <div style={{ width: '38px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '0.2rem' }}>
+                <div style={{ width: '38px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   시간
                 </div>
 
@@ -623,37 +632,114 @@ export default function StudyTimetable({
                         : 'var(--text-primary)';
 
                   return (
-                    <div key={day.dateStr} style={{ flex: 1, textAlign: 'center', padding: '0.2rem 0.25rem' }}>
+                    <div key={day.dateStr} style={{ flex: 1, padding: '0 3px', display: 'flex', flexDirection: 'column' }}>
                       <div style={{
-                        background: day.isToday ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.03)',
-                        border: day.isToday ? '1px solid #10b981' : '1px solid transparent',
-                        borderRadius: '6px',
-                        padding: '0.25rem'
+                        background: day.isToday ? 'rgba(16, 185, 129, 0.16)' : 'rgba(255,255,255,0.03)',
+                        border: day.isToday ? '1.5px solid #10b981' : '1px solid rgba(255,255,255,0.07)',
+                        borderRadius: '7px',
+                        padding: '0.35rem 0.2rem',
+                        height: '78px',
+                        boxSizing: 'border-box',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        textAlign: 'center',
+                        boxShadow: day.isToday ? '0 0 10px rgba(16, 185, 129, 0.2)' : 'none'
                       }}>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 'bold', color: dayColor }}>
-                          {day.dayName}요일 {day.isToday && <span style={{ fontSize: '0.65rem', color: '#10b981' }}>(오늘)</span>}
+                        {/* 1단: 요일 + 일자 + 오늘 뱃지 */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px', width: '100%', lineHeight: 1 }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: dayColor }}>
+                            {day.dayName}
+                          </span>
+                          <span style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
+                            {day.dateShort}
+                          </span>
+                          {day.isToday && (
+                            <span style={{
+                              fontSize: '0.55rem',
+                              color: '#10b981',
+                              background: 'rgba(16, 185, 129, 0.22)',
+                              border: '1px solid rgba(16, 185, 129, 0.4)',
+                              padding: '1px 3px',
+                              borderRadius: '3px',
+                              fontWeight: 'bold',
+                              lineHeight: 1
+                            }}>
+                              오늘
+                            </span>
+                          )}
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                          {day.dateShort}
+
+                        {/* 2단: 순공 총 시간 */}
+                        <div style={{
+                          fontSize: '0.82rem',
+                          fontWeight: 'bold',
+                          color: day.data.totalMinutes > 0 ? '#34d399' : 'rgba(255,255,255,0.22)',
+                          lineHeight: 1.1,
+                          letterSpacing: '-0.3px'
+                        }}>
+                          {day.data.totalMinutes > 0 ? formatCompactTime(day.data.totalMinutes) : '-'}
                         </div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: day.data.totalMinutes > 0 ? '#34d399' : 'rgba(255,255,255,0.25)', marginTop: '0.15rem' }}>
-                          {formatTimeRange(day.data.totalMinutes)}
+
+                        {/* 3단: 소형 뱃지 영역 (강의 / 복습 / 수면) */}
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '100%',
+                          minHeight: '22px'
+                        }}>
+                          {day.data.totalMinutes > 0 && (
+                            <div style={{
+                              fontSize: '0.6rem',
+                              display: 'flex',
+                              justifyContent: 'center',
+                              gap: '2px',
+                              whiteSpace: 'nowrap',
+                              lineHeight: 1
+                            }}>
+                              {day.data.totalLectureMinutes > 0 && (
+                                <span style={{
+                                  color: '#a5b4fc',
+                                  background: 'rgba(99, 102, 241, 0.16)',
+                                  padding: '1px 3px',
+                                  borderRadius: '2px',
+                                  fontWeight: '500'
+                                }}>
+                                  🎧{formatCompactTime(day.data.totalLectureMinutes)}
+                                </span>
+                              )}
+                              {day.data.totalReviewMinutes > 0 && (
+                                <span style={{
+                                  color: '#6ee7b7',
+                                  background: 'rgba(16, 185, 129, 0.16)',
+                                  padding: '1px 3px',
+                                  borderRadius: '2px',
+                                  fontWeight: '500'
+                                }}>
+                                  📖{formatCompactTime(day.data.totalReviewMinutes)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {day.data.totalSleepMinutes > 0 && (
+                            <div style={{
+                              fontSize: '0.6rem',
+                              color: '#c084fc',
+                              background: 'rgba(139, 92, 246, 0.14)',
+                              padding: '1px 4px',
+                              borderRadius: '2px',
+                              fontWeight: 'bold',
+                              whiteSpace: 'nowrap',
+                              lineHeight: 1
+                            }}>
+                              💤 {formatCompactTime(day.data.totalSleepMinutes)}
+                            </div>
+                          )}
                         </div>
-                        {day.data.totalMinutes > 0 && (
-                          <div style={{ fontSize: '0.62rem', display: 'flex', justifyContent: 'center', gap: '0.25rem', marginTop: '0.1rem', flexWrap: 'wrap' }}>
-                            {day.data.totalLectureMinutes > 0 && (
-                              <span style={{ color: '#a5b4fc' }}>🎧{formatTimeRange(day.data.totalLectureMinutes)}</span>
-                            )}
-                            {day.data.totalReviewMinutes > 0 && (
-                              <span style={{ color: '#6ee7b7' }}>📖{formatTimeRange(day.data.totalReviewMinutes)}</span>
-                            )}
-                          </div>
-                        )}
-                        {day.data.totalSleepMinutes > 0 && (
-                          <div style={{ fontSize: '0.62rem', color: '#c084fc', marginTop: '0.12rem', fontWeight: 'bold' }}>
-                            💤 {formatTimeRange(day.data.totalSleepMinutes)}
-                          </div>
-                        )}
                       </div>
                     </div>
                   );

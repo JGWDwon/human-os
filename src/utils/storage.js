@@ -93,14 +93,15 @@ const INITIAL_QUESTS = [
 ];
 
 export const SUBJECT_COLORS = [
-  '#38bdf8', // Sky
-  '#a855f7', // Purple
-  '#10b981', // Emerald
-  '#f59e0b', // Amber
-  '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#f97316', // Orange
-  '#8b5cf6', // Violet
+  '#38bdf8', // 0: Sky (셈회)
+  '#a855f7', // 1: Purple (행소)
+  '#10b981', // 2: Emerald (재무)
+  '#f43f5e', // 3: Rose Red (세법학 - 식사 오렌지와 완벽 분리)
+  '#06b6d4', // 4: Cyan
+  '#ec4899', // 5: Pink
+  '#6366f1', // 6: Indigo
+  '#14b8a6', // 7: Teal
+  '#84cc16', // 8: Lime
 ];
 
 export function getSubjectColor(subjectName, customSubjectsList = null) {

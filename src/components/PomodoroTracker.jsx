@@ -1147,15 +1147,25 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         gap: '0.85rem'
       }}>
         {/* ========================================================================= */}
-        {/* 1. 일간 순공 목표 카드 (6h, 7h, 8h 정밀 백분율 눈금 연동) */}
+        {/* 1. 일간 순공 목표 카드 (6h, 7h, 8h 3구간 균등 분할 눈금 연동) */}
         {/* ========================================================================= */}
         {(() => {
-          // 일간 기준: 총 480분 (8시간) = 100%
-          // 6시간 (360분) = 75.0%
-          // 7시간 (420분) = 87.5%
-          // 8시간 (480분) = 100%
-          const dailyTotalScaleMins = 480;
-          const dailyFillPct = Math.min(100, (todayStudyMins / dailyTotalScaleMins) * 100);
+          // 일간 목표: 3구간 균등 분할 (착시 제거)
+          // 0 ~ 6h: 0% ~ 33.33% (1구간)
+          // 6 ~ 7h: 33.33% ~ 66.67% (2구간)
+          // 7 ~ 8h: 66.67% ~ 100% (3구간)
+          let dailyFillPct = 0;
+          if (todayStudyMins <= 0) {
+            dailyFillPct = 0;
+          } else if (todayStudyMins <= 360) {
+            dailyFillPct = (todayStudyMins / 360) * 33.33;
+          } else if (todayStudyMins <= 420) {
+            dailyFillPct = 33.33 + ((todayStudyMins - 360) / 60) * 33.34;
+          } else if (todayStudyMins <= 480) {
+            dailyFillPct = 66.67 + ((todayStudyMins - 420) / 60) * 33.33;
+          } else {
+            dailyFillPct = 100;
+          }
 
           let dailyBarGradient = 'linear-gradient(90deg, #0284c7, #38bdf8)';
           if (todayStudyMins >= 480) {
@@ -1189,7 +1199,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 </div>
               </div>
 
-              {/* 정밀 눈금 연동 일체형 프로그레스 바 (0~480분 기준, 6h=75%, 7h=87.5%) */}
+              {/* 균등 분할 눈금 연동 일체형 프로그레스 바 (0~6h: 33.33%, 6~7h: 33.34%, 7~8h: 33.33%) */}
               <div style={{
                 position: 'relative',
                 height: '8px',
@@ -1207,10 +1217,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   transition: 'width 0.3s ease'
                 }} />
 
-                {/* 6h (75%) 분할 구분선 */}
+                {/* 6h (33.33%) 분할 구분선 */}
                 <div style={{
                   position: 'absolute',
-                  left: '75%',
+                  left: '33.33%',
                   top: 0,
                   bottom: 0,
                   width: '2px',
@@ -1218,10 +1228,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   zIndex: 2
                 }} />
 
-                {/* 7h (87.5%) 분할 구분선 */}
+                {/* 7h (66.67%) 분할 구분선 */}
                 <div style={{
                   position: 'absolute',
-                  left: '87.5%',
+                  left: '66.67%',
                   top: 0,
                   bottom: 0,
                   width: '2px',
@@ -1230,13 +1240,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 }} />
               </div>
 
-              {/* 눈금 라벨 (정확한 백분율 위치에 absolute 배치하여 100% 일치) */}
+              {/* 눈금 라벨 (균등 3분할 33.33% / 66.67% 정확 매핑) */}
               <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                 <span style={{ position: 'absolute', left: 0 }}>0h</span>
                 
                 <span style={{
                   position: 'absolute',
-                  left: '75%',
+                  left: '33.33%',
                   transform: 'translateX(-50%)',
                   color: todayStudyMins >= 360 ? '#38bdf8' : 'var(--text-muted)',
                   fontWeight: todayStudyMins >= 360 ? 'bold' : 'normal',
@@ -1247,7 +1257,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
 
                 <span style={{
                   position: 'absolute',
-                  left: '87.5%',
+                  left: '66.67%',
                   transform: 'translateX(-50%)',
                   color: todayStudyMins >= 420 ? '#10b981' : 'var(--text-muted)',
                   fontWeight: todayStudyMins >= 420 ? 'bold' : 'normal',
@@ -1283,15 +1293,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         })()}
 
         {/* ========================================================================= */}
-        {/* 2. 주간 목표 카드 (36h~42h / 휴가 보정, 기본 및 최대 목표 정밀 눈금 연동) */}
+        {/* 2. 주간 목표 카드 (36h~42h / 휴가 보정, 기본 및 최대 2구간 50% 균등 분할) */}
         {/* ========================================================================= */}
         {(() => {
-          // 주간 기준: 최대 목표(targetMaxMins) = 100%
-          // 기본 목표(targetMinMins) = (targetMinMins / targetMaxMins) * 100% (약 85.7%)
+          // 주간 목표: 기본 목표까지 50%, 최대 목표까지 50% 균등 분할 (착시 제거)
           const maxMins = weeklyGoal.targetMaxMins || 2520;
           const minMins = weeklyGoal.targetMinMins || 2160;
-          const weeklyMinPct = maxMins > 0 ? (minMins / maxMins) * 100 : 85.7;
-          const weeklyFillPct = maxMins > 0 ? Math.min(100, (weeklyGoal.weeklyMinutes / maxMins) * 100) : 0;
+
+          let weeklyFillPct = 0;
+          if (weeklyGoal.weeklyMinutes <= 0) {
+            weeklyFillPct = 0;
+          } else if (weeklyGoal.weeklyMinutes <= minMins) {
+            weeklyFillPct = minMins > 0 ? (weeklyGoal.weeklyMinutes / minMins) * 50 : 0;
+          } else {
+            const extraRange = Math.max(1, maxMins - minMins);
+            const extraMins = weeklyGoal.weeklyMinutes - minMins;
+            weeklyFillPct = 50 + Math.min(50, (extraMins / extraRange) * 50);
+          }
+
           const basicAchievementPct = minMins > 0 ? Math.round((weeklyGoal.weeklyMinutes / minMins) * 100) : 100;
 
           let weeklyBarGradient = 'linear-gradient(90deg, #6366f1, #a855f7)';
@@ -1332,7 +1351,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 </div>
               </div>
 
-              {/* 정밀 주간 프로그레스 바 (0~최대목표 기준, 기본목표 분할선 표시) */}
+              {/* 균등 50% 분할 주간 프로그레스 바 (0~기본: 50%, 기본~최대: 50%) */}
               <div style={{
                 position: 'relative',
                 height: '8px',
@@ -1349,10 +1368,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   transition: 'width 0.3s ease'
                 }} />
 
-                {/* 기본 목표 분할선 */}
+                {/* 기본 목표 50% 분할선 */}
                 <div style={{
                   position: 'absolute',
-                  left: `${weeklyMinPct}%`,
+                  left: '50%',
                   top: 0,
                   bottom: 0,
                   width: '2px',
@@ -1361,13 +1380,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 }} />
               </div>
 
-              {/* 눈금 라벨 (정확한 위치 매핑) */}
+              {/* 눈금 라벨 (50% 중앙 기본목표, 100% 우측 최대목표) */}
               <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                 <span style={{ position: 'absolute', left: 0 }}>0h</span>
 
                 <span style={{
                   position: 'absolute',
-                  left: `${weeklyMinPct}%`,
+                  left: '50%',
                   transform: 'translateX(-50%)',
                   color: weeklyGoal.isMinReached ? '#34d399' : 'var(--text-muted)',
                   fontWeight: weeklyGoal.isMinReached ? 'bold' : 'normal',
