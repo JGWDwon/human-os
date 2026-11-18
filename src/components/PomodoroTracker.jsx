@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun, Edit2, Bookmark, CheckSquare, Square, ExternalLink } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun, Edit2, Bookmark, CheckSquare, Square, ExternalLink, Sparkles } from 'lucide-react';
 import { storage, getSubjectColor, calculateSleepDuration } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
@@ -183,10 +183,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     return () => window.removeEventListener('subjects-updated', handleSubjectsUpdated);
   }, []);
 
-  // Supplementary Slots (막힌 문제 나중에 풀기/주말 보충)
+  // Supplementary Slots (막힌 문제 킵)
   const [supplementarySlots, setSupplementarySlots] = useState(() => storage.getSupplementarySlots());
   const [quickSlotTitle, setQuickSlotTitle] = useState('');
-  const [quickSlotTarget, setQuickSlotTarget] = useState('weekend');
+  const [showWarmupModal, setShowWarmupModal] = useState(false);
 
   useEffect(() => {
     const handleSlotsUpdated = () => {
@@ -204,7 +204,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     storage.addSupplementarySlot({
       title: trimmed,
       subject: selectedSubject || '기타',
-      targetTime: quickSlotTarget,
       memo: ''
     });
     setQuickSlotTitle('');
@@ -229,6 +228,33 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const pendingSlots = useMemo(() => {
     return (supplementarySlots || []).filter(s => !s.isCompleted);
   }, [supplementarySlots]);
+
+  const checkAndTriggerWarmupModal = () => {
+    if (activeTimerMode === 'meal') return false;
+    const actualToday = getTodayStr();
+    let alreadyDismissed = false;
+    try {
+      alreadyDismissed = sessionStorage.getItem(`human_os_warmup_dismissed_${actualToday}`) === 'true';
+    } catch (e) {}
+
+    const isFirstSessionOfDay = (todayData.timestamps || []).length === 0;
+    const hasManyPendingSlots = pendingSlots.length >= 5;
+
+    if (isFirstSessionOfDay && hasManyPendingSlots && !alreadyDismissed) {
+      setShowWarmupModal(true);
+      return true;
+    }
+    return false;
+  };
+
+  const handleDismissWarmupAndProceed = () => {
+    const actualToday = getTodayStr();
+    try {
+      sessionStorage.setItem(`human_os_warmup_dismissed_${actualToday}`, 'true');
+    } catch (e) {}
+    setShowWarmupModal(false);
+    setShowSubjectConfirmModal(true);
+  };
 
   const sessionStartTsRef = useRef(null);
   const pauseStartTsRef = useRef(null);
@@ -712,6 +738,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         return;
       }
 
+      // Check if warmup is needed for first session of the day
+      if (checkAndTriggerWarmupModal()) {
+        return;
+      }
+
       // Starting new session: prompt for subject confirmation/selection
       setShowSubjectConfirmModal(true);
     }
@@ -728,9 +759,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     setShowSleepModal(false);
     playSound('click');
 
-    // If timer was pending start, proceed to subject selection
+    // If timer was pending start, check warmup or proceed to subject selection
     if (pendingTimerStartRef.current) {
       pendingTimerStartRef.current = false;
+      if (checkAndTriggerWarmupModal()) {
+        return;
+      }
       setShowSubjectConfirmModal(true);
     }
   };
@@ -2129,50 +2163,69 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
             </button>
           </div>
 
+          {/* 5개 이상 누적 시 워밍업 권장 배너 */}
+          {pendingSlots.length >= 5 && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              borderRadius: '6px',
+              padding: '0.4rem 0.65rem',
+              marginBottom: '0.65rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.74rem', color: '#fbbf24' }}>
+                <Sparkles size={14} color="#f59e0b" />
+                <span>보충 문제가 <strong>{pendingSlots.length}개</strong> 누적되었습니다! 2~3개를 먼저 해결해보세요.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWarmupModal(true)}
+                style={{
+                  background: '#f59e0b',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '0.2rem 0.55rem',
+                  fontSize: '0.7rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                워밍업 풀기
+              </button>
+            </div>
+          )}
+
           {/* Quick Input Bar */}
-          <form onSubmit={handleQuickAddSlot} style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.65rem' }}>
+          <form onSubmit={handleQuickAddSlot} style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.65rem' }}>
             <input
               type="text"
-              placeholder={selectedSubject ? `막힌 문제 (예: ${selectedSubject}12장05번)` : '막힌 문제 킵 (예: 셈회12장05번)'}
+              placeholder={selectedSubject ? `막힌 문제 킵 (예: ${selectedSubject}12장05번)` : '막힌 문제 킵 (예: 셈회12장05번)'}
               value={quickSlotTitle}
               onChange={(e) => setQuickSlotTitle(e.target.value)}
               style={{
                 flex: 1,
                 minWidth: 0,
-                padding: '0.38rem 0.65rem',
+                padding: '0.4rem 0.7rem',
                 borderRadius: '6px',
                 background: 'rgba(0,0,0,0.4)',
                 border: '1px solid rgba(245, 158, 11, 0.35)',
                 color: '#fff',
-                fontSize: '0.8rem',
+                fontSize: '0.82rem',
                 outline: 'none'
               }}
             />
-
-            <select
-              value={quickSlotTarget}
-              onChange={(e) => setQuickSlotTarget(e.target.value)}
-              style={{
-                padding: '0.38rem 0.45rem',
-                borderRadius: '6px',
-                background: 'rgba(0,0,0,0.4)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: quickSlotTarget === 'weekend' ? '#f59e0b' : '#818cf8',
-                fontSize: '0.75rem',
-                outline: 'none'
-              }}
-            >
-              <option value="weekend">🌴 주말 보충</option>
-              <option value="today_end">🌙 오늘 끝난 뒤</option>
-              <option value="anytime">⏳ 여유 시</option>
-            </select>
 
             <button
               type="submit"
               className="btn btn-primary"
               style={{
-                padding: '0.38rem 0.75rem',
-                fontSize: '0.78rem',
+                padding: '0.4rem 0.9rem',
+                fontSize: '0.8rem',
                 fontWeight: 'bold',
                 background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                 color: '#000',
@@ -2184,7 +2237,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                 gap: '0.2rem'
               }}
             >
-              <Plus size={14} /> 킵
+              <Plus size={15} /> 킵
             </button>
           </form>
 
@@ -2237,17 +2290,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                         whiteSpace: 'nowrap'
                       }}>
                         {slot.subject}
-                      </span>
-
-                      <span style={{
-                        fontSize: '0.65rem',
-                        color: slot.targetTime === 'weekend' ? '#f59e0b' : '#818cf8',
-                        background: slot.targetTime === 'weekend' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(129, 140, 248, 0.12)',
-                        padding: '0.08rem 0.35rem',
-                        borderRadius: '3px',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {slot.targetTime === 'weekend' ? '🌴 주말' : slot.targetTime === 'today_end' ? '🌙 오늘끝' : '⏳ 여유'}
                       </span>
 
                       <span style={{
@@ -2808,6 +2850,212 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
             <div style={{ marginTop: '0.85rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
               🌴 휴가 기간에는 수면 기록 없이도 뽀모도로를 바로 시작할 수 있습니다.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5개 이상 누적 시: 다음 날 첫 공부 시작 전 워밍업 모달 */}
+      {showWarmupModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10003,
+          padding: '1rem'
+        }}>
+          <div className="glass-panel animate-fade-in" style={{
+            maxWidth: '460px',
+            width: '100%',
+            background: '#0f172a',
+            border: '1.5px solid #f59e0b',
+            borderRadius: '16px',
+            padding: '1.4rem',
+            boxShadow: '0 15px 40px rgba(0,0,0,0.7)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.85rem'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{
+                  background: 'rgba(245, 158, 11, 0.2)',
+                  color: '#f59e0b',
+                  padding: '0.35rem',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                  <Sparkles size={20} />
+                </span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.08rem', color: '#f59e0b', fontWeight: 'bold' }}>
+                    첫 공부 전 워밍업 알림
+                  </h3>
+                  <p style={{ margin: '0.15rem 0 0', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                    보충 문제가 5개 이상 쌓였습니다! (현재 {pendingSlots.length}건 대기)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissWarmupAndProceed}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Motivation Guidance Box */}
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: '8px',
+              padding: '0.65rem 0.8rem',
+              fontSize: '0.78rem',
+              color: '#fef3c7',
+              lineHeight: 1.45
+            }}>
+              💡 오늘 새로운 공부를 시작하기 전, 막혀서 보류했던 문제 중 <strong>2~3개를 먼저 가볍게 풀고 지우면</strong> 뇌가 확실하게 예열되어 본 공부 효율이 극대화됩니다!
+            </div>
+
+            {/* Interactive Problem List (Pending slots) */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.4rem',
+              maxHeight: '220px',
+              overflowY: 'auto',
+              paddingRight: '0.2rem'
+            }}>
+              {pendingSlots.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '1rem', color: '#34d399', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                  🎉 모든 보충 문제를 해결했습니다! 상쾌하게 공부를 시작하세요.
+                </div>
+              ) : (
+                pendingSlots.map((slot) => {
+                  const subCol = getSubjectColor(slot.subject, subjects);
+                  return (
+                    <div
+                      key={slot.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.5rem',
+                        background: 'rgba(255, 255, 255, 0.04)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '8px',
+                        padding: '0.45rem 0.65rem',
+                        fontSize: '0.82rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickToggleSlot(slot.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: '#94a3b8'
+                          }}
+                          title="해결 완료로 체크"
+                        >
+                          <Square size={18} color="#f59e0b" />
+                        </button>
+
+                        <span style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 'bold',
+                          padding: '0.1rem 0.4rem',
+                          borderRadius: '4px',
+                          color: subCol,
+                          background: `${subCol}1f`,
+                          border: `1px solid ${subCol}40`,
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {slot.subject}
+                        </span>
+
+                        <span style={{
+                          color: '#f1f5f9',
+                          fontWeight: 'bold',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {slot.title}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDeleteSlot(slot.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          padding: '0.15rem'
+                        }}
+                        title="삭제"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginTop: '0.35rem' }}>
+              <button
+                type="button"
+                onClick={handleDismissWarmupAndProceed}
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  fontSize: '0.88rem',
+                  fontWeight: 'bold',
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem'
+                }}
+              >
+                <Check size={18} /> 워밍업 완료! 오늘 공부 시작하기
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDismissWarmupAndProceed}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.76rem',
+                  cursor: 'pointer',
+                  padding: '0.3rem',
+                  textAlign: 'center'
+                }}
+              >
+                나중에 풀고 바로 시작하기 ▶
+              </button>
             </div>
           </div>
         </div>

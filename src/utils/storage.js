@@ -923,7 +923,7 @@ export const storage = {
     return safeParse(raw, []);
   },
 
-  addSupplementarySlot({ title, subject = '', targetTime = 'weekend', memo = '' }) {
+  addSupplementarySlot({ title, subject = '', memo = '' }) {
     if (!title || !title.trim()) return null;
     const slots = this.getSupplementarySlots();
     const now = new Date();
@@ -945,7 +945,6 @@ export const storage = {
       id: `slot_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       title: title.trim(),
       subject: detectedSubject || '기타',
-      targetTime: targetTime || 'weekend', // 'today_end' (오늘 공부 후) | 'weekend' (주말) | 'anytime' (나중에)
       memo: (memo || '').trim(),
       date: dateStr,
       isCompleted: false,

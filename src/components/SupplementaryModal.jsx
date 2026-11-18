@@ -7,31 +7,20 @@ import {
   Edit2, 
   X, 
   Check, 
-  Calendar, 
-  Clock, 
-  Sparkles, 
-  Filter,
-  Bookmark
+  Bookmark,
+  Filter
 } from 'lucide-react';
 import { storage, getSubjectColor } from '../utils/storage';
-
-const TARGET_TIME_CONFIG = {
-  weekend: { label: '🌴 주말 보충', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.35)' },
-  today_end: { label: '🌙 오늘 공부 끝난 뒤', color: '#818cf8', bg: 'rgba(129, 140, 248, 0.15)', border: 'rgba(129, 140, 248, 0.35)' },
-  anytime: { label: '⏳ 여유 생길 때', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.35)' }
-};
 
 export default function SupplementaryModal({ isOpen, onClose }) {
   const [slots, setSlots] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'completed' | 'all'
-  const [selectedTargetFilter, setSelectedTargetFilter] = useState('all'); // 'all' | 'weekend' | 'today_end' | 'anytime'
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('all');
 
   // New slot form state
   const [titleInput, setTitleInput] = useState('');
   const [subjectInput, setSubjectInput] = useState('');
-  const [targetTimeInput, setTargetTimeInput] = useState('weekend');
   const [memoInput, setMemoInput] = useState('');
   const [showMemoField, setShowMemoField] = useState(false);
 
@@ -39,7 +28,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
   const [editingSlotId, setEditingSlotId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editSubject, setEditSubject] = useState('');
-  const [editTargetTime, setEditTargetTime] = useState('weekend');
   const [editMemo, setEditMemo] = useState('');
 
   const loadData = () => {
@@ -88,7 +76,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
     storage.addSupplementarySlot({
       title: trimmedTitle,
       subject: subjectInput.trim() || '기타',
-      targetTime: targetTimeInput,
       memo: memoInput.trim()
     });
 
@@ -111,7 +98,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
     setEditingSlotId(slot.id);
     setEditTitle(slot.title);
     setEditSubject(slot.subject);
-    setEditTargetTime(slot.targetTime || 'weekend');
     setEditMemo(slot.memo || '');
   };
 
@@ -123,7 +109,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
     storage.updateSupplementarySlot(slotId, {
       title: editTitle.trim(),
       subject: editSubject.trim() || '기타',
-      targetTime: editTargetTime,
       memo: editMemo.trim()
     });
     setEditingSlotId(null);
@@ -136,9 +121,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
     // Tab filter
     if (activeTab === 'pending' && slot.isCompleted) return false;
     if (activeTab === 'completed' && !slot.isCompleted) return false;
-
-    // Target time filter
-    if (selectedTargetFilter !== 'all' && slot.targetTime !== selectedTargetFilter) return false;
 
     // Subject filter
     if (selectedSubjectFilter !== 'all' && slot.subject !== selectedSubjectFilter) return false;
@@ -162,7 +144,7 @@ export default function SupplementaryModal({ isOpen, onClose }) {
       padding: '1rem'
     }}>
       <div className="glass-panel animate-fade-in" style={{
-        maxWidth: '620px',
+        maxWidth: '580px',
         width: '100%',
         maxHeight: '90vh',
         display: 'flex',
@@ -198,7 +180,7 @@ export default function SupplementaryModal({ isOpen, onClose }) {
               </h2>
             </div>
             <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              복습 중 막혀서 넘어간 문항을 킵해두고, 오늘 공부 후나 주말에 완벽히 정복하세요.
+              복습 중 막혀서 넘어간 문제를 킵해두고, 다음 공부 전이나 여유 시간에 완벽히 정복하세요.
             </p>
           </div>
           <button
@@ -217,15 +199,14 @@ export default function SupplementaryModal({ isOpen, onClose }) {
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
         }}>
           <form onSubmit={handleAddSlot} style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-            {/* Top row: Title + Subject + Target Time + Submit Button */}
-            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.45rem' }}>
               <input
                 type="text"
                 placeholder="막힌 문제 입력 (예: 셈회12장05번)"
                 value={titleInput}
                 onChange={handleTitleChange}
                 style={{
-                  flex: '2 1 180px',
+                  flex: 1,
                   padding: '0.45rem 0.75rem',
                   borderRadius: '8px',
                   background: 'rgba(0,0,0,0.4)',
@@ -241,7 +222,7 @@ export default function SupplementaryModal({ isOpen, onClose }) {
                 value={subjectInput}
                 onChange={(e) => setSubjectInput(e.target.value)}
                 style={{
-                  flex: '1 1 90px',
+                  width: '105px',
                   padding: '0.45rem 0.5rem',
                   borderRadius: '8px',
                   background: 'rgba(0,0,0,0.4)',
@@ -258,26 +239,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
                   </option>
                 ))}
                 <option value="기타" style={{ color: '#fff', background: '#1e293b' }}>기타</option>
-              </select>
-
-              {/* Target Time Select */}
-              <select
-                value={targetTimeInput}
-                onChange={(e) => setTargetTimeInput(e.target.value)}
-                style={{
-                  flex: '1.2 1 120px',
-                  padding: '0.45rem 0.5rem',
-                  borderRadius: '8px',
-                  background: 'rgba(0,0,0,0.4)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  color: TARGET_TIME_CONFIG[targetTimeInput]?.color || '#fff',
-                  fontSize: '0.82rem',
-                  outline: 'none'
-                }}
-              >
-                <option value="weekend">🌴 주말 보충</option>
-                <option value="today_end">🌙 오늘 끝난 뒤</option>
-                <option value="anytime">⏳ 여유 생길 때</option>
               </select>
 
               <button
@@ -357,14 +318,13 @@ export default function SupplementaryModal({ isOpen, onClose }) {
           </form>
         </div>
 
-        {/* Filter Bar (Tabs & Filter Pills) */}
+        {/* Filter Bar (Tabs & Subject Filter) */}
         <div style={{
           padding: '0.65rem 1.3rem',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           gap: '0.5rem',
-          flexWrap: 'wrap',
           borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
           background: 'rgba(0, 0, 0, 0.2)'
         }}>
@@ -417,49 +377,26 @@ export default function SupplementaryModal({ isOpen, onClose }) {
             </button>
           </div>
 
-          {/* Sub Filters: Target Time & Subject */}
-          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            {/* Target Time Filter */}
-            <select
-              value={selectedTargetFilter}
-              onChange={(e) => setSelectedTargetFilter(e.target.value)}
-              style={{
-                padding: '0.2rem 0.45rem',
-                borderRadius: '6px',
-                background: 'rgba(0,0,0,0.35)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: 'var(--text-muted)',
-                fontSize: '0.72rem',
-                outline: 'none'
-              }}
-            >
-              <option value="all">전체 시점</option>
-              <option value="weekend">🌴 주말 보충</option>
-              <option value="today_end">🌙 오늘 끝난 뒤</option>
-              <option value="anytime">⏳ 여유 시</option>
-            </select>
-
-            {/* Subject Filter */}
-            <select
-              value={selectedSubjectFilter}
-              onChange={(e) => setSelectedSubjectFilter(e.target.value)}
-              style={{
-                padding: '0.2rem 0.45rem',
-                borderRadius: '6px',
-                background: 'rgba(0,0,0,0.35)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: 'var(--text-muted)',
-                fontSize: '0.72rem',
-                outline: 'none'
-              }}
-            >
-              <option value="all">전체 과목</option>
-              {subjects.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-              <option value="기타">기타</option>
-            </select>
-          </div>
+          {/* Subject Filter */}
+          <select
+            value={selectedSubjectFilter}
+            onChange={(e) => setSelectedSubjectFilter(e.target.value)}
+            style={{
+              padding: '0.25rem 0.55rem',
+              borderRadius: '6px',
+              background: 'rgba(0,0,0,0.35)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: 'var(--text-muted)',
+              fontSize: '0.74rem',
+              outline: 'none'
+            }}
+          >
+            <option value="all">전체 과목</option>
+            {subjects.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+            <option value="기타">기타</option>
+          </select>
         </div>
 
         {/* Slot Items List */}
@@ -499,7 +436,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
             filteredSlots.map(slot => {
               const isEditing = editingSlotId === slot.id;
               const subColor = getSubjectColor(slot.subject, subjects);
-              const targetConfig = TARGET_TIME_CONFIG[slot.targetTime] || TARGET_TIME_CONFIG.weekend;
 
               if (isEditing) {
                 return (
@@ -547,23 +483,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
                           <option key={s} value={s}>{s}</option>
                         ))}
                         <option value="기타">기타</option>
-                      </select>
-                      <select
-                        value={editTargetTime}
-                        onChange={(e) => setEditTargetTime(e.target.value)}
-                        style={{
-                          flex: 1.2,
-                          padding: '0.35rem 0.45rem',
-                          borderRadius: '6px',
-                          background: 'rgba(0,0,0,0.4)',
-                          border: '1px solid rgba(255,255,255,0.2)',
-                          color: '#fff',
-                          fontSize: '0.8rem'
-                        }}
-                      >
-                        <option value="weekend">🌴 주말 보충</option>
-                        <option value="today_end">🌙 오늘 끝난 뒤</option>
-                        <option value="anytime">⏳ 여유 생길 때</option>
                       </select>
                     </div>
 
@@ -646,7 +565,7 @@ export default function SupplementaryModal({ isOpen, onClose }) {
 
                     {/* Content */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                         {/* Subject Tag */}
                         <span style={{
                           fontSize: '0.68rem',
@@ -658,19 +577,6 @@ export default function SupplementaryModal({ isOpen, onClose }) {
                           border: `1px solid ${subColor}40`
                         }}>
                           {slot.subject}
-                        </span>
-
-                        {/* Target Time Tag */}
-                        <span style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 'bold',
-                          padding: '0.1rem 0.45rem',
-                          borderRadius: '4px',
-                          color: targetConfig.color,
-                          background: targetConfig.bg,
-                          border: `1px solid ${targetConfig.border}`
-                        }}>
-                          {targetConfig.label}
                         </span>
 
                         {/* Title */}
@@ -754,7 +660,7 @@ export default function SupplementaryModal({ isOpen, onClose }) {
           fontSize: '0.75rem',
           color: 'var(--text-muted)'
         }}>
-          <span>💡 막히는 문항은 대충 보지 말고 킵한 뒤 주말에 맑은 정신으로 몰입하세요.</span>
+          <span>💡 5개 이상 쌓이면 다음 날 첫 공부 시작 전 워밍업 알림이 뜹니다.</span>
           <button
             onClick={onClose}
             className="btn btn-secondary"
