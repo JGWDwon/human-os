@@ -355,21 +355,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
           const result = await LocalNotifications.checkPermissions();
           setNotifPermission(result.display === 'granted' ? 'granted' : 'default');
 
-          // Clean up legacy channels and ensure v5 channel with new chime sound is registered
+          // Clean up legacy channels so native MainActivity v6 channel (USAGE_ALARM 강제 알람) takes effect
           try {
+            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v5' }).catch(() => {});
             await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v4' }).catch(() => {});
             await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v3' }).catch(() => {});
-            await LocalNotifications.createChannel({
-              id: 'pomodoro-alarm-v5',
-              name: 'Pomodoro Alarm (신규 종소리)',
-              description: '알람 완료 시 울리는 종소리 알림 채널',
-              importance: 5,
-              sound: 'bell2',
-              visibility: 1,
-              vibration: true
-            }).catch(() => {});
           } catch (channelErr) {
-            console.warn('Channel setup error:', channelErr);
+            console.warn('Channel cleanup error:', channelErr);
           }
         } else if (typeof window !== 'undefined' && 'Notification' in window) {
           setNotifPermission(window.Notification.permission);
@@ -488,16 +480,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         setNotifPermission(granted ? 'granted' : 'denied');
         if (granted) {
           try {
+            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v5' }).catch(() => {});
             await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v4' }).catch(() => {});
-            await LocalNotifications.createChannel({
-              id: 'pomodoro-alarm-v5',
-              name: 'Pomodoro Alarm (신규 종소리)',
-              description: '알람 완료 시 울리는 종소리 알림 채널',
-              importance: 5,
-              sound: 'bell2',
-              visibility: 1,
-              vibration: true
-            }).catch(() => {});
+            await LocalNotifications.deleteChannel({ id: 'pomodoro-alarm-v3' }).catch(() => {});
           } catch (e) {}
 
           await LocalNotifications.schedule({
@@ -506,7 +491,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
               title: '알림 활성화 완료! 🍅',
               body: '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.',
               schedule: { at: new Date(Date.now() + 500) },
-              channelId: 'pomodoro-alarm-v5',
+              channelId: 'pomodoro-alarm-v6',
               sound: 'bell2'
             }]
           });
@@ -775,7 +760,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   title: '성장의 숲 🍅',
                   body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
                   schedule: { at: new Date(endTime), allowWhileIdle: true },
-                  channelId: 'pomodoro-alarm-v5',
+                  channelId: 'pomodoro-alarm-v6',
                   sound: 'bell2',
                   vibrationPattern: [200, 100, 200, 100, 400],
                   actionTypeId: 'OPEN_APP',

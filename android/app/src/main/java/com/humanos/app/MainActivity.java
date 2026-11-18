@@ -2,7 +2,9 @@ package com.humanos.app;
 
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
@@ -32,9 +34,10 @@ public class MainActivity extends BridgeActivity {
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v2");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v3");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v4");
+          notificationManager.deleteNotificationChannel("pomodoro-alarm-v5");
         } catch (Exception e) {}
 
-        String channelId = "pomodoro-alarm-v5";
+        String channelId = "pomodoro-alarm-v6";
         CharSequence channelName = "Pomodoro Alarm (무음 뚫는 강제 알람)";
         String channelDesc = "알람 완료 시 무음/방해금지 모드에서도 강제로 슬라이드 팝업과 소리가 울리는 채널";
         int importance = NotificationManager.IMPORTANCE_HIGH;
@@ -47,10 +50,20 @@ public class MainActivity extends BridgeActivity {
         channel.setBypassDnd(true); // 방해금지 모드 우회
         channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
 
+        // 리소스 ID 기반 안전한 URI 구성 (Android 8+ SystemUI 권한 호환)
+        int resId = getResources().getIdentifier("bell2", "raw", getPackageName());
+        Uri soundUri;
+        if (resId != 0) {
+          soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + getPackageName() + "/" + resId);
+        } else {
+          soundUri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + getPackageName() + "/raw/bell2");
+        }
+
+        try {
+          grantUriPermission("com.android.systemui", soundUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception e) {}
+
         // USAGE_ALARM + AUDIBILITY_ENFORCED 속성으로 무음 모드 강제 뚫기
-        Uri soundUri = Uri.parse(
-          "android.resource://" + getPackageName() + "/raw/bell2"
-        );
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
           .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
           .setUsage(AudioAttributes.USAGE_ALARM)
