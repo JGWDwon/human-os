@@ -225,9 +225,11 @@ export const storage = {
       
       let status = 'none';
       if (totalMins >= 480) {
-        status = 'completed'; // 8h+ (울창 🌲)
+        status = 'completed'; // 8h+ (3단계 울창 🌲)
+      } else if (totalMins >= 420) {
+        status = 'level2'; // 7h+ (2단계 도약 🌳)
       } else if (totalMins >= 360) {
-        status = 'partial'; // 6h+ (성장 🌿)
+        status = 'partial'; // 6h+ (1단계 성장 🌿)
       } else if (totalMins >= 240) {
         status = 'sprout'; // 4h+ (새싹 🌱)
       } else if (isVac) {
@@ -417,9 +419,10 @@ export const storage = {
     if (!milestonesAwarded[dateStr]) milestonesAwarded[dateStr] = {};
 
     const milestoneChecks = [
-      { threshold: 240, bonus: 50, icon: '🌱', label: '새싹 (4시간 집중) 달성' },
-      { threshold: 360, bonus: 100, icon: '🌿', label: '성장 (6시간 집중) 달성' },
-      { threshold: 480, bonus: 150, icon: '🌲', label: '울창 (8시간 집중) 달성' },
+      { threshold: 240, bonus: 40, icon: '🌱', label: '새싹 달성 (4시간 집중)' },
+      { threshold: 360, bonus: 80, icon: '🌿', label: '1단계 일간 목표 (6시간 집중) 달성' },
+      { threshold: 420, bonus: 120, icon: '🌳', label: '2단계 우수 목표 (7시간 집중) 달성' },
+      { threshold: 480, bonus: 160, icon: '🌲', label: '3단계 완벽 목표 (8시간 울창) 달성' },
     ];
 
     milestoneChecks.forEach(m => {
@@ -885,6 +888,121 @@ export const storage = {
 
   setSleepTimes(dateStr, bedTime, wakeTime) {
     return this.saveDailyLog(dateStr, { bedTime, wakeTime });
+  },
+
+  // --- Daily Goals (일간 목표 6h, 7h, 8h 차등) & Weekly Goals (주간 목표 36~42h + 휴가 반영) ---
+  getDailyGoalStatus(totalMinutes) {
+    const mins = Math.max(0, totalMinutes || 0);
+    // 6h: 360m (1단계), 7h: 420m (2단계), 8h: 480m (3단계)
+    let level = 0;
+    if (mins >= 480) level = 3;
+    else if (mins >= 420) level = 2;
+    else if (mins >= 360) level = 1;
+
+    let nextTarget = 360;
+    let nextLabel = '1단계(6h)';
+    let remainingMins = Math.max(0, 360 - mins);
+
+    if (level === 1) {
+      nextTarget = 420;
+      nextLabel = '2단계(7h)';
+      remainingMins = Math.max(0, 420 - mins);
+    } else if (level === 2) {
+      nextTarget = 480;
+      nextLabel = '3단계(8h 울창)';
+      remainingMins = Math.max(0, 480 - mins);
+    } else if (level === 3) {
+      nextTarget = 480;
+      nextLabel = '3단계(8h 완벽) 달성 완료';
+      remainingMins = 0;
+    }
+
+    return {
+      totalMinutes: mins,
+      hours: Math.floor(mins / 60),
+      minsRemainder: mins % 60,
+      level,
+      is6hReached: mins >= 360,
+      is7hReached: mins >= 420,
+      is8hReached: mins >= 480,
+      nextTarget,
+      nextLabel,
+      remainingMins
+    };
+  },
+
+  getWeeklyGoalInfo(weekOffset = 0, refDate = new Date()) {
+    const now = new Date(refDate);
+    now.setDate(now.getDate() + weekOffset * 7);
+
+    // Sun to Sat calendar week matching timetable and insights
+    const dayOfWeek = now.getDay();
+    const sunday = new Date(now);
+    sunday.setDate(now.getDate() - dayOfWeek);
+    sunday.setHours(0, 0, 0, 0);
+
+    const rawPomo = localStorage.getItem(STORAGE_KEYS.POMODORO);
+    const pomoData = safeParse(rawPomo, {});
+
+    let weeklyMinutes = 0;
+    let vacationDaysCount = 0;
+    const weekDays = [];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sunday);
+      d.setDate(sunday.getDate() + i);
+      const ds = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const dayMins = pomoData[ds]?.totalMinutes || 0;
+      const isVac = this.isVacationDate(ds);
+
+      weeklyMinutes += dayMins;
+      if (isVac) vacationDaysCount++;
+
+      weekDays.push({
+        dateStr: ds,
+        dayName: ['일', '월', '화', '수', '목', '금', '토'][i],
+        minutes: dayMins,
+        isVacation: isVac
+      });
+    }
+
+    // Weekly Target with vacation consideration:
+    // Standard week: 6 study days (with 1 day off) -> 36h (6h*6) to 42h (7h*6)
+    // When vacation days V exist in this week:
+    // Effective study days = Math.max(0, 6 - vacationDaysCount)
+    const standardStudyDays = 6;
+    const effectiveStudyDays = Math.max(0, standardStudyDays - vacationDaysCount);
+
+    const targetMinHours = effectiveStudyDays * 6; // e.g. 36h, 30h, 24h ...
+    const targetMaxHours = effectiveStudyDays * 7; // e.g. 42h, 35h, 28h ...
+
+    const targetMinMins = targetMinHours * 60;
+    const targetMaxMins = targetMaxHours * 60;
+
+    const isMinReached = targetMinMins > 0 ? weeklyMinutes >= targetMinMins : true;
+    const isMaxReached = targetMaxMins > 0 ? weeklyMinutes >= targetMaxMins : true;
+
+    const progressPct = targetMinMins > 0
+      ? Math.min(100, Math.round((weeklyMinutes / targetMinMins) * 100))
+      : 100;
+
+    const remainingToMinMins = Math.max(0, targetMinMins - weeklyMinutes);
+
+    return {
+      weeklyMinutes,
+      weeklyHours: Number((weeklyMinutes / 60).toFixed(1)),
+      vacationDaysCount,
+      effectiveStudyDays,
+      targetMinHours,
+      targetMaxHours,
+      targetMinMins,
+      targetMaxMins,
+      isMinReached,
+      isMaxReached,
+      progressPct,
+      remainingToMinMins,
+      weekDays
+    };
   },
 
   getWeeklyGraphData(weeks = 8) {

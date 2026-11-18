@@ -44,7 +44,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     
     for (let i = recentHist.length - 1; i >= 0; i--) {
       const mins = recentHist[i].totalMinutes || 0;
-      if (mins >= 240) { // 4시간 이상 달성 시
+      if (mins >= 360) { // 일간 목표(6시간) 이상 달성 시
         totalTrees++;
         if (isStreakActive) streak++;
       } else if (recentHist[i].status === 'hibernation') {
@@ -59,9 +59,10 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
 
   const getColor = (status) => {
     switch(status) {
-      case 'completed': return '#10b981'; // 8h+ (울창)
-      case 'partial': return 'rgba(16, 185, 129, 0.65)'; // 6h+ (성장)
-      case 'sprout': return 'rgba(52, 211, 153, 0.4)'; // 4h+ (새싹)
+      case 'completed': return '#10b981'; // 8h+ (3단계 완벽 🌲)
+      case 'level2': return '#059669'; // 7h+ (2단계 우수 🌳)
+      case 'partial': return 'rgba(16, 185, 129, 0.65)'; // 6h+ (1단계 성장 🌿)
+      case 'sprout': return 'rgba(52, 211, 153, 0.4)'; // 4h+ (새싹 🌱)
       case 'hibernation': return 'var(--accent-hibernation)'; // 🌴 휴가/휴면
       case 'none': default: return 'rgba(0,0,0,0.3)';
     }
@@ -76,10 +77,11 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     
     let base = '';
     if (dayData.status === 'hibernation') base = `🌴 휴무/휴가 일자 (집중시간: ${timeDisplay})`;
-    else if (totalMins >= 480) base = `🌲 8시간 이상 달성! (울창, 집중시간: ${timeDisplay})`;
-    else if (totalMins >= 360) base = `🌿 6시간 이상 달성! (성장, 집중시간: ${timeDisplay})`;
-    else if (totalMins >= 240) base = `🌱 4시간 이상 달성! (새싹, 집중시간: ${timeDisplay})`;
-    else base = `집중시간: ${timeDisplay} (4시간 달성 시 새싹 🌱)`;
+    else if (totalMins >= 480) base = `🌲 3단계(8h+) 완벽 달성! (울창, 집중: ${timeDisplay})`;
+    else if (totalMins >= 420) base = `🌳 2단계(7h+) 우수 달성! (도약, 집중: ${timeDisplay})`;
+    else if (totalMins >= 360) base = `🌿 1단계(6h+) 기본 달성! (성장, 집중: ${timeDisplay})`;
+    else if (totalMins >= 240) base = `🌱 4시간 달성 (새싹, 집중: ${timeDisplay})`;
+    else base = `집중시간: ${timeDisplay} (6시간 달성 시 1단계 🌿)`;
 
     const dLog = storage.getDailyLogByDate(dayData.date);
     const extras = [];
@@ -184,12 +186,13 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
             const m = totalMins % 60;
             const timeLabel = totalMins === 0 ? '' : h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}m`;
 
-            // Emoji based ONLY on focus study time
+            // Emoji based on focus study time (6h, 7h, 8h 차등)
             let emoji = '';
             if (day.status === 'hibernation') emoji = '🌴';
-            else if (day.status === 'completed') emoji = '🌲'; // 8h+
-            else if (day.status === 'partial') emoji = '🌿';   // 6h+
-            else if (day.status === 'sprout') emoji = '🌱';    // 4h+
+            else if (day.status === 'completed') emoji = '🌲'; // 8h+ (3단계 완벽)
+            else if (day.status === 'level2') emoji = '🌳';    // 7h+ (2단계 우수)
+            else if (day.status === 'partial') emoji = '🌿';   // 6h+ (1단계 달성)
+            else if (day.status === 'sprout') emoji = '🌱';    // 4h+ (새싹)
 
             return (
               <div 
@@ -259,10 +262,11 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
       </div>
       
       {/* Legend */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.85rem', marginTop: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌲 8시간 이상 (울창)</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌿 6시간 이상 (성장)</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌱 4시간 이상 (새싹)</span>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginTop: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌲 8h+ (3단계 완벽)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌳 7h+ (2단계 우수)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌿 6h+ (1단계 달성)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌱 4h+ (새싹)</span>
       </div>
     </div>
   );

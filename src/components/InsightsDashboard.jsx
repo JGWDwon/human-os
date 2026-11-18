@@ -127,7 +127,16 @@ export default function InsightsDashboard({ onClose }) {
   const currentStats = stats || { activeDays: 0, totalFocusMins: 0 };
   const dailyAvgMins = Math.round(totalWeeklyMinutes / 7);
   const bestDay = weeklyTrend.reduce((best, cur) => (cur.minutes > (best?.minutes || 0) ? cur : best), null);
-  const sproutDaysCount = weeklyTrend.filter(t => t.minutes >= 240).length;
+  
+  // Daily goals count (6h, 7h, 8h 차등)
+  const dailyGoal6hCount = weeklyTrend.filter(t => t.minutes >= 360).length;
+  const dailyGoal7hCount = weeklyTrend.filter(t => t.minutes >= 420).length;
+  const dailyGoal8hCount = weeklyTrend.filter(t => t.minutes >= 480).length;
+
+  // Weekly goal info with vacation days consideration
+  const weeklyGoal = useMemo(() => {
+    return storage.getWeeklyGoalInfo(weekOffset);
+  }, [weekOffset, totalWeeklyMinutes]);
 
   // Weekly Meal Total
   const weeklyMealTotalMins = useMemo(() => {
@@ -183,11 +192,12 @@ export default function InsightsDashboard({ onClose }) {
   const rawMax = Math.max(...weeklyTrend.map(t => t.minutes), 0);
   const scaleMaxMins = Math.max(480, Math.ceil((rawMax * 1.18) / 60) * 60);
 
-  // Guidelines: 2h, 4h, 6h, 8h (and 10h if headroom allows)
+  // Guidelines: 2h, 4h, 6h(1단계), 7h(2단계), 8h(3단계) (and 10h if headroom allows)
   const guidelines = [
-    { mins: 480, label: '8시간 🌲', color: 'rgba(16, 185, 129, 0.4)', textColor: '#34d399' },
-    { mins: 360, label: '6시간 🌿', color: 'rgba(56, 189, 248, 0.35)', textColor: '#38bdf8' },
-    { mins: 240, label: '4시간 🌱', color: 'rgba(52, 211, 153, 0.35)', textColor: '#34d399' },
+    { mins: 480, label: '8시간 🌲', color: 'rgba(16, 185, 129, 0.45)', textColor: '#34d399' },
+    { mins: 420, label: '7시간 🌳', color: 'rgba(5, 150, 105, 0.4)', textColor: '#10b981' },
+    { mins: 360, label: '6시간 🌿', color: 'rgba(56, 189, 248, 0.4)', textColor: '#38bdf8' },
+    { mins: 240, label: '4시간 🌱', color: 'rgba(52, 211, 153, 0.3)', textColor: '#6ee7b7' },
     { mins: 120, label: '2시간', color: 'rgba(255, 255, 255, 0.08)', textColor: 'var(--text-muted)' }
   ];
   if (scaleMaxMins >= 660) {
@@ -354,12 +364,38 @@ export default function InsightsDashboard({ onClose }) {
             </div>
           </div>
 
+          {/* 주간 목표 달성 카드 (36h~42h + 휴가기간 보정) */}
+          <div style={{ background: weeklyGoal.isMinReached ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)', border: weeklyGoal.isMinReached ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(129, 140, 248, 0.3)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
+            <div style={{ fontSize: '0.72rem', color: weeklyGoal.isMinReached ? '#34d399' : '#a5b4fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <Target size={12} /> 주간 목표 ({weeklyGoal.targetMinHours}~{weeklyGoal.targetMaxHours}h)
+              </span>
+              {weeklyGoal.vacationDaysCount > 0 && (
+                <span style={{ fontSize: '0.65rem', color: '#facc15', background: 'rgba(234, 179, 8, 0.18)', padding: '0.05rem 0.3rem', borderRadius: '4px' }}>
+                  🌴 휴가 {weeklyGoal.vacationDaysCount}일
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: weeklyGoal.isMinReached ? '#34d399' : '#fff', marginTop: '0.15rem' }}>
+              {weeklyGoal.weeklyHours}h
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: '0.3rem' }}>
+                ({weeklyGoal.progressPct}%)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: weeklyGoal.isMinReached ? '#34d399' : 'var(--text-muted)', marginTop: '0.15rem' }}>
+              {weeklyGoal.isMaxReached ? '🎉 주간 최대 목표 초과 달성' : weeklyGoal.isMinReached ? '✨ 주간 기본 목표 달성 완료' : `🎯 기본 목표까지 ${Math.floor(weeklyGoal.remainingToMinMins / 60)}h ${weeklyGoal.remainingToMinMins % 60}m 남음`}
+            </div>
+          </div>
+
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <span>🌱</span> 목표(4h+) 달성일
+              <span>🌿</span> 일간 목표(6h+) 달성일
             </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#34d399', marginTop: '0.15rem' }}>
-              {sproutDaysCount}일 / 7일
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#38bdf8', marginTop: '0.15rem' }}>
+              {dailyGoal6hCount}일 / 7일
+            </div>
+            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              7h+ {dailyGoal7hCount}일 · 8h+ {dailyGoal8hCount}일
             </div>
           </div>
 
@@ -426,13 +462,16 @@ export default function InsightsDashboard({ onClose }) {
             {/* Goal Guideline Legend */}
             <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.7rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '8px', height: '8px', background: '#34d399', borderRadius: '2px' }}></span> 🌱 4시간
+                <span style={{ width: '8px', height: '8px', background: '#38bdf8', borderRadius: '2px' }}></span> 🌿 6시간 (1단계)
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '8px', height: '8px', background: '#38bdf8', borderRadius: '2px' }}></span> 🌿 6시간
+                <span style={{ width: '8px', height: '8px', background: '#059669', borderRadius: '2px' }}></span> 🌳 7시간 (2단계)
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '2px' }}></span> 🌲 8시간
+                <span style={{ width: '8px', height: '8px', background: '#10b981', borderRadius: '2px' }}></span> 🌲 8시간 (3단계)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <span style={{ width: '8px', height: '8px', background: '#6ee7b7', borderRadius: '2px' }}></span> 🌱 4시간
               </span>
             </div>
           </div>
@@ -475,16 +514,18 @@ export default function InsightsDashboard({ onClose }) {
                 const isSelected = activeDayForDetail?.dateStr === item.dateStr;
                 const heightPct = (item.minutes / scaleMaxMins) * 100;
 
-                // Dynamic gradient based on study duration
+                // Dynamic gradient based on study duration (6h, 7h, 8h 차등)
                 const barGradient = item.minutes >= 480
-                  ? 'linear-gradient(180deg, #10b981 0%, #047857 100%)' // 8h+ (울창)
-                  : item.minutes >= 360
-                    ? 'linear-gradient(180deg, #34d399 0%, #059669 100%)' // 6h+ (성장)
-                    : item.minutes >= 240
-                      ? 'linear-gradient(180deg, #6ee7b7 0%, #10b981 100%)' // 4h+ (새싹)
-                      : item.minutes > 0
-                        ? 'linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%)' // <4h (집중)
-                        : 'rgba(255,255,255,0.05)';
+                  ? 'linear-gradient(180deg, #10b981 0%, #047857 100%)' // 8h+ (3단계 완벽 🌲)
+                  : item.minutes >= 420
+                    ? 'linear-gradient(180deg, #059669 0%, #065f46 100%)' // 7h+ (2단계 우수 🌳)
+                    : item.minutes >= 360
+                      ? 'linear-gradient(180deg, #38bdf8 0%, #0284c7 100%)' // 6h+ (1단계 달성 🌿)
+                      : item.minutes >= 240
+                        ? 'linear-gradient(180deg, #6ee7b7 0%, #10b981 100%)' // 4h+ (새싹 🌱)
+                        : item.minutes > 0
+                          ? 'linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%)' // <4h (집중)
+                          : 'rgba(255,255,255,0.05)';
 
                 return (
                   <div
