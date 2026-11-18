@@ -710,8 +710,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Play Completion Sound (Bell 2 Chime)
-    playSound('complete');
+    // 1. Play Completion Sound (Bell 2 Chime) - only once when not catching up from background
+    if (!isFromCatchUp) {
+      playSound('complete');
+    }
 
     // 2. Trigger Haptic Vibration
     try {
@@ -736,33 +738,15 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       });
     } catch (e) {}
 
-    // 5. Native Immediate Heads-Up Notification (Android status bar)
+    // 5. Cancel any pending native background notification (prevent duplicate alarms)
     if (Capacitor.isNativePlatform()) {
       try {
-        const channelId = await getEffectiveAlarmChannelId();
-        await LocalNotifications.cancel({ notifications: [{ id: 1001 }] }).catch(() => {});
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 1002,
-              title: '성장의 숲 🍅 집중 완료!',
-              body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-              schedule: { at: new Date(Date.now() + 50) },
-              channelId: channelId,
-              sound: 'bell2',
-              vibrationPattern: [200, 100, 200, 100, 400],
-              actionTypeId: 'OPEN_APP',
-              extra: { route: '/' }
-            }
-          ]
-        });
-      } catch (e) {
-        console.error('Failed to trigger immediate native notification:', e);
-      }
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
+      } catch (e) {}
     }
 
-    // 6. Web / ServiceWorker Notification (Browser / PWA fallback)
-    if ('Notification' in window && Notification.permission === 'granted') {
+    // 6. Web / ServiceWorker Notification (Browser / PWA fallback only)
+    if (!Capacitor.isNativePlatform() && 'Notification' in window && Notification.permission === 'granted') {
       const title = '성장의 숲 🍅 집중 완료!';
       const body = `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`;
       const iconUrl = new URL(mushroomImg, window.location.href).href;
