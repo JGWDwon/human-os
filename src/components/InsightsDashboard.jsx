@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { BarChart2, Trophy, Timer, Zap, Calendar, ArrowLeft, Flame, CheckCircle2, Clock, ChevronLeft, ChevronRight, RotateCcw, BookOpen, PieChart } from 'lucide-react';
+import { BarChart2, Trophy, Timer, Zap, Calendar, ArrowLeft, Flame, CheckCircle2, Clock, ChevronLeft, ChevronRight, RotateCcw, BookOpen, PieChart, Target } from 'lucide-react';
 import { storage, getSubjectColor, SUBJECT_COLORS, calculateSleepDuration } from '../utils/storage';
 import StudyTimetable from './StudyTimetable';
 import SubjectModal from './SubjectModal';
