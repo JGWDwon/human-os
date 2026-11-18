@@ -1147,25 +1147,16 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         gap: '0.85rem'
       }}>
         {/* ========================================================================= */}
-        {/* 1. 일간 순공 목표 카드 (6h, 7h, 8h 3구간 균등 분할 눈금 연동) */}
+        {/* 1. 일간 순공 목표 카드 (선형 1:1 직관적 비례 롤백 + 4h 새싹 중간 마일스톤) */}
         {/* ========================================================================= */}
         {(() => {
-          // 일간 목표: 3구간 균등 분할 (착시 제거)
-          // 0 ~ 6h: 0% ~ 33.33% (1구간)
-          // 6 ~ 7h: 33.33% ~ 66.67% (2구간)
-          // 7 ~ 8h: 66.67% ~ 100% (3구간)
-          let dailyFillPct = 0;
-          if (todayStudyMins <= 0) {
-            dailyFillPct = 0;
-          } else if (todayStudyMins <= 360) {
-            dailyFillPct = (todayStudyMins / 360) * 33.33;
-          } else if (todayStudyMins <= 420) {
-            dailyFillPct = 33.33 + ((todayStudyMins - 360) / 60) * 33.34;
-          } else if (todayStudyMins <= 480) {
-            dailyFillPct = 66.67 + ((todayStudyMins - 420) / 60) * 33.33;
-          } else {
-            dailyFillPct = 100;
-          }
+          // 직관적인 100% 선형 비례 (총 480분 = 8시간 = 100%)
+          // 4시간(240분): 50.0% (🌱 새싹 도약)
+          // 6시간(360분): 75.0% (🌿 1단계 기본 달성)
+          // 7시간(420분): 87.5% (🌳 2단계 우수 달성)
+          // 8시간(480분): 100%  (🌲 3단계 울창 완벽)
+          const dailyTotalScaleMins = 480;
+          const dailyFillPct = Math.min(100, (todayStudyMins / dailyTotalScaleMins) * 100);
 
           let dailyBarGradient = 'linear-gradient(90deg, #0284c7, #38bdf8)';
           if (todayStudyMins >= 480) {
@@ -1188,10 +1179,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                     padding: '0.1rem 0.45rem',
                     borderRadius: '4px',
                     fontWeight: 'bold',
-                    background: dailyGoal.level === 3 ? 'rgba(16, 185, 129, 0.25)' : dailyGoal.level === 2 ? 'rgba(5, 150, 105, 0.25)' : dailyGoal.level === 1 ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-                    color: dailyGoal.level === 3 ? '#34d399' : dailyGoal.level === 2 ? '#10b981' : dailyGoal.level === 1 ? '#38bdf8' : 'var(--text-muted)'
+                    background: dailyGoal.level === 3 ? 'rgba(16, 185, 129, 0.25)' : dailyGoal.level === 2 ? 'rgba(5, 150, 105, 0.25)' : dailyGoal.level === 1 ? 'rgba(56, 189, 248, 0.25)' : todayStudyMins >= 240 ? 'rgba(110, 231, 183, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+                    color: dailyGoal.level === 3 ? '#34d399' : dailyGoal.level === 2 ? '#10b981' : dailyGoal.level === 1 ? '#38bdf8' : todayStudyMins >= 240 ? '#6ee7b7' : 'var(--text-muted)'
                   }}>
-                    {dailyGoal.level === 3 ? '🌲 3단계(8h) 완벽' : dailyGoal.level === 2 ? '🌳 2단계(7h) 우수' : dailyGoal.level === 1 ? '🌿 1단계(6h) 달성' : '🌱 도약 중'}
+                    {dailyGoal.level === 3 ? '🌲 3단계(8h) 완벽' : dailyGoal.level === 2 ? '🌳 2단계(7h) 우수' : dailyGoal.level === 1 ? '🌿 1단계(6h) 달성' : todayStudyMins >= 240 ? '🌱 새싹 도약(4h+)' : '🌱 도약 중'}
                   </span>
                   <span style={{ fontSize: '0.86rem', fontWeight: 'bold', color: '#fff' }}>
                     {dailyGoal.hours}h {dailyGoal.minsRemainder}m
@@ -1199,12 +1190,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 </div>
               </div>
 
-              {/* 균등 분할 눈금 연동 일체형 프로그레스 바 (0~6h: 33.33%, 6~7h: 33.34%, 7~8h: 33.33%) */}
+              {/* 1:1 선형 비례 프로그레스 바 (4h: 50%, 6h: 75%, 7h: 87.5%) */}
               <div style={{
                 position: 'relative',
-                height: '8px',
+                height: '9px',
                 background: 'rgba(255, 255, 255, 0.08)',
-                borderRadius: '4px',
+                borderRadius: '5px',
                 overflow: 'hidden',
                 width: '100%',
                 marginTop: '0.15rem'
@@ -1217,36 +1208,60 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   transition: 'width 0.3s ease'
                 }} />
 
-                {/* 6h (33.33%) 분할 구분선 */}
+                {/* 4h (50%) 분할 구분선 - 성장의 숲 새싹 마일스톤 */}
                 <div style={{
                   position: 'absolute',
-                  left: '33.33%',
+                  left: '50%',
                   top: 0,
                   bottom: 0,
-                  width: '2px',
+                  width: '1.5px',
+                  background: 'rgba(15, 23, 42, 0.75)',
+                  zIndex: 2
+                }} />
+
+                {/* 6h (75%) 분할 구분선 - 1단계 기본 목표 */}
+                <div style={{
+                  position: 'absolute',
+                  left: '75%',
+                  top: 0,
+                  bottom: 0,
+                  width: '1.5px',
                   background: 'rgba(15, 23, 42, 0.85)',
                   zIndex: 2
                 }} />
 
-                {/* 7h (66.67%) 분할 구분선 */}
+                {/* 7h (87.5%) 분할 구분선 - 2단계 우수 목표 */}
                 <div style={{
                   position: 'absolute',
-                  left: '66.67%',
+                  left: '87.5%',
                   top: 0,
                   bottom: 0,
-                  width: '2px',
+                  width: '1.5px',
                   background: 'rgba(15, 23, 42, 0.85)',
                   zIndex: 2
                 }} />
               </div>
 
-              {/* 눈금 라벨 (균등 3분할 33.33% / 66.67% 정확 매핑) */}
-              <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+              {/* 눈금 라벨 (정확한 시간 비례 눈금) */}
+              <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.12rem' }}>
                 <span style={{ position: 'absolute', left: 0 }}>0h</span>
-                
+
+                {/* 4h 새싹 마일스톤 (50% 지점 - 착시 해소) */}
                 <span style={{
                   position: 'absolute',
-                  left: '33.33%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  color: todayStudyMins >= 240 ? '#6ee7b7' : 'var(--text-muted)',
+                  fontWeight: todayStudyMins >= 240 ? 'bold' : 'normal',
+                  whiteSpace: 'nowrap'
+                }}>
+                  4h🌱
+                </span>
+
+                {/* 6h 1단계 (75% 지점) */}
+                <span style={{
+                  position: 'absolute',
+                  left: '75%',
                   transform: 'translateX(-50%)',
                   color: todayStudyMins >= 360 ? '#38bdf8' : 'var(--text-muted)',
                   fontWeight: todayStudyMins >= 360 ? 'bold' : 'normal',
@@ -1255,9 +1270,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   6h🌿
                 </span>
 
+                {/* 7h 2단계 (87.5% 지점) */}
                 <span style={{
                   position: 'absolute',
-                  left: '66.67%',
+                  left: '87.5%',
                   transform: 'translateX(-50%)',
                   color: todayStudyMins >= 420 ? '#10b981' : 'var(--text-muted)',
                   fontWeight: todayStudyMins >= 420 ? 'bold' : 'normal',
@@ -1266,6 +1282,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   7h🌳
                 </span>
 
+                {/* 8h+ 3단계 (100% 지점) */}
                 <span style={{
                   position: 'absolute',
                   right: 0,
@@ -1293,25 +1310,20 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
         })()}
 
         {/* ========================================================================= */}
-        {/* 2. 주간 목표 카드 (36h~42h / 휴가 보정, 기본 및 최대 2구간 50% 균등 분할) */}
+        {/* 2. 주간 목표 카드 (선형 1:1 직관적 비례 롤백 + 50% 반환점 마일스톤) */}
         {/* ========================================================================= */}
         {(() => {
-          // 주간 목표: 기본 목표까지 50%, 최대 목표까지 50% 균등 분할 (착시 제거)
+          // 주간 기준: 최대 목표(targetMaxMins) = 100% 선형 매핑
           const maxMins = weeklyGoal.targetMaxMins || 2520;
           const minMins = weeklyGoal.targetMinMins || 2160;
-
-          let weeklyFillPct = 0;
-          if (weeklyGoal.weeklyMinutes <= 0) {
-            weeklyFillPct = 0;
-          } else if (weeklyGoal.weeklyMinutes <= minMins) {
-            weeklyFillPct = minMins > 0 ? (weeklyGoal.weeklyMinutes / minMins) * 50 : 0;
-          } else {
-            const extraRange = Math.max(1, maxMins - minMins);
-            const extraMins = weeklyGoal.weeklyMinutes - minMins;
-            weeklyFillPct = 50 + Math.min(50, (extraMins / extraRange) * 50);
-          }
-
+          const weeklyMinPct = maxMins > 0 ? (minMins / maxMins) * 100 : 85.7;
+          const weeklyFillPct = maxMins > 0 ? Math.min(100, (weeklyGoal.weeklyMinutes / maxMins) * 100) : 0;
           const basicAchievementPct = minMins > 0 ? Math.round((weeklyGoal.weeklyMinutes / minMins) * 100) : 100;
+
+          // 기본 목표의 50% 중간 반환점
+          const halfMinMins = Math.round(minMins / 2);
+          const halfMinPct = maxMins > 0 ? (halfMinMins / maxMins) * 100 : 42.8;
+          const halfMinHours = Math.round(weeklyGoal.targetMinHours / 2);
 
           let weeklyBarGradient = 'linear-gradient(90deg, #6366f1, #a855f7)';
           if (weeklyGoal.isMaxReached) {
@@ -1351,12 +1363,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 </div>
               </div>
 
-              {/* 균등 50% 분할 주간 프로그레스 바 (0~기본: 50%, 기본~최대: 50%) */}
+              {/* 정밀 1:1 선형 주간 프로그레스 바 (0~최대목표 기준, 50% 반환점 및 기본목표 분할선) */}
               <div style={{
                 position: 'relative',
-                height: '8px',
+                height: '9px',
                 background: 'rgba(255, 255, 255, 0.08)',
-                borderRadius: '4px',
+                borderRadius: '5px',
                 overflow: 'hidden',
                 width: '100%',
                 marginTop: '0.15rem'
@@ -1368,10 +1380,21 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                   transition: 'width 0.3s ease'
                 }} />
 
-                {/* 기본 목표 50% 분할선 */}
+                {/* 50% 반환점 분할선 */}
                 <div style={{
                   position: 'absolute',
-                  left: '50%',
+                  left: `${halfMinPct}%`,
+                  top: 0,
+                  bottom: 0,
+                  width: '1.5px',
+                  background: 'rgba(15, 23, 42, 0.75)',
+                  zIndex: 2
+                }} />
+
+                {/* 기본 목표 분할선 */}
+                <div style={{
+                  position: 'absolute',
+                  left: `${weeklyMinPct}%`,
                   top: 0,
                   bottom: 0,
                   width: '2px',
@@ -1380,13 +1403,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate }) {
                 }} />
               </div>
 
-              {/* 눈금 라벨 (50% 중앙 기본목표, 100% 우측 최대목표) */}
-              <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+              {/* 눈금 라벨 (0h -> 반환점 -> 기본목표 -> 최대목표) */}
+              <div style={{ position: 'relative', height: '16px', fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.12rem' }}>
                 <span style={{ position: 'absolute', left: 0 }}>0h</span>
 
                 <span style={{
                   position: 'absolute',
-                  left: '50%',
+                  left: `${halfMinPct}%`,
+                  transform: 'translateX(-50%)',
+                  color: weeklyGoal.weeklyMinutes >= halfMinMins ? '#a5b4fc' : 'var(--text-muted)',
+                  fontWeight: weeklyGoal.weeklyMinutes >= halfMinMins ? 'bold' : 'normal',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {halfMinHours}h(50%)
+                </span>
+
+                <span style={{
+                  position: 'absolute',
+                  left: `${weeklyMinPct}%`,
                   transform: 'translateX(-50%)',
                   color: weeklyGoal.isMinReached ? '#34d399' : 'var(--text-muted)',
                   fontWeight: weeklyGoal.isMinReached ? 'bold' : 'normal',
