@@ -342,28 +342,12 @@ export default function InsightsDashboard({ onClose }) {
       </div>
 
       {/* ========================================================================= */}
-      {/* SECTION 1: 주간 공부시간 트렌드 막대그래프 (일~토) */}
+      {/* SECTION 1: 주간 공부시간 트렌드 및 지표 요약 (빈 공간 없는 2단 균형 배치) */}
       {/* ========================================================================= */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         
-        {/* 4 Trend Insight Chips including Input vs Output Ratio */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.6rem' }}>
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>일평균 순공</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#38bdf8', marginTop: '0.15rem' }}>
-              {formatTime(dailyAvgMins)}
-            </div>
-          </div>
-
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <Flame size={12} color="#f97316" /> 최고 집중일 (Best)
-            </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f97316', marginTop: '0.15rem' }}>
-              {bestDay && bestDay.minutes > 0 ? `${bestDay.dayName} (${formatTime(bestDay.minutes)})` : '-'}
-            </div>
-          </div>
-
+        {/* Tier 1: 핵심 공부 & 목표 지표 (4개 균등 배치) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.65rem' }}>
           {/* 주간 목표 달성 카드 (36h~42h + 휴가기간 보정) */}
           <div style={{ background: weeklyGoal.isMinReached ? 'rgba(16, 185, 129, 0.1)' : 'rgba(99, 102, 241, 0.1)', border: weeklyGoal.isMinReached ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(129, 140, 248, 0.3)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
             <div style={{ fontSize: '0.72rem', color: weeklyGoal.isMinReached ? '#34d399' : '#a5b4fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -387,6 +371,7 @@ export default function InsightsDashboard({ onClose }) {
             </div>
           </div>
 
+          {/* 일간 목표(6h+) 달성일 */}
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
               <span>🌿</span> 일간 목표(6h+) 달성일
@@ -399,6 +384,33 @@ export default function InsightsDashboard({ onClose }) {
             </div>
           </div>
 
+          {/* 일평균 순공 */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>일평균 순공</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#38bdf8', marginTop: '0.15rem' }}>
+              {formatTime(dailyAvgMins)}
+            </div>
+            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              이번 주 7일 평균
+            </div>
+          </div>
+
+          {/* 최고 집중일 (Best) */}
+          <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <Flame size={12} color="#f97316" /> 최고 집중일 (Best)
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#f97316', marginTop: '0.15rem' }}>
+              {bestDay && bestDay.minutes > 0 ? `${bestDay.dayName} (${formatTime(bestDay.minutes)})` : '-'}
+            </div>
+            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              {bestDay && bestDay.minutes > 0 ? `${bestDay.dateShort} 최다 기록` : '기록 없음'}
+            </div>
+          </div>
+        </div>
+
+        {/* Tier 2: 밸런스 & 라이프 케어 지표 (3개 균등 배치, 빈 공간 0%) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.65rem' }}>
           {/* Input vs Output Balance Card */}
           <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(129, 140, 248, 0.25)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
             <div style={{ fontSize: '0.72rem', color: '#a5b4fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -428,6 +440,9 @@ export default function InsightsDashboard({ onClose }) {
                 (일평균 {Math.round(weeklyMealTotalMins / 7)}분)
               </span>
             </div>
+            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              식사 루틴 규칙성 유지
+            </div>
           </div>
 
           {/* Weekly Sleep Card */}
@@ -442,6 +457,9 @@ export default function InsightsDashboard({ onClose }) {
                   (일평균 {(weeklySleepTotalMins / weeklySleepRecordedDays / 60).toFixed(1)}h)
                 </span>
               )}
+            </div>
+            <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+              {weeklySleepRecordedDays > 0 ? `기록 ${weeklySleepRecordedDays}일 반영` : '취침·기상 시각 직접 입력'}
             </div>
           </div>
         </div>

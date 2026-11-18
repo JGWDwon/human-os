@@ -90,6 +90,10 @@ export default function EbbinghausPlanner({ onClose }) {
   const [showReReviewVault, setShowReReviewVault] = useState(true);
   const [reReviewFilter, setReReviewFilter] = useState('pending'); // 'pending' | 'completed' | 'all'
 
+  // 복습 플래너 보기 방식 (과목별 모아보기 vs 일차별 순) 및 과목 필터링
+  const [reviewViewMode, setReviewViewMode] = useState('subject'); // 'subject' (과목별 모아보기) | 'cycle' (일차별 순)
+  const [subjectFilter, setSubjectFilter] = useState('all'); // 'all' | 과목명
+
   const refreshData = () => {
     setLectures(storage.getLectures());
     setVacations(storage.getVacations());
@@ -389,7 +393,7 @@ export default function EbbinghausPlanner({ onClose }) {
     const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     const isToday = dateStr === todayStr;
     
-    const dayReviews = [];
+    let dayReviews = [];
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
         if (rev.targetDate === dateStr) {
@@ -402,6 +406,29 @@ export default function EbbinghausPlanner({ onClose }) {
         }
       });
     });
+
+    // 1. 과목 필터 적용
+    if (subjectFilter !== 'all') {
+      dayReviews = dayReviews.filter(r => r.subject === subjectFilter);
+    }
+
+    // 2. 정렬 방식: 과목별 모아보기 vs 일차별 순
+    if (reviewViewMode === 'subject') {
+      dayReviews.sort((a, b) => {
+        if (a.subject !== b.subject) {
+          const idxA = registeredSubjects.indexOf(a.subject);
+          const idxB = registeredSubjects.indexOf(b.subject);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          if (idxA !== -1) return -1;
+          if (idxB !== -1) return 1;
+          return a.subject.localeCompare(b.subject, 'ko');
+        }
+        return (b.dayOffset || 0) - (a.dayOffset || 0);
+      });
+    } else {
+      // 일차별 순 (30일차 -> 14일차 -> 7일차 -> 4일차 -> 1일차)
+      dayReviews.sort((a, b) => (b.dayOffset || 0) - (a.dayOffset || 0));
+    }
 
     const isVacation = storage.isVacationDate(dateStr);
 
@@ -1003,7 +1030,7 @@ export default function EbbinghausPlanner({ onClose }) {
         </button>
       </div>
 
-      {/* Ebbinghaus Cycle Badges & Subject Legend */}
+      {/* Ebbinghaus Cycle Badges, View Mode Selector & Subject Filter */}
       <div style={{ 
         display: 'flex', 
         alignItems: 'center', 
@@ -1011,11 +1038,12 @@ export default function EbbinghausPlanner({ onClose }) {
         flexWrap: 'wrap',
         gap: '0.6rem', 
         marginBottom: '0.75rem',
-        padding: '0.4rem 0.75rem',
-        background: 'rgba(0,0,0,0.25)',
-        borderRadius: '7px',
-        border: '1px solid rgba(255,255,255,0.06)'
+        padding: '0.45rem 0.8rem',
+        background: 'rgba(0,0,0,0.3)',
+        borderRadius: '8px',
+        border: '1px solid rgba(255,255,255,0.08)'
       }}>
+        {/* Left: Cycle Badges */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
             복습 주기:
@@ -1040,26 +1068,103 @@ export default function EbbinghausPlanner({ onClose }) {
           </div>
         </div>
 
+        {/* Center: View Mode Toggle (과목별 모아보기 vs 일차별 순) */}
+        <div style={{
+          display: 'inline-flex',
+          background: 'rgba(255,255,255,0.06)',
+          borderRadius: '20px',
+          padding: '0.15rem',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          <button
+            type="button"
+            onClick={() => setReviewViewMode('subject')}
+            style={{
+              padding: '0.2rem 0.6rem',
+              borderRadius: '16px',
+              border: 'none',
+              background: reviewViewMode === 'subject' ? '#8b5cf6' : 'transparent',
+              color: reviewViewMode === 'subject' ? '#fff' : 'var(--text-muted)',
+              fontSize: '0.7rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem'
+            }}
+            title="과목별로 묶어서 표시 (셈회는 셈회끼리, 행소는 행소끼리)"
+          >
+            <span>📚</span> 과목별 모아보기
+          </button>
+          <button
+            type="button"
+            onClick={() => setReviewViewMode('cycle')}
+            style={{
+              padding: '0.2rem 0.6rem',
+              borderRadius: '16px',
+              border: 'none',
+              background: reviewViewMode === 'cycle' ? '#8b5cf6' : 'transparent',
+              color: reviewViewMode === 'cycle' ? '#fff' : 'var(--text-muted)',
+              fontSize: '0.7rem',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem'
+            }}
+            title="14일차 -> 7일차 -> 4일차 순서로 표시"
+          >
+            <span>🗓️</span> 일차별 순
+          </button>
+        </div>
+
+        {/* Right: Subject Interactive Filter Buttons */}
         {registeredSubjects.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 'bold' }}>
-              과목 색상:
+              과목 필터:
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setSubjectFilter('all')}
+                style={{
+                  fontSize: '0.67rem',
+                  padding: '0.08rem 0.45rem',
+                  borderRadius: '4px',
+                  border: subjectFilter === 'all' ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.12)',
+                  background: subjectFilter === 'all' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.04)',
+                  color: subjectFilter === 'all' ? '#38bdf8' : 'var(--text-muted)',
+                  fontWeight: 'bold',
+                  cursor: 'pointer'
+                }}
+              >
+                전체
+              </button>
               {registeredSubjects.map(s => {
                 const col = getSubjectColor(s, registeredSubjects);
+                const isSelected = subjectFilter === s;
                 return (
-                  <span key={s} style={{
-                    fontSize: '0.66rem',
-                    padding: '0.06rem 0.35rem',
-                    borderRadius: '3px',
-                    background: `${col}1e`,
-                    border: `1px solid ${col}4d`,
-                    color: col,
-                    fontWeight: 'bold'
-                  }}>
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSubjectFilter(isSelected ? 'all' : s)}
+                    style={{
+                      fontSize: '0.67rem',
+                      padding: '0.08rem 0.45rem',
+                      borderRadius: '4px',
+                      background: isSelected ? `${col}35` : `${col}15`,
+                      border: isSelected ? `1.5px solid ${col}` : `1px solid ${col}4d`,
+                      color: isSelected ? '#fff' : col,
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      boxShadow: isSelected ? `0 0 8px ${col}66` : 'none',
+                      transition: 'all 0.15s'
+                    }}
+                    title={`${s} 복습만 보기`}
+                  >
                     {s}
-                  </span>
+                  </button>
                 );
               })}
             </div>
@@ -1113,27 +1218,50 @@ export default function EbbinghausPlanner({ onClose }) {
             <div style={{ padding: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: 1, overflowY: 'auto' }}>
               {day.reviews.length === 0 ? (
                 <div style={{ color: day.isVacation ? '#34d399' : 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center', marginTop: '1rem', opacity: 0.6 }}>
-                  {day.isVacation ? '🌴 휴가' : '-'}
+                  {day.isVacation ? '🌴 휴가' : (subjectFilter !== 'all' ? `${subjectFilter} 복습 없음` : '-')}
                 </div>
               ) : (
-                day.reviews.map(rev => {
+                day.reviews.map((rev, revIdx) => {
                   const badge = getDayOffsetBadgeStyle(rev.dayOffset);
                   const subColor = getSubjectColor(rev.subject, registeredSubjects);
+                  const isFirstOfSubject = reviewViewMode === 'subject' && (revIdx === 0 || day.reviews[revIdx - 1].subject !== rev.subject);
+                  
                   return (
-                    <div 
-                      key={rev.id}
-                      style={{ 
-                        background: rev.isCompleted ? 'rgba(16, 185, 129, 0.1)' : 'rgba(30, 41, 59, 0.8)',
-                        border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.3)' : 'var(--panel-border)'}`,
-                        borderLeft: `3px solid ${rev.isCompleted ? '#10b981' : badge.color}`,
-                        padding: '0.4rem 0.5rem',
-                        borderRadius: '5px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        opacity: (day.dateStr < todayStr && !rev.isCompleted) ? 0.7 : 1
-                      }}
-                      onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted, rev)}
-                    >
+                    <div key={rev.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {/* 과목별 모아보기 모드일 때 과목 헤더 표시 */}
+                      {isFirstOfSubject && (
+                        <div style={{
+                          fontSize: '0.67rem',
+                          fontWeight: 'bold',
+                          color: subColor,
+                          background: `${subColor}18`,
+                          borderLeft: `3px solid ${subColor}`,
+                          padding: '0.15rem 0.4rem',
+                          borderRadius: '0 4px 4px 0',
+                          marginTop: revIdx > 0 ? '0.45rem' : '0.1rem',
+                          marginBottom: '0.1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem'
+                        }}>
+                          <span>📚</span>
+                          <span>{rev.subject}</span>
+                        </div>
+                      )}
+
+                      <div 
+                        style={{ 
+                          background: rev.isCompleted ? 'rgba(16, 185, 129, 0.1)' : 'rgba(30, 41, 59, 0.8)',
+                          border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.3)' : 'var(--panel-border)'}`,
+                          borderLeft: `3px solid ${rev.isCompleted ? '#10b981' : badge.color}`,
+                          padding: '0.4rem 0.5rem',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          opacity: (day.dateStr < todayStr && !rev.isCompleted) ? 0.7 : 1
+                        }}
+                        onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted, rev)}
+                      >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
                         <span style={{ 
                           fontSize: '0.65rem', 
@@ -1223,9 +1351,10 @@ export default function EbbinghausPlanner({ onClose }) {
                       {rev.title}
                     </div>
                   </div>
-                );
-              })
-            )}
+                </div>
+              );
+            })
+          )}
             </div>
           </div>
         ))}

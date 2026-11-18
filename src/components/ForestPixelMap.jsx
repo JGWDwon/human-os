@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight } from 'lucide-react';
-import { storage } from '../utils/storage';
+import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon } from 'lucide-react';
+import { storage, calculateSleepDuration } from '../utils/storage';
+import confetti from 'canvas-confetti';
 
 export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSelect }) {
   const [history, setHistory] = useState([]);
   const [stats, setStats] = useState({ totalTrees: 0, currentStreak: 0 });
   const [calendarInfo, setCalendarInfo] = useState({ year: 2026, month: 8, firstDay: 0 }); // month is 0-indexed
   const [viewDate, setViewDate] = useState(() => new Date());
+  const [dailyLog, setDailyLog] = useState(() => storage.getDailyLogByDate(selectedDate));
 
   const handlePrevMonth = () => {
     setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -26,6 +28,39 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
   };
 
   useEffect(() => {
+    setDailyLog(storage.getDailyLogByDate(selectedDate));
+  }, [selectedDate, refreshTrigger]);
+
+  useEffect(() => {
+    const handleDailyLogsUpdate = () => {
+      setDailyLog(storage.getDailyLogByDate(selectedDate));
+    };
+    window.addEventListener('daily-logs-updated', handleDailyLogsUpdate);
+    return () => window.removeEventListener('daily-logs-updated', handleDailyLogsUpdate);
+  }, [selectedDate]);
+
+  const handleSleepTimeChange = (field, value) => {
+    const updated = storage.saveDailyLog(selectedDate, { [field]: value });
+    setDailyLog(updated);
+  };
+
+  const handleSelectSatisfaction = (level) => {
+    const newLevel = dailyLog?.satisfaction === level ? null : level;
+    const updated = storage.saveDailyLog(selectedDate, { satisfaction: newLevel });
+    setDailyLog(updated);
+    if (newLevel) {
+      if (newLevel === 'high') {
+        confetti({
+          particleCount: 35,
+          spread: 55,
+          origin: { y: 0.85 },
+          colors: ['#f97316', '#ef4444', '#10b981']
+        });
+      }
+    }
+  };
+
+  useEffect(() => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
     
@@ -37,7 +72,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     setCalendarInfo({ year, month, firstDay });
     setHistory(monthlyHist);
     
-    // Calculate simple stats for focus trees (4h+ = 1 tree point)
+    // Calculate simple stats for focus trees (6h+ = 1 tree point)
     let totalTrees = 0;
     let streak = 0;
     let isStreakActive = true;
@@ -48,14 +83,14 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         totalTrees++;
         if (isStreakActive) streak++;
       } else if (recentHist[i].status === 'hibernation') {
-        // Hibernation preserves streak
+        // 휴가는 스트릭 보존
       } else {
-        if (i < recentHist.length - 1) isStreakActive = false; 
+        isStreakActive = false;
       }
     }
     
     setStats({ totalTrees, currentStreak: streak });
-  }, [refreshTrigger, selectedDate, viewDate]);
+  }, [refreshTrigger, viewDate, dailyLog]);
 
   const getColor = (status) => {
     switch(status) {
@@ -69,11 +104,10 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
   };
 
   const getTooltip = (dayData) => {
-    if (!dayData) return "오늘의 공부 목표를 향해 달려보세요!";
     const totalMins = dayData.totalMinutes || 0;
     const h = Math.floor(totalMins / 60);
     const m = totalMins % 60;
-    const timeDisplay = totalMins === 0 ? '0분' : h > 0 ? `${h}시간 ${m > 0 ? m + '분' : ''}` : `${m}분`;
+    const timeDisplay = totalMins === 0 ? '0분' : h > 0 ? `${h}시간 ${m > 0 ? `${m}분` : ''}` : `${m}분`;
     
     let base = '';
     if (dayData.status === 'hibernation') base = `🌴 휴무/휴가 일자 (집중시간: ${timeDisplay})`;
@@ -100,10 +134,13 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
 
   const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+  const sleepDur = calculateSleepDuration(dailyLog?.bedTime, dailyLog?.wakeTime);
 
   return (
-    <div className="glass-panel" style={{ width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderTop: '3px solid var(--accent-primary)', height: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+    <div className="glass-panel" style={{ width: '100%', display: 'flex', flexDirection: 'column', borderTop: '3px solid var(--accent-primary)', height: '100%', gap: '0.75rem' }}>
+      
+      {/* 1. Header (Month Navigation & Streak Stats) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', color: 'var(--text-primary)', margin: 0 }}>
             <TreePine size={20} color="var(--accent-primary)" />
@@ -162,10 +199,10 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         </div>
       </div>
       
-      {/* Calendar Grid */}
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'center' }}>
+      {/* 2. Calendar Grid (Top-aligned, No wasted vertical space) */}
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
         {/* Day of Week Headers */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', width: '100%', marginBottom: '0.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', width: '100%', marginBottom: '0.4rem' }}>
           {dayNames.map(day => (
             <div key={day} style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
               {day}
@@ -173,7 +210,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           ))}
         </div>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', width: '100%', gridAutoRows: '1fr' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', width: '100%' }}>
           {/* Empty cells for days before the 1st of the month */}
           {Array.from({ length: calendarInfo.firstDay }).map((_, i) => (
             <div key={`empty-${i}`} style={{ aspectRatio: '1/1' }} />
@@ -226,7 +263,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
               >
                 {/* Date number top-left */}
                 <span style={{ 
-                  fontSize: '0.6rem', 
+                  fontSize: '0.62rem', 
                   fontWeight: 600, 
                   alignSelf: 'flex-start',
                   lineHeight: 1,
@@ -237,7 +274,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
                 </span>
                 
                 {/* Center emoji */}
-                <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>
+                <span style={{ fontSize: '0.92rem', lineHeight: 1 }}>
                   {emoji || ' '}
                 </span>
 
@@ -261,12 +298,213 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         </div>
       </div>
       
-      {/* Legend */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginTop: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌲 8h+ (3단계 완벽)</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌳 7h+ (2단계 우수)</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌿 6h+ (1단계 달성)</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>🌱 4h+ (새싹)</span>
+      {/* 3. Compact Legend */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '0.65rem', padding: '0.2rem 0', fontSize: '0.7rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>🌲 8h+ (3단계 완벽)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>🌳 7h+ (2단계 우수)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>🌿 6h+ (1단계 달성)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>🌱 4h+ (새싹)</span>
+      </div>
+
+      {/* 4. Integrated Daily Log: 수면 기록 직접 기입 & 성취도 상/중/하 (빈 공간 완벽 해소 & 날짜 연동) */}
+      <div style={{
+        marginTop: 'auto',
+        padding: '0.85rem 1rem',
+        borderRadius: '10px',
+        background: 'rgba(0, 0, 0, 0.35)',
+        border: '1px solid rgba(139, 92, 246, 0.25)',
+        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+          <h4 style={{
+            fontSize: '0.88rem',
+            color: '#c084fc',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            fontWeight: 800
+          }}>
+            <Moon size={15} color="#c084fc" /> 하루 마무리 · 수면 & 성취도
+          </h4>
+          <span style={{ fontSize: '0.72rem', color: '#a78bfa', background: 'rgba(139, 92, 246, 0.15)', padding: '0.1rem 0.45rem', borderRadius: '4px', fontWeight: 'bold' }}>
+            {selectedDate}
+          </span>
+        </div>
+
+        {/* 수면 시간 직접 기입 (취침 ~ 기상) */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.03)',
+          padding: '0.6rem 0.75rem',
+          borderRadius: '8px',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          marginBottom: '0.65rem'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.35rem' }}>
+            <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold' }}>
+              🛌 수면 시간 기록
+            </span>
+            {sleepDur ? (
+              <span style={{
+                fontSize: '0.72rem',
+                color: '#a78bfa',
+                background: 'rgba(139, 92, 246, 0.2)',
+                border: '1px solid rgba(139, 92, 246, 0.4)',
+                padding: '0.1rem 0.5rem',
+                borderRadius: '10px',
+                fontWeight: 'bold'
+              }}>
+                💤 총 {sleepDur.hours}시간 {sleepDur.mins > 0 ? `${sleepDur.mins}분 ` : ''}수면
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                취침·기상 시각 직접 입력
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>취침:</span>
+              <input
+                type="time"
+                value={dailyLog?.bedTime || ''}
+                onChange={(e) => handleSleepTimeChange('bedTime', e.target.value)}
+                style={{
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  borderRadius: '5px',
+                  color: '#fff',
+                  padding: '0.2rem 0.4rem',
+                  fontSize: '0.75rem'
+                }}
+              />
+            </div>
+
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>~</span>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>기상:</span>
+              <input
+                type="time"
+                value={dailyLog?.wakeTime || ''}
+                onChange={(e) => handleSleepTimeChange('wakeTime', e.target.value)}
+                style={{
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  borderRadius: '5px',
+                  color: '#fff',
+                  padding: '0.2rem 0.4rem',
+                  fontSize: '0.75rem'
+                }}
+              />
+            </div>
+
+            {(dailyLog?.bedTime || dailyLog?.wakeTime) && (
+              <button
+                type="button"
+                onClick={() => {
+                  handleSleepTimeChange('bedTime', '');
+                  handleSleepTimeChange('wakeTime', '');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.68rem',
+                  cursor: 'pointer',
+                  marginLeft: 'auto',
+                  textDecoration: 'underline'
+                }}
+              >
+                초기화
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 오늘의 성취도 (상 / 중 / 하 3단계 버튼) */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+            <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold' }}>
+              ⭐ 오늘의 공부 성취도
+            </span>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+              하루를 마무리하며 평가
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+            <button
+              type="button"
+              onClick={() => handleSelectSatisfaction('high')}
+              style={{
+                padding: '0.45rem 0.3rem',
+                borderRadius: '7px',
+                border: dailyLog?.satisfaction === 'high' ? '1.5px solid #f97316' : '1px solid rgba(255, 255, 255, 0.08)',
+                background: dailyLog?.satisfaction === 'high' ? 'rgba(249, 115, 22, 0.25)' : 'rgba(255, 255, 255, 0.04)',
+                color: dailyLog?.satisfaction === 'high' ? '#fdba74' : 'var(--text-muted)',
+                fontWeight: dailyLog?.satisfaction === 'high' ? 'bold' : 'normal',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.15rem',
+                boxShadow: dailyLog?.satisfaction === 'high' ? '0 0 10px rgba(249, 115, 22, 0.35)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: '1rem' }}>🔥</span>
+              <span style={{ fontSize: '0.74rem' }}>상 (대만족)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectSatisfaction('mid')}
+              style={{
+                padding: '0.45rem 0.3rem',
+                borderRadius: '7px',
+                border: dailyLog?.satisfaction === 'mid' ? '1.5px solid #10b981' : '1px solid rgba(255, 255, 255, 0.08)',
+                background: dailyLog?.satisfaction === 'mid' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.04)',
+                color: dailyLog?.satisfaction === 'mid' ? '#6ee7b7' : 'var(--text-muted)',
+                fontWeight: dailyLog?.satisfaction === 'mid' ? 'bold' : 'normal',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.15rem',
+                boxShadow: dailyLog?.satisfaction === 'mid' ? '0 0 10px rgba(16, 185, 129, 0.35)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: '1rem' }}>🌿</span>
+              <span style={{ fontSize: '0.74rem' }}>중 (적당함)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectSatisfaction('low')}
+              style={{
+                padding: '0.45rem 0.3rem',
+                borderRadius: '7px',
+                border: dailyLog?.satisfaction === 'low' ? '1.5px solid #64748b' : '1px solid rgba(255, 255, 255, 0.08)',
+                background: dailyLog?.satisfaction === 'low' ? 'rgba(100, 116, 139, 0.3)' : 'rgba(255, 255, 255, 0.04)',
+                color: dailyLog?.satisfaction === 'low' ? '#cbd5e1' : 'var(--text-muted)',
+                fontWeight: dailyLog?.satisfaction === 'low' ? 'bold' : 'normal',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '0.15rem',
+                boxShadow: dailyLog?.satisfaction === 'low' ? '0 0 8px rgba(100, 116, 139, 0.35)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: '1rem' }}>🌱</span>
+              <span style={{ fontSize: '0.74rem' }}>하 (아쉬움)</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
