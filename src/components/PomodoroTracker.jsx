@@ -14,7 +14,7 @@ let decodedBellBuffer = null;
 const loadBellSound = async (audioCtx) => {
   if (decodedBellBuffer) return;
   try {
-    const response = await fetch(`${bell2Sound}?v=20261118_v3`);
+    const response = await fetch(`${bell2Sound}?v=20261119_v1`);
     const arrayBuffer = await response.arrayBuffer();
     decodedBellBuffer = await audioCtx.decodeAudioData(arrayBuffer);
   } catch (e) {
@@ -657,7 +657,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
       if (!played) {
         try {
-          const audio = new Audio(`${bell2Sound}?v=20261118_v3`);
+          const audio = new Audio(`${bell2Sound}?v=20261119_v1`);
           audio.volume = 1.0;
           const playPromise = audio.play();
           if (playPromise !== undefined) {
