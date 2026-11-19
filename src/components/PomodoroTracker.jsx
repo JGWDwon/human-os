@@ -12,9 +12,8 @@ let globalAudioCtx = null;
 let decodedBellBuffer = null;
 
 const loadBellSound = async (audioCtx) => {
-  if (decodedBellBuffer) return;
   try {
-    const response = await fetch(`${bell2Sound}?v=20261119_v1`);
+    const response = await fetch(`${bell2Sound}?v=20261119_v2`, { cache: 'no-store' });
     const arrayBuffer = await response.arrayBuffer();
     decodedBellBuffer = await audioCtx.decodeAudioData(arrayBuffer);
   } catch (e) {
@@ -657,7 +656,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
       if (!played) {
         try {
-          const audio = new Audio(`${bell2Sound}?v=20261119_v1`);
+          const audio = new Audio(`${bell2Sound}?v=20261119_v2`);
           audio.volume = 1.0;
           const playPromise = audio.play();
           if (playPromise !== undefined) {
@@ -710,44 +709,21 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Cancel any pending scheduled alarm (id:1001) to prevent duplicate
+    // 1. Cancel ANY pending native scheduled notification (id: 1001, id: 1002)
+    // This PREVENTS Android system notification from firing and making duplicate sound or double popup!
     if (Capacitor.isNativePlatform()) {
       try {
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
       } catch (e) {}
     }
 
-    // 2. Play Sound + Show Heads-Up Popup
-    if (Capacitor.isNativePlatform() && !isFromCatchUp) {
-      // On native: fire immediate notification → popup slides down + alarm sound (single source)
-      try {
-        const channelId = await getEffectiveAlarmChannelId();
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 1002,
-              title: '성장의 숲 🍅 집중 완료!',
-              body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-              schedule: { at: new Date(Date.now() + 50) },
-              channelId: channelId,
-              sound: 'bell2',
-              vibrationPattern: [200, 100, 200, 100, 400],
-              actionTypeId: 'OPEN_APP',
-              extra: { route: '/' }
-            }
-          ]
-        });
-      } catch (e) {
-        // Fallback: if native notification fails, play JS sound
-        playSound('complete');
-      }
-    } else if (!Capacitor.isNativePlatform()) {
-      // On browser/PWA: play JS sound
+    // 2. Play Completion Sound (The uploaded chime sound)
+    // Only play once when not catching up from background
+    if (!isFromCatchUp) {
       playSound('complete');
     }
-    // isFromCatchUp on native: id:1001 already played sound+popup in background, skip
 
-    // 3. Show In-App Slide-Down Heads-Up Popup Banner
+    // 3. Show In-App Slide-Down Heads-Up Popup Banner (The ONE and ONLY popup)
     setCompletionBanner({
       show: true,
       subject: subjectToLog,
@@ -1982,6 +1958,16 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                 title="타이머 리셋"
               >
                 <RotateCcw size={18} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => playSound('complete')}
+                className="btn btn-secondary"
+                style={{ padding: '0.65rem', borderRadius: '8px', color: '#fbbf24' }}
+                title="종소리 미리듣기 (테스트)"
+              >
+                <Bell size={18} />
               </button>
             </div>
           </>
