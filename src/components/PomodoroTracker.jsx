@@ -23,21 +23,22 @@ const loadBellSound = async (audioCtx) => {
 
 const ensurePopupChannel = async () => {
   if (!Capacitor.isNativePlatform()) return null;
-  const channelId = 'pomodoro-status-popup-v1';
+  const channelId = 'pomodoro-status-popup-v2';
   try {
     await LocalNotifications.createChannel({
       id: channelId,
-      name: 'Pomodoro Status Popup (뽀모도로 상태바 팝업)',
-      description: '뽀모도로 타이머 완료 시 상단에 내려오는 상태바 헤드업 알림',
+      name: 'Pomodoro Status Alarm (뽀모도로 알람 및 팝업)',
+      description: '뽀모도로 타이머 완료 시 상단에 내려오는 상태바 헤드업 알림 및 알람',
       importance: 5,
       visibility: 1,
       vibration: true,
-      lights: true
+      lights: true,
+      sound: 'bell2'
     }).catch(() => {});
     return channelId;
   } catch (e) {
     console.warn('Failed to create popup channel:', e);
-    return 'pomodoro-alarm-v4';
+    return 'pomodoro-status-popup-v2';
   }
 };
 
@@ -145,20 +146,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showSubjectConfirmModal, setShowSubjectConfirmModal] = useState(false);
   const [showSleepModal, setShowSleepModal] = useState(false);
-  const [completionBanner, setCompletionBanner] = useState({ show: false, subject: '', minutes: 0 });
   const [modalBedTime, setModalBedTime] = useState('23:30');
   const [modalWakeTime, setModalWakeTime] = useState('06:30');
   const pendingTimerStartRef = useRef(false);
   const selectedSubjectRef = useRef(selectedSubject);
-
-  useEffect(() => {
-    if (completionBanner.show) {
-      const timer = setTimeout(() => {
-        setCompletionBanner(prev => ({ ...prev, show: false }));
-      }, 8000);
-      return () => clearTimeout(timer);
-    }
-  }, [completionBanner.show]);
 
   // New day check on mount: prompt sleep input if not recorded and not on vacation
   useEffect(() => {
@@ -692,7 +683,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Trigger Native Status Bar Heads-Up Notification (상태바 알림 팝업 즉시 발화)
+    // 1. Trigger Native Status Bar Heads-Up Notification & Alarm Sound
+    // The native channel (pomodoro-status-popup-v2) uses USAGE_ALARM + bell2 sound,
+    // which automatically ducks any playing lecture/media audio and displays the heads-up notification banner.
     if (Capacitor.isNativePlatform()) {
       try {
         const channelId = await ensurePopupChannel();
@@ -704,6 +697,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
               title: '성장의 숲 🍅 집중 완료!',
               body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
               channelId: channelId,
+              sound: 'bell2',
               vibrationPattern: [200, 100, 200, 100, 400],
               actionTypeId: 'OPEN_APP',
               extra: { route: '/' }
@@ -712,13 +706,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         });
       } catch (e) {
         console.error('Failed to trigger native status bar notification:', e);
+        if (!isFromCatchUp) playSound('complete');
       }
-    }
-
-    // 2. Play Completion Sound (The uploaded chime sound)
-    // Only play once when not catching up from background
-    if (!isFromCatchUp) {
-      playSound('complete');
+    } else {
+      // 2. Play Sound for Web/Desktop only
+      if (!isFromCatchUp) {
+        playSound('complete');
+      }
     }
 
     // 3. Trigger celebration confetti
@@ -736,15 +730,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         navigator.vibrate([200, 100, 200, 100, 400]);
       }
     } catch (e) {}
-
-    // 5. In-App visual banner for Web/Desktop only (on Native, the Android Status Bar Notification is the sole popup)
-    if (!Capacitor.isNativePlatform()) {
-      setCompletionBanner({
-        show: true,
-        subject: subjectToLog,
-        minutes: minutesCompleted
-      });
-    }
 
     // 6. Web / ServiceWorker Notification (Browser / PWA fallback only)
     if (!Capacitor.isNativePlatform() && 'Notification' in window && Notification.permission === 'granted') {
@@ -927,6 +912,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
               body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
               schedule: { at: new Date(endTime), allowWhileIdle: true },
               channelId: channelId,
+              sound: 'bell2',
               vibrationPattern: [200, 100, 200, 100, 400],
               actionTypeId: 'OPEN_APP',
               extra: { route: '/' }
@@ -1012,12 +998,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
     const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
-
-    setCompletionBanner({
-      show: true,
-      subject: subjectToLog,
-      minutes: minutesCompleted
-    });
 
     try {
       confetti({
@@ -1957,16 +1937,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                 title="타이머 리셋"
               >
                 <RotateCcw size={18} />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => playSound('complete')}
-                className="btn btn-secondary"
-                style={{ padding: '0.65rem', borderRadius: '8px', color: '#fbbf24' }}
-                title="종소리 미리듣기 (테스트)"
-              >
-                <Bell size={18} />
               </button>
             </div>
           </>
@@ -3189,95 +3159,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
       {/* Subject Management Modal */}
       <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
-
-      {/* Heads-up In-App Completion Banner */}
-      {completionBanner.show && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 10009,
-            width: '92%',
-            maxWidth: '480px',
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.96) 0%, rgba(30, 41, 59, 0.98) 100%)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            border: '1.5px solid rgba(16, 185, 129, 0.6)',
-            borderRadius: '16px',
-            padding: '1rem 1.25rem',
-            boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.6), 0 0 20px rgba(16, 185, 129, 0.35)',
-            animation: 'slideDownBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.35) 100%)',
-                border: '1px solid rgba(16, 185, 129, 0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.4rem',
-                flexShrink: 0
-              }}
-            >
-              🍅
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
-                <span style={{ fontSize: '0.92rem', fontWeight: 'bold', color: '#10b981' }}>
-                  집중 완료!
-                </span>
-                <span style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 'bold',
-                  padding: '0.1rem 0.4rem',
-                  borderRadius: '4px',
-                  background: `${getSubjectColor(completionBanner.subject, subjects)}22`,
-                  color: getSubjectColor(completionBanner.subject, subjects),
-                  border: `1px solid ${getSubjectColor(completionBanner.subject, subjects)}55`
-                }}>
-                  {completionBanner.subject || '공부'}
-                </span>
-              </div>
-              <div style={{ fontSize: '0.8rem', color: '#cbd5e1', lineHeight: '1.3' }}>
-                🎉 {completionBanner.minutes}분 집중 완료! 기록이 안전하게 저장되었습니다.
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setCompletionBanner(prev => ({ ...prev, show: false }))}
-            style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '8px',
-              padding: '0.45rem 0.75rem',
-              color: '#f8fafc',
-              fontSize: '0.78rem',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.25rem',
-              transition: 'all 0.15s'
-            }}
-          >
-            확인
-          </button>
-        </div>
-      )}
     </div>
   );
 }

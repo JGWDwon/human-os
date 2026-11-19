@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v3");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v5");
           notificationManager.deleteNotificationChannel("pomodoro-alarm-v6");
+          notificationManager.deleteNotificationChannel("pomodoro-status-popup-v1");
         } catch (Exception e) {}
 
         String[] channelIds = new String[]{"pomodoro-alarm-v4", "pomodoro-alarm-v7"};
@@ -63,19 +64,28 @@ public class MainActivity extends BridgeActivity {
           notificationManager.createNotificationChannel(channel);
         }
 
-        // 상태바 전용 헤드업 팝업 채널 (무음 + 최고 중요도 5로 화면 상단 슬라이드 팝업 보장)
+        // 상태바 헤드업 팝업 & USAGE_ALARM 알람 채널 (인강/영상 재생 중에도 강제로 오디오 덕킹 후 종소리 재생)
         NotificationChannel popupChannel = new NotificationChannel(
-          "pomodoro-status-popup-v1",
-          "Pomodoro Status Popup (뽀모도로 상태바 팝업)",
+          "pomodoro-status-popup-v2",
+          "Pomodoro Status Alarm (뽀모도로 알람 및 팝업)",
           NotificationManager.IMPORTANCE_HIGH
         );
-        popupChannel.setDescription("뽀모도로 완료 시 화면 상단에 내려오는 상태바 헤드업 알림 채널");
+        popupChannel.setDescription("뽀모도로 완료 시 화면 상단 슬라이드 팝업과 강제 알람 소리가 울리는 채널");
         popupChannel.enableVibration(true);
         popupChannel.setVibrationPattern(new long[]{0, 200, 100, 200, 100, 400});
         popupChannel.setShowBadge(true);
         popupChannel.setBypassDnd(true);
         popupChannel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
-        popupChannel.setSound(null, null);
+
+        Uri popupSoundUri = Uri.parse(
+          "android.resource://" + getPackageName() + "/raw/bell2"
+        );
+        AudioAttributes popupAudioAttributes = new AudioAttributes.Builder()
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .setUsage(AudioAttributes.USAGE_ALARM)
+          .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+          .build();
+        popupChannel.setSound(popupSoundUri, popupAudioAttributes);
         notificationManager.createNotificationChannel(popupChannel);
       }
     }
