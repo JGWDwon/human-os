@@ -3,7 +3,23 @@ import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon, Check, Edit3,
 import { storage, calculateSleepDuration } from '../utils/storage';
 import confetti from 'canvas-confetti';
 
+const getLocalDateString = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const changeDayBy = (dateStr, delta) => {
+  if (!dateStr) return getLocalDateString();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const target = new Date(y, m - 1, d);
+  target.setDate(target.getDate() + delta);
+  return getLocalDateString(target);
+};
+
 export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSelect }) {
+  const todayStr = getLocalDateString();
   const [history, setHistory] = useState([]);
   const [stats, setStats] = useState({ totalTrees: 0, currentStreak: 0 });
   const [calendarInfo, setCalendarInfo] = useState({ year: 2026, month: 8, firstDay: 0 }); // month is 0-indexed
@@ -15,7 +31,6 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
   });
   const [diarySavedStatus, setDiarySavedStatus] = useState(false);
   const diaryInputRef = useRef(null);
-  const saveTimeoutRef = useRef(null);
 
   const handlePrevMonth = () => {
     setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
@@ -41,6 +56,22 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     setDiarySavedStatus(false);
   }, [selectedDate, refreshTrigger]);
 
+  // 선택한 날짜의 월과 캘린더 뷰 월 동기화
+  useEffect(() => {
+    if (selectedDate) {
+      const parts = selectedDate.split('-').map(Number);
+      if (parts.length === 3) {
+        const [y, m] = parts;
+        setViewDate(prev => {
+          if (prev.getFullYear() !== y || prev.getMonth() !== (m - 1)) {
+            return new Date(y, m - 1, 1);
+          }
+          return prev;
+        });
+      }
+    }
+  }, [selectedDate]);
+
   useEffect(() => {
     const handleDailyLogsUpdate = (e) => {
       if (!e.detail || e.detail.date === selectedDate) {
@@ -58,39 +89,18 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     setDailyLog(updated);
   };
 
+  // 일기는 자동 저장하지 않고 상태만 갱신
   const handleDiaryChange = (value) => {
     setDiaryText(value);
     setDiarySavedStatus(false);
-
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    saveTimeoutRef.current = setTimeout(() => {
-      const updated = storage.saveDailyLog(selectedDate, { diary: value, note: value });
-      setDailyLog(updated);
-      setDiarySavedStatus(true);
-      setTimeout(() => setDiarySavedStatus(false), 2000);
-    }, 400);
   };
 
-  const handleDiaryBlur = () => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
+  // 수동 저장 버튼 클릭 또는 Ctrl+Enter 시에만 저장
+  const handleManualSaveDiary = () => {
     const updated = storage.saveDailyLog(selectedDate, { diary: diaryText, note: diaryText });
     setDailyLog(updated);
     setDiarySavedStatus(true);
     setTimeout(() => setDiarySavedStatus(false), 2000);
-  };
-
-  const handleManualSaveDiary = () => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    const updated = storage.saveDailyLog(selectedDate, { diary: diaryText, note: diaryText });
-    setDailyLog(updated);
-    setDiarySavedStatus(true);
-    setTimeout(() => setDiarySavedStatus(false), 2500);
   };
 
   const getDiaryPlaceholder = (satisfaction) => {
@@ -103,7 +113,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     if (satisfaction === 'low') {
       return '🌱 아쉬움! 지치거나 아쉬웠던 점, 또는 내일 다시 시작할 다짐을 가볍게 남겨보세요.';
     }
-    return '오늘 하루의 한줄평이나 짧은 공부 일기를 자유롭게 남겨보세요. (자동 저장)';
+    return '오늘 하루의 한줄평이나 짧은 공부 일기를 자유롭게 남겨보세요. (저장 버튼 또는 Ctrl+Enter)';
   };
 
   const handleSelectSatisfaction = (level) => {
@@ -391,21 +401,129 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         justifyContent: 'space-between',
         gap: '0.5rem'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-          <h4 style={{
-            fontSize: '0.88rem',
-            color: '#c084fc',
-            margin: 0,
-            display: 'flex',
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.45rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <h4 style={{
+              fontSize: '0.88rem',
+              color: '#c084fc',
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontWeight: 800
+            }}>
+              <Moon size={15} color="#c084fc" /> 하루 마무리 · 수면 & 성취도
+            </h4>
+            {selectedDate !== todayStr && (
+              <span style={{
+                fontSize: '0.68rem',
+                color: '#fbbf24',
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                padding: '0.1rem 0.45rem',
+                borderRadius: '4px',
+                fontWeight: 'bold'
+              }}>
+                {selectedDate < todayStr ? '과거 기록 작성 중' : '미래 일자'}
+              </span>
+            )}
+          </div>
+
+          {/* 날짜 빠른 선택 (전날/오늘/다음날) 및 직접 날짜 Picker */}
+          <div style={{
+            display: 'inline-flex',
             alignItems: 'center',
-            gap: '0.4rem',
-            fontWeight: 800
+            gap: '0.25rem',
+            background: 'rgba(0, 0, 0, 0.45)',
+            padding: '0.15rem 0.35rem',
+            borderRadius: '6px',
+            border: '1px solid rgba(139, 92, 246, 0.35)'
           }}>
-            <Moon size={15} color="#c084fc" /> 하루 마무리 · 수면 & 성취도
-          </h4>
-          <span style={{ fontSize: '0.72rem', color: '#a78bfa', background: 'rgba(139, 92, 246, 0.15)', padding: '0.1rem 0.45rem', borderRadius: '4px', fontWeight: 'bold' }}>
-            {selectedDate}
-          </span>
+            <button
+              type="button"
+              onClick={() => onDateSelect && onDateSelect(changeDayBy(selectedDate, -1))}
+              title="전날 기록으로 이동"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#c084fc',
+                cursor: 'pointer',
+                padding: '2px 5px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                borderRadius: '4px'
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+              onMouseLeave={e => e.currentTarget.style.color = '#c084fc'}
+            >
+              <ChevronLeft size={14} />
+              <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>전날</span>
+            </button>
+
+            {/* 날짜 직접 선택 Input */}
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => {
+                if (e.target.value && onDateSelect) {
+                  onDateSelect(e.target.value);
+                }
+              }}
+              title="클릭하여 날짜 직접 선택"
+              style={{
+                background: 'rgba(139, 92, 246, 0.18)',
+                border: '1px solid rgba(139, 92, 246, 0.5)',
+                borderRadius: '4px',
+                color: '#f1f5f9',
+                padding: '0.12rem 0.35rem',
+                fontSize: '0.74rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontFamily: 'inherit'
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => onDateSelect && onDateSelect(todayStr)}
+              title="오늘 날짜로 이동"
+              style={{
+                background: selectedDate === todayStr ? 'rgba(139, 92, 246, 0.35)' : 'rgba(255, 255, 255, 0.08)',
+                border: selectedDate === todayStr ? '1px solid #c084fc' : '1px solid rgba(255, 255, 255, 0.1)',
+                color: selectedDate === todayStr ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '2px 6px',
+                fontSize: '0.68rem',
+                borderRadius: '4px',
+                fontWeight: 'bold'
+              }}
+            >
+              오늘
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onDateSelect && onDateSelect(changeDayBy(selectedDate, 1))}
+              title="다음날 기록으로 이동"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#c084fc',
+                cursor: 'pointer',
+                padding: '2px 5px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                borderRadius: '4px'
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+              onMouseLeave={e => e.currentTarget.style.color = '#c084fc'}
+            >
+              <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>다음날</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
 
         {/* 수면 시간 직접 기입 (취침 ~ 기상) */}
@@ -502,7 +620,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
             <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold' }}>
-              ⭐ 오늘의 공부 성취도
+              ⭐ {selectedDate === todayStr ? '오늘의 공부 성취도' : `${selectedDate} 공부 성취도`}
             </span>
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
               하루를 마무리하며 평가 (클릭 시 일기 작성)
@@ -594,7 +712,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
             <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Edit3 size={13} color="#c084fc" /> 오늘의 한줄평 · 짧은 일기
+              <Edit3 size={13} color="#c084fc" /> {selectedDate === todayStr ? '오늘의 한줄평 · 짧은 일기' : `${selectedDate} 한줄평 · 일기`}
             </span>
             <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
               {(diaryText || '').length}자
@@ -605,7 +723,6 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
             ref={diaryInputRef}
             value={diaryText}
             onChange={(e) => handleDiaryChange(e.target.value)}
-            onBlur={handleDiaryBlur}
             onKeyDown={(e) => {
               if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 e.preventDefault();
@@ -640,12 +757,12 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
             }}
           />
 
-          {/* 저장 버튼 및 피드백 알림 행 */}
+          {/* 저장 버튼 및 피드백 알림 행 (수동 저장 시에만 '저장 완료' 표시) */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
             <div>
               {diarySavedStatus ? (
                 <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Check size={12} /> 저장 완료! (JSON 동기화됨)
+                  <Check size={12} /> 저장 완료
                 </span>
               ) : (
                 <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>
