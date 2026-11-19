@@ -1,9 +1,6 @@
 package com.humanos.app;
 
 import android.app.AlarmManager;
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -13,10 +10,8 @@ import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
-import androidx.core.app.NotificationCompat;
 
 public class PomodoroAlarmHelper {
-    public static final String CHANNEL_ID = "pomodoro-headsup-v4";
     private static MediaPlayer sMediaPlayer = null;
     private static AudioFocusRequest sFocusRequest = null;
 
@@ -104,86 +99,20 @@ public class PomodoroAlarmHelper {
     }
 
     /**
-     * 화면 상단 슬라이드 헤드업 팝업 배너 표시
+     * 정확한 시간(endTime)에 STREAM_ALARM 사운드가 울리도록 AlarmManager에 예약
      */
-    public static void showHeadsUpNotification(Context context, String title, String body, int notificationId) {
-        try {
-            NotificationManager notificationManager =
-                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (notificationManager == null) return;
-
-            // 알림 채널 생성 (최고 중요도 HIGH + 무음)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Pomodoro Alarm (뽀모도로 강제 알람 및 팝업)",
-                    NotificationManager.IMPORTANCE_HIGH
-                );
-                channel.setDescription("뽀모도로 완료 시 음소거 상태에서도 상단 슬라이드 팝업과 알람 소리가 울리는 채널");
-                channel.enableVibration(true);
-                channel.setVibrationPattern(new long[]{0, 250, 100, 250, 100, 400});
-                channel.setShowBadge(true);
-                channel.setBypassDnd(true);
-                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-                channel.setSound(null, null); // 사운드는 음소거 우회를 위해 MediaPlayer가 STREAM_ALARM으로 직접 재생
-                notificationManager.createNotificationChannel(channel);
-            }
-
-            // 클릭 시 앱 실행 Intent
-            Intent openIntent = new Intent(context, MainActivity.class);
-            openIntent.setAction(Intent.ACTION_MAIN);
-            openIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-            openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
-            int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                pendingFlags |= PendingIntent.FLAG_IMMUTABLE;
-            }
-            PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationId, openIntent, pendingFlags);
-
-            int smallIconRes = context.getApplicationInfo().icon;
-            if (smallIconRes == 0) {
-                smallIconRes = android.R.drawable.ic_lock_idle_alarm;
-            }
-
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(smallIconRes)
-                .setContentTitle(title)
-                .setContentText(body)
-                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .setFullScreenIntent(pendingIntent, true) // 헤드업 팝업 강제 노출 및 화면 깨우기
-                .setVibrate(new long[]{0, 250, 100, 250, 100, 400});
-
-            notificationManager.notify(notificationId, builder.build());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * 정확한 시간(endTime)에 울리도록 AlarmManager에 예약
-     */
-    public static void scheduleAlarm(Context context, long triggerAtMillis, String title, String body, int minutes) {
+    public static void scheduleAlarm(Context context, long triggerAtMillis) {
         cancelAlarm(context);
         try {
             AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
             if (alarmManager == null) return;
 
             Intent intent = new Intent(context, PomodoroAlarmReceiver.class);
-            intent.putExtra("title", title);
-            intent.putExtra("body", body);
-            intent.putExtra("minutes", minutes);
-
             int flags = PendingIntent.FLAG_UPDATE_CURRENT;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 flags |= PendingIntent.FLAG_MUTABLE;
             }
-            PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 1001, intent, flags);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 1005, intent, flags);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
@@ -207,7 +136,7 @@ public class PomodoroAlarmHelper {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     flags |= PendingIntent.FLAG_MUTABLE;
                 }
-                PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 1001, intent, flags);
+                PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 1005, intent, flags);
                 alarmManager.cancel(pendingIntent);
                 pendingIntent.cancel();
             }

@@ -23,35 +23,6 @@ const loadBellSound = async (audioCtx) => {
   }
 };
 
-const triggerNativeAlarm = async (title, body, minutes) => {
-  if (Capacitor.isNativePlatform()) {
-    try {
-      await PomodoroNative.triggerNow({ title, body, minutes });
-      return true;
-    } catch (e) {
-      console.warn('PomodoroNative.triggerNow failed, falling back:', e);
-    }
-  }
-  return false;
-};
-
-const scheduleNativeAlarm = async (endTime, title, body, minutes) => {
-  if (Capacitor.isNativePlatform()) {
-    try {
-      await PomodoroNative.schedule({
-        triggerAtMillis: endTime,
-        title,
-        body,
-        minutes
-      });
-      return true;
-    } catch (e) {
-      console.warn('PomodoroNative.schedule failed:', e);
-    }
-  }
-  return false;
-};
-
 const cancelNativeAlarm = async () => {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -65,21 +36,22 @@ const cancelNativeAlarm = async () => {
 
 const ensurePopupChannel = async () => {
   if (!Capacitor.isNativePlatform()) return null;
-  const channelId = 'pomodoro-headsup-v4';
+  const channelId = 'pomodoro-headsup-v5';
   try {
     await LocalNotifications.createChannel({
       id: channelId,
-      name: 'Pomodoro Alarm (뽀모도로 강제 알람 및 팝업)',
+      name: 'Pomodoro Heads-Up Alarm (뽀모도로 알람 및 헤드업 팝업)',
       description: '뽀모도로 타이머 완료 시 상단에 내려오는 상태바 헤드업 알림 및 알람',
       importance: 5,
       visibility: 1,
       vibration: true,
-      lights: true
+      lights: true,
+      sound: 'bell2'
     }).catch(() => {});
     return channelId;
   } catch (e) {
     console.warn('Failed to create popup channel:', e);
-    return 'pomodoro-headsup-v4';
+    return 'pomodoro-headsup-v5';
   }
 };
 
@@ -724,19 +696,40 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Trigger Native Alarm Sound on STREAM_ALARM (무음/음소거 뚫기) & Heads-Up Notification Banner
-    let nativeTriggered = false;
+    // 1. Trigger Native Status Bar Heads-Up Notification (상태바 헤드업 알림 팝업)
     if (Capacitor.isNativePlatform()) {
-      nativeTriggered = await triggerNativeAlarm(
-        '성장의 숲 🍅 집중 완료!',
-        `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-        minutesCompleted
-      );
-    }
+      try {
+        const channelId = await ensurePopupChannel();
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }] }).catch(() => {});
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1002,
+              title: '성장의 숲 🍅 집중 완료!',
+              body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+              channelId: channelId,
+              sound: 'bell2',
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
+        });
+      } catch (e) {
+        console.error('Failed to trigger heads-up notification:', e);
+      }
 
-    // 2. Play Completion Sound for Web/Desktop only (if native alarm didn't handle it)
-    if (!nativeTriggered && !isFromCatchUp) {
-      playSound('complete');
+      // 2. Play STREAM_ALARM Sound (음소거/무음 모드 뚫기 & 인강 오디오 덕킹)
+      try {
+        await PomodoroNative.playAlarmSound();
+      } catch (e) {
+        console.error('Failed to play native alarm sound:', e);
+      }
+    } else {
+      // Web / Desktop only
+      if (!isFromCatchUp) {
+        playSound('complete');
+      }
     }
 
     // 3. Trigger celebration confetti
@@ -914,21 +907,41 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     sessionStartTsRef.current = Date.now();
     const minutesLeft = Math.ceil(duration / 60);
 
-    // Schedule native alarm (정확한 시간에 음소거/무음 모드를 뚫고 종소리 + 헤드업 팝업)
+    // Schedule native notification & alarm (백그라운드/화면 꺼짐 시에도 상태바 헤드업 팝업 + 음소거 뚫는 알람 소리)
     if (Capacitor.isNativePlatform()) {
       try {
+        const channelId = await ensurePopupChannel();
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
+
         const perm = await LocalNotifications.checkPermissions();
         if (perm.display !== 'granted') {
           await LocalNotifications.requestPermissions();
         }
-      } catch (e) {}
 
-      await scheduleNativeAlarm(
-        endTime,
-        '성장의 숲 🍅 집중 완료!',
-        `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-        minutesLeft
-      );
+        // A. 상태바 헤드업 알림 팝업 예약 (LocalNotifications - 검증된 헤드업 슬라이드 팝업)
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1001,
+              title: '성장의 숲 🍅 집중 완료!',
+              body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+              schedule: { at: new Date(endTime), allowWhileIdle: true },
+              channelId: channelId,
+              sound: 'bell2',
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
+        });
+
+        // B. 음소거 뚫는 STREAM_ALARM 종소리 예약 (PomodoroNative AlarmManager)
+        await PomodoroNative.schedule({
+          triggerAtMillis: endTime
+        });
+      } catch (e) {
+        console.error('Failed to schedule native notification/alarm:', e);
+      }
     }
 
     const targetActivityType = (activeTimerMode === 'lecture') ? 'lecture' : 'review';
