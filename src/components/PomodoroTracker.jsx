@@ -21,37 +21,22 @@ const loadBellSound = async (audioCtx) => {
   }
 };
 
-const getEffectiveAlarmChannelId = async () => {
+const ensurePopupChannel = async () => {
   if (!Capacitor.isNativePlatform()) return null;
+  const channelId = 'pomodoro-status-popup-v1';
   try {
-    const res = await LocalNotifications.listChannels();
-    const existing = (res?.channels || []).map(c => c.id);
-    console.log('[Notification] Existing channels on device:', existing);
-
-    // 1. If pomodoro-alarm-v4 exists (the native USAGE_ALARM channel in the installed APK)
-    if (existing.includes('pomodoro-alarm-v4')) return 'pomodoro-alarm-v4';
-    // 2. If pomodoro-alarm-v7 exists
-    if (existing.includes('pomodoro-alarm-v7')) return 'pomodoro-alarm-v7';
-    // 3. Any other pomodoro channel
-    const anyChannel = existing.find(id => id && id.startsWith('pomodoro-alarm-'));
-    if (anyChannel) return anyChannel;
-
-    // 4. Fallback: if no pomodoro channel found in listChannels, create pomodoro-alarm-v4 and pomodoro-alarm-v7
-    for (const id of ['pomodoro-alarm-v4', 'pomodoro-alarm-v7']) {
-      await LocalNotifications.createChannel({
-        id,
-        name: 'Pomodoro Alarm (강제 알람)',
-        description: '알람 완료 시 무음/방해금지 모드에서도 강제로 울리는 채널',
-        importance: 5,
-        visibility: 1,
-        sound: 'bell2',
-        vibration: true,
-        lights: true
-      }).catch(() => {});
-    }
-    return 'pomodoro-alarm-v4';
+    await LocalNotifications.createChannel({
+      id: channelId,
+      name: 'Pomodoro Status Popup (뽀모도로 상태바 팝업)',
+      description: '뽀모도로 타이머 완료 시 상단에 내려오는 상태바 헤드업 알림',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: true
+    }).catch(() => {});
+    return channelId;
   } catch (e) {
-    console.warn('[Notification] Failed to inspect channels, defaulting to pomodoro-alarm-v4:', e);
+    console.warn('Failed to create popup channel:', e);
     return 'pomodoro-alarm-v4';
   }
 };
@@ -473,7 +458,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         if (Capacitor.isNativePlatform()) {
           const result = await LocalNotifications.checkPermissions();
           setNotifPermission(result.display === 'granted' ? 'granted' : 'default');
-          await getEffectiveAlarmChannelId();
+          await ensurePopupChannel();
         } else if (typeof window !== 'undefined' && 'Notification' in window) {
           setNotifPermission(window.Notification.permission);
         }
@@ -590,15 +575,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         const granted = result.display === 'granted';
         setNotifPermission(granted ? 'granted' : 'denied');
         if (granted) {
-          const channelId = await getEffectiveAlarmChannelId();
+          const channelId = await ensurePopupChannel();
           await LocalNotifications.schedule({
             notifications: [{
               id: 9999,
               title: '알림 활성화 완료! 🍅',
               body: '집중이 완료되면 화면 상단 알림 팝업으로 알려드립니다.',
-              schedule: { at: new Date(Date.now() + 500) },
-              channelId: channelId,
-              sound: 'bell2'
+              channelId: channelId
             }]
           });
         } else {
@@ -709,12 +692,27 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Cancel ANY pending native scheduled notification (id: 1001, id: 1002)
-    // This PREVENTS Android system notification from firing and making duplicate sound or double popup!
+    // 1. Trigger Native Status Bar Heads-Up Notification (상태바 알림 팝업 즉시 발화)
     if (Capacitor.isNativePlatform()) {
       try {
-        await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
-      } catch (e) {}
+        const channelId = await ensurePopupChannel();
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }] }).catch(() => {});
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1002,
+              title: '성장의 숲 🍅 집중 완료!',
+              body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+              channelId: channelId,
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
+        });
+      } catch (e) {
+        console.error('Failed to trigger native status bar notification:', e);
+      }
     }
 
     // 2. Play Completion Sound (The uploaded chime sound)
@@ -723,14 +721,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       playSound('complete');
     }
 
-    // 3. Show In-App Slide-Down Heads-Up Popup Banner (The ONE and ONLY popup)
-    setCompletionBanner({
-      show: true,
-      subject: subjectToLog,
-      minutes: minutesCompleted
-    });
-
-    // 4. Trigger celebration confetti
+    // 3. Trigger celebration confetti
     try {
       confetti({
         particleCount: 65,
@@ -739,12 +730,21 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       });
     } catch (e) {}
 
-    // 5. Haptic Vibration
+    // 4. Haptic Vibration
     try {
       if ('vibrate' in navigator) {
         navigator.vibrate([200, 100, 200, 100, 400]);
       }
     } catch (e) {}
+
+    // 5. In-App visual banner for Web/Desktop only (on Native, the Android Status Bar Notification is the sole popup)
+    if (!Capacitor.isNativePlatform()) {
+      setCompletionBanner({
+        show: true,
+        subject: subjectToLog,
+        minutes: minutesCompleted
+      });
+    }
 
     // 6. Web / ServiceWorker Notification (Browser / PWA fallback only)
     if (!Capacitor.isNativePlatform() && 'Notification' in window && Notification.permission === 'granted') {
@@ -908,7 +908,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     // Schedule native local notification
     if (Capacitor.isNativePlatform()) {
       try {
-        const channelId = await getEffectiveAlarmChannelId();
+        const channelId = await ensurePopupChannel();
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
 
         const perm = await LocalNotifications.checkPermissions();
@@ -923,11 +923,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
           notifications: [
             {
               id: 1001,
-              title: '성장의 숲 🍅',
+              title: '성장의 숲 🍅 집중 완료!',
               body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
               schedule: { at: new Date(endTime), allowWhileIdle: true },
               channelId: channelId,
-              sound: 'bell2',
               vibrationPattern: [200, 100, 200, 100, 400],
               actionTypeId: 'OPEN_APP',
               extra: { route: '/' }

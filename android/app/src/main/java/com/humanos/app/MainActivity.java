@@ -62,6 +62,21 @@ public class MainActivity extends BridgeActivity {
 
           notificationManager.createNotificationChannel(channel);
         }
+
+        // 상태바 전용 헤드업 팝업 채널 (무음 + 최고 중요도 5로 화면 상단 슬라이드 팝업 보장)
+        NotificationChannel popupChannel = new NotificationChannel(
+          "pomodoro-status-popup-v1",
+          "Pomodoro Status Popup (뽀모도로 상태바 팝업)",
+          NotificationManager.IMPORTANCE_HIGH
+        );
+        popupChannel.setDescription("뽀모도로 완료 시 화면 상단에 내려오는 상태바 헤드업 알림 채널");
+        popupChannel.enableVibration(true);
+        popupChannel.setVibrationPattern(new long[]{0, 200, 100, 200, 100, 400});
+        popupChannel.setShowBadge(true);
+        popupChannel.setBypassDnd(true);
+        popupChannel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
+        popupChannel.setSound(null, null);
+        notificationManager.createNotificationChannel(popupChannel);
       }
     }
   }
