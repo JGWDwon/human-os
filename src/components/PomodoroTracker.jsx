@@ -725,11 +725,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       } catch (e) {
         console.error('Failed to play native alarm sound:', e);
       }
-    } else {
-      // Web / Desktop only
-      if (!isFromCatchUp) {
-        playSound('complete');
-      }
+    }
+
+    // 3. Play In-App Sound
+    if (!isFromCatchUp) {
+      playSound('complete');
     }
 
     // 3. Trigger celebration confetti
