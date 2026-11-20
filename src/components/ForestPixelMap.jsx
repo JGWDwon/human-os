@@ -557,41 +557,64 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>취침:</span>
-              <input
-                type="time"
-                value={dailyLog?.bedTime || ''}
-                onChange={(e) => handleSleepTimeChange('bedTime', e.target.value)}
-                style={{
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  border: '1px solid rgba(139, 92, 246, 0.35)',
-                  borderRadius: '5px',
-                  color: '#fff',
-                  padding: '0.2rem 0.4rem',
-                  fontSize: '0.75rem'
-                }}
-              />
-            </div>
+            {(() => {
+              const isPrevDayBed = (() => {
+                if (!dailyLog?.bedTime || !dailyLog?.wakeTime) return false;
+                const [bH, bM] = dailyLog.bedTime.split(':').map(Number);
+                const [wH, wM] = dailyLog.wakeTime.split(':').map(Number);
+                return (bH * 60 + (bM || 0)) > (wH * 60 + (wM || 0));
+              })();
 
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>~</span>
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>취침:</span>
+                    <input
+                      type="time"
+                      value={dailyLog?.bedTime || ''}
+                      onChange={(e) => handleSleepTimeChange('bedTime', e.target.value)}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(139, 92, 246, 0.35)',
+                        borderRadius: '5px',
+                        color: '#fff',
+                        padding: '0.2rem 0.4rem',
+                        fontSize: '0.75rem'
+                      }}
+                    />
+                    {dailyLog?.bedTime && dailyLog?.wakeTime && (
+                      <span style={{ fontSize: '0.66rem', color: isPrevDayBed ? '#fbbf24' : '#a78bfa', fontWeight: 'bold' }}>
+                        {isPrevDayBed ? '(전날)' : '(당일)'}
+                      </span>
+                    )}
+                  </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>기상:</span>
-              <input
-                type="time"
-                value={dailyLog?.wakeTime || ''}
-                onChange={(e) => handleSleepTimeChange('wakeTime', e.target.value)}
-                style={{
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  border: '1px solid rgba(139, 92, 246, 0.35)',
-                  borderRadius: '5px',
-                  color: '#fff',
-                  padding: '0.2rem 0.4rem',
-                  fontSize: '0.75rem'
-                }}
-              />
-            </div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>~</span>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>기상:</span>
+                    <input
+                      type="time"
+                      value={dailyLog?.wakeTime || ''}
+                      onChange={(e) => handleSleepTimeChange('wakeTime', e.target.value)}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1px solid rgba(139, 92, 246, 0.35)',
+                        borderRadius: '5px',
+                        color: '#fff',
+                        padding: '0.2rem 0.4rem',
+                        fontSize: '0.75rem'
+                      }}
+                    />
+                    {dailyLog?.wakeTime && (
+                      <span style={{ fontSize: '0.66rem', color: '#a78bfa', fontWeight: 'bold' }}>
+                        (당일)
+                      </span>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
             {(dailyLog?.bedTime || dailyLog?.wakeTime) && (
               <button

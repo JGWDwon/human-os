@@ -898,11 +898,41 @@ export const storage = {
     }
     const all = this.getDailyLogs();
     const existing = all[dateStr] || { bedTime: '', wakeTime: '', satisfaction: null, diary: '', note: '' };
-    all[dateStr] = {
+    const nextLog = {
       ...existing,
       ...logData,
       updatedAt: Date.now()
     };
+
+    // 수면 시간(bedTime, wakeTime)이 입력된 경우, 취침일(bedDate)과 기상일(wakeDate)을 자동 판별하여 JSON에 명시 기록
+    const finalBedTime = nextLog.bedTime;
+    const finalWakeTime = nextLog.wakeTime;
+    if (finalBedTime && finalWakeTime) {
+      const [bH, bM] = finalBedTime.split(':').map(Number);
+      const [wH, wM] = finalWakeTime.split(':').map(Number);
+      if (!isNaN(bH) && !isNaN(wH)) {
+        const bTotal = bH * 60 + (bM || 0);
+        const wTotal = wH * 60 + (wM || 0);
+        
+        // 자정 전 취침 (예: 23:00 취침 ~ 07:00 기상): 취침일은 전날(D-1), 기상일은 당일(D)
+        if (bTotal > wTotal) {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          const prevDate = new Date(y, m - 1, d - 1);
+          const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+          nextLog.bedDate = prevDateStr;
+          nextLog.wakeDate = dateStr;
+        } else {
+          // 자정 후 취침 (예: 01:00 취침 ~ 08:00 기상): 취침일과 기상일 모두 당일(D)
+          nextLog.bedDate = dateStr;
+          nextLog.wakeDate = dateStr;
+        }
+      }
+    } else if (!finalBedTime && !finalWakeTime) {
+      delete nextLog.bedDate;
+      delete nextLog.wakeDate;
+    }
+
+    all[dateStr] = nextLog;
     localStorage.setItem(STORAGE_KEYS.DAILY_LOGS, JSON.stringify(all));
     this._dispatchSync();
     window.dispatchEvent(new CustomEvent('daily-logs-updated', { detail: { date: dateStr, log: all[dateStr] } }));
@@ -1745,23 +1775,41 @@ export const storage = {
   completeReview(lectureId, reviewId, difficulty = null) {
     const lectures = this.getLectures();
     let found = false;
+    const now = new Date();
+    const actualCompletedDate = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     
     lectures.forEach(lec => {
       if (lec.id === lectureId) {
         lec.reviews.forEach(rev => {
           if (rev.id === reviewId && !rev.isCompleted) {
             rev.isCompleted = true;
-            rev.completedAt = new Date().toISOString();
+            rev.completedAt = now.toISOString();
+            rev.completedDate = actualCompletedDate; // 실제 완료 일자 (예: "2026-11-21")
+            rev.scheduledDate = rev.targetDate;     // 원래 복습 예정일 (예: "2026-11-20")
+
+            // 원래 복습 예정일보다 늦게 완료한 경우 지연 완료 플래그 및 상세 정보 기록
+            if (rev.targetDate && actualCompletedDate > rev.targetDate) {
+              const [tY, tM, tD] = rev.targetDate.split('-').map(Number);
+              const [cY, cM, cD] = actualCompletedDate.split('-').map(Number);
+              const diffDays = Math.max(1, Math.round((new Date(cY, cM - 1, cD) - new Date(tY, tM - 1, tD)) / (1000 * 60 * 60 * 24)));
+              rev.isDelayed = true;
+              rev.delayedDays = diffDays;
+              rev.delayNote = `${rev.targetDate} 복습 과제를 ${actualCompletedDate}에 ${diffDays}일 지연 완료함`;
+            } else {
+              rev.isDelayed = false;
+              rev.delayedDays = 0;
+            }
+
             if (difficulty) {
               rev.difficulty = difficulty; // 'easy' | 'hard'
               if (difficulty === 'hard') {
                 rev.needsReReview = true;
                 rev.reReviewStatus = 'pending'; // 'pending' | 'completed'
-                rev.hardRecordedAt = new Date().toISOString();
+                rev.hardRecordedAt = now.toISOString();
               } else if (difficulty === 'easy') {
                 rev.needsReReview = false;
                 rev.reReviewStatus = 'mastered';
-                rev.easyRecordedAt = new Date().toISOString();
+                rev.easyRecordedAt = now.toISOString();
               }
             }
             found = true;
@@ -1788,6 +1836,11 @@ export const storage = {
           if (rev.id === reviewId && rev.isCompleted) {
             rev.isCompleted = false;
             rev.completedAt = null;
+            delete rev.completedDate;
+            delete rev.scheduledDate;
+            delete rev.isDelayed;
+            delete rev.delayedDays;
+            delete rev.delayNote;
             delete rev.difficulty;
             delete rev.needsReReview;
             delete rev.reReviewStatus;

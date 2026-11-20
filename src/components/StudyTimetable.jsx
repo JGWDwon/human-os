@@ -5,6 +5,17 @@ import { storage, getSubjectColor, calculateSleepDuration } from '../utils/stora
 // 24 Hours starting at 06:00 to 05:00 next morning (matching traditional Korean 10-minute study planner)
 const PLANNER_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5];
 
+const changeDayBy = (dateStr, delta) => {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const target = new Date(y, m - 1, d);
+  target.setDate(target.getDate() + delta);
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, '0');
+  const day = String(target.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const getHourDisplayLabel = (h) => {
   if (h === 0 || h === 12) return '12';
   if (h > 12) return String(h - 12);
@@ -81,7 +92,14 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
   let totalMealMinutes = 0;
   let totalSleepMinutes = 0;
 
-  // 1. Map sleep session first (lifestyle foundation) in calm violet (#8b5cf6)
+  // 1. Map sleep session (lifestyle foundation) in calm violet (#8b5cf6)
+  // dateStr 일자의 수면 구간들을 정확히 수집:
+  // A) 당일 아침 기상 수면 (todayLog):
+  //    - 자정 전 취침(23:00 등, bTotal > wTotal)이면 당일(dateStr) 수면은 00:00(0분) ~ wTotal(기상시각)
+  //    - 자정 후 취침(01:00 등, bTotal <= wTotal)이면 당일(dateStr) 수면은 bTotal(취침시각) ~ wTotal(기상시각)
+  // B) 당일 밤 취침 수면 (nextLog):
+  //    - 익일 아침 기상 수면 중 취침이 자정 전(당일 밤, nbTotal > nwTotal)인 경우 nbTotal(취침시각) ~ 24:00(1440분)
+  const sleepIntervalsOnDay = [];
   const dLog = storage.getDailyLogByDate(dateStr);
   if (dLog && dLog.bedTime && dLog.wakeTime) {
     const sleepDur = calculateSleepDuration(dLog.bedTime, dLog.wakeTime);
@@ -92,51 +110,72 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
       const [endH, endM] = dLog.wakeTime.split(':').map(Number);
 
       if (!isNaN(startH) && !isNaN(endH)) {
-        const startTotal = startH * 60 + startM;
-        let endTotal = endH * 60 + endM;
-        if (endTotal <= startTotal) {
-          endTotal += 1440; // crosses midnight
-        }
+        const startTotal = startH * 60 + (startM || 0);
+        const endTotal = endH * 60 + (endM || 0);
 
-        const sleepColor = '#8b5cf6';
-        const sleepSubject = '수면';
-
-        for (let h = 0; h < 24; h++) {
-          for (let b = 0; b < 6; b++) {
-            const blockStart = h * 60 + b * 10;
-
-            const leftStart = blockStart;
-            const leftEnd = blockStart + 5;
-            const leftOverlap = Math.max(0, Math.min(endTotal, leftEnd) - Math.max(startTotal, leftStart));
-            const leftWrapped = endTotal > 1440
-              ? Math.max(0, Math.min(endTotal - 1440, leftEnd) - Math.max(startTotal - 1440, leftStart))
-              : 0;
-
-            if (leftOverlap >= 2.5 || leftWrapped >= 2.5) {
-              matrix[h][b].left = true;
-              matrix[h][b].leftColor = sleepColor;
-              matrix[h][b].leftSubject = sleepSubject;
-              matrix[h][b].leftType = 'sleep';
-            }
-
-            const rightStart = blockStart + 5;
-            const rightEnd = blockStart + 10;
-            const rightOverlap = Math.max(0, Math.min(endTotal, rightEnd) - Math.max(startTotal, rightStart));
-            const rightWrapped = endTotal > 1440
-              ? Math.max(0, Math.min(endTotal - 1440, rightEnd) - Math.max(startTotal - 1440, rightStart))
-              : 0;
-
-            if (rightOverlap >= 2.5 || rightWrapped >= 2.5) {
-              matrix[h][b].right = true;
-              matrix[h][b].rightColor = sleepColor;
-              matrix[h][b].rightSubject = sleepSubject;
-              matrix[h][b].rightType = 'sleep';
-            }
+        if (startTotal > endTotal) {
+          // 자정 전 취침 (예: 11/19 23:00 취침 ~ 11/20 07:00 기상)
+          // 당일(dateStr = 11/20) 발생 수면은 00:00(0분)부터 07:00(endTotal분)까지
+          if (endTotal > 0) {
+            sleepIntervalsOnDay.push({ start: 0, end: Math.min(1440, endTotal) });
+          }
+        } else {
+          // 자정 후 취침 (예: 11/20 01:00 취침 ~ 11/20 08:00 기상)
+          // 당일(dateStr = 11/20) 발생 수면은 01:00(startTotal분)부터 08:00(endTotal분)까지
+          if (endTotal > startTotal) {
+            sleepIntervalsOnDay.push({ start: Math.max(0, startTotal), end: Math.min(1440, endTotal) });
           }
         }
       }
     }
   }
+
+  // 당일 밤 취침 수면 (익일 아침 기상 기록의 취침 시각이 자정 전인 경우)
+  const nextDateStr = changeDayBy(dateStr, 1);
+  const nextLog = storage.getDailyLogByDate(nextDateStr);
+  if (nextLog && nextLog.bedTime && nextLog.wakeTime) {
+    const [nbH, nbM] = nextLog.bedTime.split(':').map(Number);
+    const [nwH, nwM] = nextLog.wakeTime.split(':').map(Number);
+    if (!isNaN(nbH) && !isNaN(nwH)) {
+      const nbTotal = nbH * 60 + (nbM || 0);
+      const nwTotal = nwH * 60 + (nwM || 0);
+      // 익일 아침 기상한 수면이 자정 전(당일 밤)에 취침한 경우: 당일 밤(nbTotal) ~ 24:00(1440분) 수면 표시
+      if (nbTotal > nwTotal && nbTotal < 1440) {
+        sleepIntervalsOnDay.push({ start: nbTotal, end: 1440 });
+      }
+    }
+  }
+
+  const sleepColor = '#8b5cf6';
+  const sleepSubject = '수면';
+
+  sleepIntervalsOnDay.forEach(({ start, end }) => {
+    for (let h = 0; h < 24; h++) {
+      for (let b = 0; b < 6; b++) {
+        const blockStart = h * 60 + b * 10;
+
+        const leftStart = blockStart;
+        const leftEnd = blockStart + 5;
+        const leftOverlap = Math.max(0, Math.min(end, leftEnd) - Math.max(start, leftStart));
+        if (leftOverlap >= 2.5) {
+          matrix[h][b].left = true;
+          matrix[h][b].leftColor = sleepColor;
+          matrix[h][b].leftSubject = sleepSubject;
+          matrix[h][b].leftType = 'sleep';
+        }
+
+        const rightStart = blockStart + 5;
+        const rightEnd = blockStart + 10;
+        const rightOverlap = Math.max(0, Math.min(end, rightEnd) - Math.max(start, rightStart));
+        if (rightOverlap >= 2.5) {
+          matrix[h][b].right = true;
+          matrix[h][b].rightColor = sleepColor;
+          matrix[h][b].rightSubject = sleepSubject;
+          matrix[h][b].rightType = 'sleep';
+        }
+      }
+    }
+  });
 
   // 2. Map study sessions (lecture / review) over sleep if any
   timestamps.forEach(ts => {

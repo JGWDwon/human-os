@@ -635,6 +635,11 @@ export default function EbbinghausPlanner({ onClose }) {
                                 🔥 약점
                               </span>
                             )}
+                            {rev.isCompleted && rev.isDelayed && (
+                              <span style={{ fontSize: '0.65rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.18)', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }} title={rev.delayNote || `${rev.delayedDays}일 지연 완료`}>
+                                ⏰ {rev.delayedDays}일 지연 완료
+                              </span>
+                            )}
                           </div>
                         );
                       })()}
@@ -1319,6 +1324,11 @@ export default function EbbinghausPlanner({ onClose }) {
                             🔥
                           </span>
                         )}
+                        {rev.isCompleted && rev.isDelayed && (
+                          <span style={{ fontSize: '0.6rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.2)', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold' }} title={rev.delayNote || `${rev.delayedDays}일 지연 완료`}>
+                            +{rev.delayedDays}d
+                          </span>
+                        )}
                         {rev.isCompleted && <Check size={12} color="#10b981" />}
                       </div>
                     </div>
@@ -1417,7 +1427,7 @@ export default function EbbinghausPlanner({ onClose }) {
                                   fontWeight: rev.isCompleted ? 'normal' : 'bold',
                                   opacity: rev.isCompleted ? 0.75 : 1
                                 }}
-                                title={`${badge.label}: ${rev.targetDate} (${rev.isCompleted ? '완료' : '미완료'})`}
+                                title={`${badge.label}: 예정 ${rev.targetDate}${rev.isCompleted ? (rev.isDelayed ? ` (${rev.completedDate}에 ${rev.delayedDays}일 지연 완료)` : ` (${rev.completedDate || rev.targetDate} 완료)`) : ' (미완료)'}`}
                               >
                                 {badge.label} {rev.isCompleted ? '✓' : ''}
                               </span>
