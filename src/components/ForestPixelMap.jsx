@@ -215,7 +215,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
 
   const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
-  const sleepDur = calculateSleepDuration(dailyLog?.bedTime, dailyLog?.wakeTime);
+  const sleepDur = calculateSleepDuration(dailyLog?.bedTime, dailyLog?.wakeTime, dailyLog?.bedDateType);
 
   return (
     <div className="glass-panel" style={{ width: '100%', display: 'flex', flexDirection: 'column', borderTop: '3px solid var(--accent-primary)', height: '100%', gap: '0.75rem' }}>
@@ -558,21 +558,34 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {(() => {
-              const isPrevDayBed = (() => {
-                if (!dailyLog?.bedTime || !dailyLog?.wakeTime) return false;
-                const [bH, bM] = dailyLog.bedTime.split(':').map(Number);
-                const [wH, wM] = dailyLog.wakeTime.split(':').map(Number);
-                return (bH * 60 + (bM || 0)) > (wH * 60 + (wM || 0));
+              const currentBedType = dailyLog?.bedDateType || (() => {
+                if (!dailyLog?.bedTime) return 'prev';
+                const [bH] = dailyLog.bedTime.split(':').map(Number);
+                return bH >= 12 ? 'prev' : 'same';
               })();
+
+              const handleBedDateTypeChange = (type) => {
+                const updated = storage.saveDailyLog(selectedDate, { bedDateType: type });
+                setDailyLog(updated);
+              };
 
               return (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>취침:</span>
                     <input
                       type="time"
                       value={dailyLog?.bedTime || ''}
-                      onChange={(e) => handleSleepTimeChange('bedTime', e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const patch = { bedTime: val };
+                        if (val && !dailyLog?.bedDateType) {
+                          const [h] = val.split(':').map(Number);
+                          patch.bedDateType = h >= 12 ? 'prev' : 'same';
+                        }
+                        const updated = storage.saveDailyLog(selectedDate, patch);
+                        setDailyLog(updated);
+                      }}
                       style={{
                         background: 'rgba(0, 0, 0, 0.5)',
                         border: '1px solid rgba(139, 92, 246, 0.35)',
@@ -582,16 +595,56 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
                         fontSize: '0.75rem'
                       }}
                     />
-                    {dailyLog?.bedTime && dailyLog?.wakeTime && (
-                      <span style={{ fontSize: '0.66rem', color: isPrevDayBed ? '#fbbf24' : '#a78bfa', fontWeight: 'bold' }}>
-                        {isPrevDayBed ? '(전날)' : '(당일)'}
-                      </span>
-                    )}
+
+                    {/* 전날 / 당일 선택 토글 버튼 */}
+                    <div style={{
+                      display: 'inline-flex',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                      border: '1px solid rgba(139, 92, 246, 0.4)',
+                      background: 'rgba(0, 0, 0, 0.4)'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => handleBedDateTypeChange('prev')}
+                        title="취침일: 전날 밤 취침"
+                        style={{
+                          background: currentBedType === 'prev' ? '#8b5cf6' : 'transparent',
+                          color: currentBedType === 'prev' ? '#fff' : 'rgba(255, 255, 255, 0.55)',
+                          border: 'none',
+                          padding: '0.15rem 0.45rem',
+                          fontSize: '0.66rem',
+                          fontWeight: currentBedType === 'prev' ? 'bold' : 'normal',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        전날
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBedDateTypeChange('same')}
+                        title="취침일: 당일 새벽 취침"
+                        style={{
+                          background: currentBedType === 'same' ? '#8b5cf6' : 'transparent',
+                          color: currentBedType === 'same' ? '#fff' : 'rgba(255, 255, 255, 0.55)',
+                          border: 'none',
+                          borderLeft: '1px solid rgba(139, 92, 246, 0.35)',
+                          padding: '0.15rem 0.45rem',
+                          fontSize: '0.66rem',
+                          fontWeight: currentBedType === 'same' ? 'bold' : 'normal',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        당일
+                      </button>
+                    </div>
                   </div>
 
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>~</span>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                     <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>기상:</span>
                     <input
                       type="time"
@@ -606,11 +659,17 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
                         fontSize: '0.75rem'
                       }}
                     />
-                    {dailyLog?.wakeTime && (
-                      <span style={{ fontSize: '0.66rem', color: '#a78bfa', fontWeight: 'bold' }}>
-                        (당일)
-                      </span>
-                    )}
+                    <span style={{
+                      fontSize: '0.66rem',
+                      color: '#a78bfa',
+                      background: 'rgba(139, 92, 246, 0.15)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '4px',
+                      padding: '0.12rem 0.38rem',
+                      fontWeight: 'bold'
+                    }}>
+                      당일
+                    </span>
                   </div>
                 </>
               );
@@ -620,8 +679,8 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
               <button
                 type="button"
                 onClick={() => {
-                  handleSleepTimeChange('bedTime', '');
-                  handleSleepTimeChange('wakeTime', '');
+                  storage.saveDailyLog(selectedDate, { bedTime: '', wakeTime: '', bedDateType: null });
+                  setDailyLog(storage.getDailyLogByDate(selectedDate));
                 }}
                 style={{
                   background: 'none',

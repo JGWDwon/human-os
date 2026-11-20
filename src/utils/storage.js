@@ -14,7 +14,7 @@ const STORAGE_KEYS = {
   SUPPLEMENTARY_SLOTS: 'human_os_supplementary_slots_v1'
 };
 
-export function calculateSleepDuration(bedTime, wakeTime) {
+export function calculateSleepDuration(bedTime, wakeTime, bedDateType = null) {
   if (!bedTime || !wakeTime) return null;
   const bParts = bedTime.split(':').map(Number);
   const wParts = wakeTime.split(':').map(Number);
@@ -26,9 +26,19 @@ export function calculateSleepDuration(bedTime, wakeTime) {
   let bedMinutes = bH * 60 + bM;
   let wakeMinutes = wH * 60 + wM;
 
-  // 익일 기상 (자정 넘김, 예: 23:30 취침 -> 06:30 기상)
-  if (wakeMinutes <= bedMinutes) {
+  if (bedDateType === 'prev') {
+    // 전날 취침: 기상 시각에 24시간(1440분) 더함
     wakeMinutes += 24 * 60;
+  } else if (bedDateType === 'same') {
+    // 당일 취침: 당일 기상
+    if (wakeMinutes <= bedMinutes) {
+      wakeMinutes += 24 * 60;
+    }
+  } else {
+    // 자동 판별 (자정 넘김)
+    if (wakeMinutes <= bedMinutes) {
+      wakeMinutes += 24 * 60;
+    }
   }
   const diffMinutes = wakeMinutes - bedMinutes;
   const hours = Math.floor(diffMinutes / 60);
@@ -904,7 +914,7 @@ export const storage = {
       updatedAt: Date.now()
     };
 
-    // 수면 시간(bedTime, wakeTime)이 입력된 경우, 취침일(bedDate)과 기상일(wakeDate)을 자동 판별하여 JSON에 명시 기록
+    // 수면 시간(bedTime, wakeTime)이 입력된 경우, 취침일(bedDate)과 기상일(wakeDate)을 판별하여 JSON에 명시 기록
     const finalBedTime = nextLog.bedTime;
     const finalWakeTime = nextLog.wakeTime;
     if (finalBedTime && finalWakeTime) {
@@ -914,15 +924,21 @@ export const storage = {
         const bTotal = bH * 60 + (bM || 0);
         const wTotal = wH * 60 + (wM || 0);
         
-        // 자정 전 취침 (예: 23:00 취침 ~ 07:00 기상): 취침일은 전날(D-1), 기상일은 당일(D)
-        if (bTotal > wTotal) {
+        // 사용자가 명시적으로 선택한 bedDateType('prev' | 'same')이 있으면 최우선 적용,
+        // 없으면 bTotal > wTotal 또는 12:00 이후 취침 시 전날(prev)로 기본 추론
+        let bedDateType = nextLog.bedDateType;
+        if (!bedDateType || (bedDateType !== 'prev' && bedDateType !== 'same')) {
+          bedDateType = (bTotal > wTotal || bH >= 12) ? 'prev' : 'same';
+        }
+        nextLog.bedDateType = bedDateType;
+
+        if (bedDateType === 'prev') {
           const [y, m, d] = dateStr.split('-').map(Number);
           const prevDate = new Date(y, m - 1, d - 1);
           const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
           nextLog.bedDate = prevDateStr;
           nextLog.wakeDate = dateStr;
         } else {
-          // 자정 후 취침 (예: 01:00 취침 ~ 08:00 기상): 취침일과 기상일 모두 당일(D)
           nextLog.bedDate = dateStr;
           nextLog.wakeDate = dateStr;
         }
@@ -930,6 +946,7 @@ export const storage = {
     } else if (!finalBedTime && !finalWakeTime) {
       delete nextLog.bedDate;
       delete nextLog.wakeDate;
+      delete nextLog.bedDateType;
     }
 
     all[dateStr] = nextLog;
@@ -943,8 +960,10 @@ export const storage = {
     return this.saveDailyLog(dateStr, { satisfaction });
   },
 
-  setSleepTimes(dateStr, bedTime, wakeTime) {
-    return this.saveDailyLog(dateStr, { bedTime, wakeTime });
+  setSleepTimes(dateStr, bedTime, wakeTime, bedDateType = null) {
+    const payload = { bedTime, wakeTime };
+    if (bedDateType) payload.bedDateType = bedDateType;
+    return this.saveDailyLog(dateStr, payload);
   },
 
   // --- Supplementary Slots (막힌 문제 보충 슬롯 - 나중에 풀기/주말 보충) ---

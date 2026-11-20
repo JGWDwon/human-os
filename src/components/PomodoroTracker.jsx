@@ -161,6 +161,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [modalBedTime, setModalBedTime] = useState('23:30');
   const [modalWakeTime, setModalWakeTime] = useState('06:30');
+  const [modalBedDateType, setModalBedDateType] = useState('prev');
   const pendingTimerStartRef = useRef(false);
   const selectedSubjectRef = useRef(selectedSubject);
 
@@ -173,6 +174,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     if (!isVac && !hasSleep) {
       if (todayLog?.bedTime) setModalBedTime(todayLog.bedTime);
       if (todayLog?.wakeTime) setModalWakeTime(todayLog.wakeTime);
+      if (todayLog?.bedDateType) setModalBedDateType(todayLog.bedDateType);
+      else if (todayLog?.bedTime) {
+        const [bH] = todayLog.bedTime.split(':').map(Number);
+        setModalBedDateType(bH >= 12 ? 'prev' : 'same');
+      }
       setShowSleepModal(true);
     }
   }, []);
@@ -824,6 +830,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       if (!isVac && !hasSleep) {
         if (todayLog?.bedTime) setModalBedTime(todayLog.bedTime);
         if (todayLog?.wakeTime) setModalWakeTime(todayLog.wakeTime);
+        if (todayLog?.bedDateType) setModalBedDateType(todayLog.bedDateType);
+        else if (todayLog?.bedTime) {
+          const [bH] = todayLog.bedTime.split(':').map(Number);
+          setModalBedDateType(bH >= 12 ? 'prev' : 'same');
+        }
         pendingTimerStartRef.current = true;
         setShowSleepModal(true);
         return;
@@ -846,7 +857,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       return;
     }
     const actualToday = getTodayStr();
-    storage.saveDailyLog(actualToday, { bedTime: modalBedTime, wakeTime: modalWakeTime });
+    storage.saveDailyLog(actualToday, {
+      bedTime: modalBedTime,
+      wakeTime: modalWakeTime,
+      bedDateType: modalBedDateType
+    });
     setShowSleepModal(false);
     playSound('click');
 
@@ -2854,73 +2869,119 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                 marginBottom: '1.25rem'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  {(() => {
-                    const isPrevNight = (() => {
-                      if (!modalBedTime || !modalWakeTime) return false;
-                      const [bH, bM] = modalBedTime.split(':').map(Number);
-                      const [wH, wM] = modalWakeTime.split(':').map(Number);
-                      return (bH * 60 + (bM || 0)) > (wH * 60 + (wM || 0));
-                    })();
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.35rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold' }}>
+                        🌙 취침 시각
+                      </label>
+                      <div style={{
+                        display: 'inline-flex',
+                        borderRadius: '4px',
+                        overflow: 'hidden',
+                        border: '1px solid rgba(139, 92, 246, 0.4)',
+                        background: 'rgba(0, 0, 0, 0.4)'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => setModalBedDateType('prev')}
+                          title="전날 밤 취침"
+                          style={{
+                            background: modalBedDateType === 'prev' ? '#8b5cf6' : 'transparent',
+                            color: modalBedDateType === 'prev' ? '#fff' : 'rgba(255, 255, 255, 0.55)',
+                            border: 'none',
+                            padding: '0.12rem 0.45rem',
+                            fontSize: '0.66rem',
+                            fontWeight: modalBedDateType === 'prev' ? 'bold' : 'normal',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          전날
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModalBedDateType('same')}
+                          title="당일 새벽 취침"
+                          style={{
+                            background: modalBedDateType === 'same' ? '#8b5cf6' : 'transparent',
+                            color: modalBedDateType === 'same' ? '#fff' : 'rgba(255, 255, 255, 0.55)',
+                            border: 'none',
+                            borderLeft: '1px solid rgba(139, 92, 246, 0.35)',
+                            padding: '0.12rem 0.45rem',
+                            fontSize: '0.66rem',
+                            fontWeight: modalBedDateType === 'same' ? 'bold' : 'normal',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          당일
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="time"
+                      required
+                      value={modalBedTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setModalBedTime(val);
+                        if (val) {
+                          const [h] = val.split(':').map(Number);
+                          setModalBedDateType(h >= 12 ? 'prev' : 'same');
+                        }
+                      }}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1.5px solid rgba(139, 92, 246, 0.5)',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        padding: '0.45rem 0.65rem',
+                        fontSize: '0.95rem',
+                        fontWeight: 'bold',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
 
-                    return (
-                      <>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.3rem' }}>
-                          <label style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            🌙 취침 시각 {modalBedTime && modalWakeTime && (
-                              <span style={{ fontSize: '0.68rem', color: isPrevNight ? '#fbbf24' : '#34d399' }}>
-                                ({isPrevNight ? '전날 밤' : '당일 새벽'})
-                              </span>
-                            )}
-                          </label>
-                          <input
-                            type="time"
-                            required
-                            value={modalBedTime}
-                            onChange={(e) => setModalBedTime(e.target.value)}
-                            style={{
-                              background: 'rgba(0, 0, 0, 0.5)',
-                              border: '1.5px solid rgba(139, 92, 246, 0.5)',
-                              borderRadius: '8px',
-                              color: '#fff',
-                              padding: '0.45rem 0.65rem',
-                              fontSize: '0.95rem',
-                              fontWeight: 'bold',
-                              outline: 'none'
-                            }}
-                          />
-                        </div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '1.2rem', marginTop: '1.2rem' }}>~</span>
 
-                        <span style={{ color: 'var(--text-muted)', fontSize: '1.2rem', marginTop: '1.2rem' }}>~</span>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.3rem' }}>
-                          <label style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            ☀️ 기상 시각 <span style={{ fontSize: '0.68rem', color: '#a78bfa' }}>(당일 아침)</span>
-                          </label>
-                          <input
-                            type="time"
-                            required
-                            value={modalWakeTime}
-                            onChange={(e) => setModalWakeTime(e.target.value)}
-                            style={{
-                              background: 'rgba(0, 0, 0, 0.5)',
-                              border: '1.5px solid rgba(139, 92, 246, 0.5)',
-                              borderRadius: '8px',
-                              color: '#fff',
-                              padding: '0.45rem 0.65rem',
-                              fontSize: '0.95rem',
-                              fontWeight: 'bold',
-                              outline: 'none'
-                            }}
-                          />
-                        </div>
-                      </>
-                    );
-                  })()}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.35rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <label style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 'bold' }}>
+                        ☀️ 기상 시각
+                      </label>
+                      <span style={{
+                        fontSize: '0.66rem',
+                        color: '#a78bfa',
+                        background: 'rgba(139, 92, 246, 0.15)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '4px',
+                        padding: '0.1rem 0.35rem',
+                        fontWeight: 'bold'
+                      }}>
+                        당일
+                      </span>
+                    </div>
+                    <input
+                      type="time"
+                      required
+                      value={modalWakeTime}
+                      onChange={(e) => setModalWakeTime(e.target.value)}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        border: '1.5px solid rgba(139, 92, 246, 0.5)',
+                        borderRadius: '8px',
+                        color: '#fff',
+                        padding: '0.45rem 0.65rem',
+                        fontSize: '0.95rem',
+                        fontWeight: 'bold',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
                 </div>
 
                 {/* Live calculated sleep duration */}
                 {(() => {
-                  const dur = calculateSleepDuration(modalBedTime, modalWakeTime);
+                  const dur = calculateSleepDuration(modalBedTime, modalWakeTime, modalBedDateType);
                   return (
                     <div style={{ marginTop: '0.85rem' }}>
                       {dur ? (

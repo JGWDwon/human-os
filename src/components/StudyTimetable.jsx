@@ -93,70 +93,25 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
   let totalSleepMinutes = 0;
 
   // 1. Map sleep session (lifestyle foundation) in calm violet (#8b5cf6)
-  // dateStr 일자의 수면 구간들을 정확히 수집:
+  // 플래너 레이아웃은 [6시~23시] (당일 주간/야간) + [0시~5시] (당일 밤이 이어지는 익일 새벽) 순서입니다.
   // A) 당일 아침 기상 수면 (todayLog):
-  //    - 자정 전 취침(23:00 등, bTotal > wTotal)이면 당일(dateStr) 수면은 00:00(0분) ~ wTotal(기상시각)
-  //    - 자정 후 취침(01:00 등, bTotal <= wTotal)이면 당일(dateStr) 수면은 bTotal(취침시각) ~ wTotal(기상시각)
+  //    - 당일 오전 06:00(360분) ~ 기상 시각(wTotal)까지를 당일 상단(h = 6..23)에만 표시
+  //    - 하단(h = 0..5)은 당일 밤(오늘 밤) 영역이므로 아침 수면을 절대 하단에 칠하지 않음!
   // B) 당일 밤 취침 수면 (nextLog):
-  //    - 익일 아침 기상 수면 중 취침이 자정 전(당일 밤, nbTotal > nwTotal)인 경우 nbTotal(취침시각) ~ 24:00(1440분)
-  const sleepIntervalsOnDay = [];
-  const dLog = storage.getDailyLogByDate(dateStr);
-  if (dLog && dLog.bedTime && dLog.wakeTime) {
-    const sleepDur = calculateSleepDuration(dLog.bedTime, dLog.wakeTime);
-    if (sleepDur && sleepDur.totalMinutes > 0) {
-      totalSleepMinutes = sleepDur.totalMinutes;
-
-      const [startH, startM] = dLog.bedTime.split(':').map(Number);
-      const [endH, endM] = dLog.wakeTime.split(':').map(Number);
-
-      if (!isNaN(startH) && !isNaN(endH)) {
-        const startTotal = startH * 60 + (startM || 0);
-        const endTotal = endH * 60 + (endM || 0);
-
-        if (startTotal > endTotal) {
-          // 자정 전 취침 (예: 11/19 23:00 취침 ~ 11/20 07:00 기상)
-          // 당일(dateStr = 11/20) 발생 수면은 00:00(0분)부터 07:00(endTotal분)까지
-          if (endTotal > 0) {
-            sleepIntervalsOnDay.push({ start: 0, end: Math.min(1440, endTotal) });
-          }
-        } else {
-          // 자정 후 취침 (예: 11/20 01:00 취침 ~ 11/20 08:00 기상)
-          // 당일(dateStr = 11/20) 발생 수면은 01:00(startTotal분)부터 08:00(endTotal분)까지
-          if (endTotal > startTotal) {
-            sleepIntervalsOnDay.push({ start: Math.max(0, startTotal), end: Math.min(1440, endTotal) });
-          }
-        }
-      }
-    }
-  }
-
-  // 당일 밤 취침 수면 (익일 아침 기상 기록의 취침 시각이 자정 전인 경우)
-  const nextDateStr = changeDayBy(dateStr, 1);
-  const nextLog = storage.getDailyLogByDate(nextDateStr);
-  if (nextLog && nextLog.bedTime && nextLog.wakeTime) {
-    const [nbH, nbM] = nextLog.bedTime.split(':').map(Number);
-    const [nwH, nwM] = nextLog.wakeTime.split(':').map(Number);
-    if (!isNaN(nbH) && !isNaN(nwH)) {
-      const nbTotal = nbH * 60 + (nbM || 0);
-      const nwTotal = nwH * 60 + (nwM || 0);
-      // 익일 아침 기상한 수면이 자정 전(당일 밤)에 취침한 경우: 당일 밤(nbTotal) ~ 24:00(1440분) 수면 표시
-      if (nbTotal > nwTotal && nbTotal < 1440) {
-        sleepIntervalsOnDay.push({ start: nbTotal, end: 1440 });
-      }
-    }
-  }
-
+  //    - 익일 아침 기상 기록(nextLog)이 있을 때만 당일 밤(h = 23) 및 익일 새벽(h = 0..5)에 표시
+  //    - 오늘 밤처럼 아직 도래하지 않은 날(nextLog 없음)은 하단이 100% 빈칸(미수면 상태)으로 유지됨
   const sleepColor = '#8b5cf6';
   const sleepSubject = '수면';
 
-  sleepIntervalsOnDay.forEach(({ start, end }) => {
-    for (let h = 0; h < 24; h++) {
+  const markSleepRange = (targetHStart, targetHEnd, rangeStartMin, rangeEndMin) => {
+    if (rangeEndMin <= rangeStartMin) return;
+    for (let h = targetHStart; h <= targetHEnd; h++) {
       for (let b = 0; b < 6; b++) {
         const blockStart = h * 60 + b * 10;
 
         const leftStart = blockStart;
         const leftEnd = blockStart + 5;
-        const leftOverlap = Math.max(0, Math.min(end, leftEnd) - Math.max(start, leftStart));
+        const leftOverlap = Math.max(0, Math.min(rangeEndMin, leftEnd) - Math.max(rangeStartMin, leftStart));
         if (leftOverlap >= 2.5) {
           matrix[h][b].left = true;
           matrix[h][b].leftColor = sleepColor;
@@ -166,7 +121,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
 
         const rightStart = blockStart + 5;
         const rightEnd = blockStart + 10;
-        const rightOverlap = Math.max(0, Math.min(end, rightEnd) - Math.max(start, rightStart));
+        const rightOverlap = Math.max(0, Math.min(rangeEndMin, rightEnd) - Math.max(rangeStartMin, rightStart));
         if (rightOverlap >= 2.5) {
           matrix[h][b].right = true;
           matrix[h][b].rightColor = sleepColor;
@@ -175,7 +130,67 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
         }
       }
     }
-  });
+  };
+
+  // A) 당일 아침 수면 (06:00 ~ 기상 시각) -> matrix[6..23] 상단 영역에만 매핑
+  const dLog = storage.getDailyLogByDate(dateStr);
+  if (dLog && dLog.bedTime && dLog.wakeTime) {
+    const sleepDur = calculateSleepDuration(dLog.bedTime, dLog.wakeTime, dLog.bedDateType);
+    if (sleepDur && sleepDur.totalMinutes > 0) {
+      totalSleepMinutes = sleepDur.totalMinutes;
+    }
+
+    const [wH, wM] = dLog.wakeTime.split(':').map(Number);
+    const [bH, bM] = dLog.bedTime.split(':').map(Number);
+
+    if (!isNaN(wH)) {
+      const wTotal = wH * 60 + (wM || 0);
+      const bTotal = !isNaN(bH) ? bH * 60 + (bM || 0) : 0;
+
+      if (dLog.bedDateType === 'same' && bTotal >= 360) {
+        // 주간 수면 (예: 07:00 취침 ~ 15:00 기상)
+        markSleepRange(6, 23, bTotal, Math.min(1440, wTotal));
+      } else {
+        // 일반적 야간 취침 후 아침 기상 (예: 23:00 또는 01:00 취침 후 07:15 기상):
+        // 06:00(360분)부터 기상 시각까지 당일 아침 상단에 수면 표시
+        if (wTotal > 360) {
+          markSleepRange(6, 23, 360, Math.min(1440, wTotal));
+        }
+      }
+    }
+  }
+
+  // B) 당일 밤 수면 (취침 시각 ~ 익일 새벽 05:59) -> 익일 아침 기상 기록(nextLog)을 통해 하단에 매핑
+  const nextDateStr = changeDayBy(dateStr, 1);
+  const nextLog = storage.getDailyLogByDate(nextDateStr);
+  if (nextLog && nextLog.bedTime && nextLog.wakeTime) {
+    const [nbH, nbM] = nextLog.bedTime.split(':').map(Number);
+    const [nwH, nwM] = nextLog.wakeTime.split(':').map(Number);
+    if (!isNaN(nbH) && !isNaN(nwH)) {
+      const nbTotal = nbH * 60 + (nbM || 0);
+      const nwTotal = nwH * 60 + (nwM || 0);
+      const isPrev = nextLog.bedDateType === 'prev' || (!nextLog.bedDateType && (nbTotal > nwTotal || nbH >= 12));
+
+      if (isPrev) {
+        // 자정 전 취침 (예: 23:00 취침 ~ 07:15 기상)
+        // 1. 당일 밤 취침 시각 (nbTotal ~ 1440): matrix[23] 등 저녁 영역에 표시
+        if (nbTotal < 1440) {
+          markSleepRange(6, 23, Math.max(360, nbTotal), 1440);
+        }
+        // 2. 익일 자정~새벽 (00:00 ~ Math.min(360, nwTotal)): matrix[0..5] (하단 새벽 영역)에 표시
+        if (nwTotal > 0) {
+          markSleepRange(0, 5, 0, Math.min(360, nwTotal));
+        }
+      } else {
+        // 자정 후 취침 (예: 익일 새벽 01:00 취침 ~ 08:00 기상)
+        // 당일 밤 저녁(matrix[6..23])에는 수면 없음
+        // 익일 새벽(matrix[0..5])에 nbTotal ~ Math.min(360, nwTotal) 표시
+        if (nwTotal > nbTotal && nbTotal < 360) {
+          markSleepRange(0, 5, Math.max(0, nbTotal), Math.min(360, nwTotal));
+        }
+      }
+    }
+  }
 
   // 2. Map study sessions (lecture / review) over sleep if any
   timestamps.forEach(ts => {
