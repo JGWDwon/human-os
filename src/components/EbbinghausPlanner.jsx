@@ -83,6 +83,7 @@ export default function EbbinghausPlanner({ onClose }) {
     d.setDate(d.getDate() + 3);
     return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
   });
+  const [vacReason, setVacReason] = useState('');
   const [vacations, setVacations] = useState([]);
 
   // 30일차 복습 평가 모달 및 약점 극복 재복습함 상태
@@ -199,7 +200,7 @@ export default function EbbinghausPlanner({ onClose }) {
         origin: { y: 0.6 },
         colors: ['#10b981', '#3b82f6', '#f59e0b']
       });
-    } else {
+    } else if (difficulty === 'hard') {
       setShowReReviewVault(true);
       setReReviewFilter('pending');
       confetti({
@@ -207,6 +208,13 @@ export default function EbbinghausPlanner({ onClose }) {
         spread: 50,
         origin: { y: 0.7 },
         colors: ['#f97316', '#ef4444', '#fbbf24']
+      });
+    } else {
+      confetti({
+        particleCount: 30,
+        spread: 40,
+        origin: { y: 0.7 },
+        colors: ['#3b82f6', '#60a5fa']
       });
     }
 
@@ -281,8 +289,10 @@ export default function EbbinghausPlanner({ onClose }) {
       alert("종료일은 시작일보다 빠를 수 없습니다.");
       return;
     }
-    const result = storage.addVacation(vacStartDate, vacEndDate);
-    alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)\n\n휴가 기간 및 이후 미완료 복습 ${result.count}개가 정확히 ${result.days}일 뒤로 연기되었습니다! 🎉`);
+    const result = storage.addVacation(vacStartDate, vacEndDate, vacReason);
+    const reasonMsg = vacReason.trim() ? `\n사유: ${vacReason.trim()}` : '';
+    alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)${reasonMsg}\n\n휴가 기간 및 이후 미완료 복습 ${result.count}개가 정확히 ${result.days}일 뒤로 연기되었습니다! 🎉`);
+    setVacReason('');
     setShowVacationModal(false);
     refreshData();
   };
@@ -630,6 +640,11 @@ export default function EbbinghausPlanner({ onClose }) {
                                 😊 마스터
                               </span>
                             )}
+                            {rev.isCompleted && rev.difficulty === 'normal' && (
+                              <span style={{ fontSize: '0.65rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                😐 보통
+                              </span>
+                            )}
                             {rev.isCompleted && rev.difficulty === 'hard' && (
                               <span style={{ fontSize: '0.65rem', color: '#fb923c', background: 'rgba(249, 115, 22, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
                                 🔥 약점
@@ -658,7 +673,73 @@ export default function EbbinghausPlanner({ onClose }) {
                   </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
-                  {!rev.isCompleted && (
+                  {rev.isCompleted ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = rev.difficulty === 'easy' ? null : 'easy';
+                          storage.setReviewDifficulty(rev.lectureId, rev.id, next);
+                          refreshData();
+                        }}
+                        style={{
+                          fontSize: '0.66rem',
+                          padding: '0.12rem 0.35rem',
+                          borderRadius: '3px',
+                          border: rev.difficulty === 'easy' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                          background: rev.difficulty === 'easy' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.04)',
+                          color: rev.difficulty === 'easy' ? '#34d399' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                          fontWeight: rev.difficulty === 'easy' ? 'bold' : 'normal'
+                        }}
+                        title="쉬움 (마스터)"
+                      >
+                        쉬움
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = rev.difficulty === 'normal' ? null : 'normal';
+                          storage.setReviewDifficulty(rev.lectureId, rev.id, next);
+                          refreshData();
+                        }}
+                        style={{
+                          fontSize: '0.66rem',
+                          padding: '0.12rem 0.35rem',
+                          borderRadius: '3px',
+                          border: rev.difficulty === 'normal' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                          background: rev.difficulty === 'normal' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.04)',
+                          color: rev.difficulty === 'normal' ? '#93c5fd' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                          fontWeight: rev.difficulty === 'normal' ? 'bold' : 'normal'
+                        }}
+                        title="보통"
+                      >
+                        보통
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = rev.difficulty === 'hard' ? null : 'hard';
+                          storage.setReviewDifficulty(rev.lectureId, rev.id, next);
+                          refreshData();
+                        }}
+                        style={{
+                          fontSize: '0.66rem',
+                          padding: '0.12rem 0.35rem',
+                          borderRadius: '3px',
+                          border: rev.difficulty === 'hard' ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.1)',
+                          background: rev.difficulty === 'hard' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255,255,255,0.04)',
+                          color: rev.difficulty === 'hard' ? '#fca5a5' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                          fontWeight: rev.difficulty === 'hard' ? 'bold' : 'normal'
+                        }}
+                        title="어려움 (약점 보관함 등록)"
+                      >
+                        어려움
+                      </button>
+                    </div>
+                  ) : (
                     <>
                       <button
                         onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
@@ -1319,6 +1400,11 @@ export default function EbbinghausPlanner({ onClose }) {
                             😊
                           </span>
                         )}
+                        {rev.isCompleted && rev.difficulty === 'normal' && (
+                          <span style={{ fontSize: '0.62rem' }} title="보통 (정상 완료)">
+                            😐
+                          </span>
+                        )}
                         {rev.isCompleted && rev.difficulty === 'hard' && (
                           <span style={{ fontSize: '0.62rem' }} title="약점 재복습 대상">
                             🔥
@@ -1583,6 +1669,18 @@ export default function EbbinghausPlanner({ onClose }) {
                   />
                 </div>
               </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
+                  휴가 사유 (선택)
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="예: 허리 통증 병원, 가족 행사, 정기 휴식 등" 
+                  value={vacReason} 
+                  onChange={(e) => setVacReason(e.target.value)} 
+                  style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }} 
+                />
+              </div>
               <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.55rem', background: '#10b981', border: 'none', color: '#000', fontWeight: 'bold', fontSize: '0.85rem' }}>
                 🌴 휴가 일정 등록 및 자동 연기
               </button>
@@ -1611,14 +1709,21 @@ export default function EbbinghausPlanner({ onClose }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     {activeVacations.map(v => (
                       <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '0.5rem 0.75rem', borderRadius: '6px' }}>
-                        <span style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 'bold' }}>
-                          {v.startDate} ~ {v.endDate} ({v.days}일간)
-                          {v.startDate <= todayStr && v.endDate >= todayStr && (
-                            <span style={{ fontSize: '0.68rem', background: 'rgba(16, 185, 129, 0.2)', padding: '0.1rem 0.35rem', borderRadius: '4px', marginLeft: '0.4rem' }}>
-                              진행 중 🌴
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ fontSize: '0.82rem', color: '#34d399', fontWeight: 'bold' }}>
+                            {v.startDate} ~ {v.endDate} ({v.days}일간)
+                            {v.startDate <= todayStr && v.endDate >= todayStr && (
+                              <span style={{ fontSize: '0.68rem', background: 'rgba(16, 185, 129, 0.2)', padding: '0.1rem 0.35rem', borderRadius: '4px', marginLeft: '0.4rem' }}>
+                                진행 중 🌴
+                              </span>
+                            )}
+                          </span>
+                          {v.reason && (
+                            <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                              📝 {v.reason}
                             </span>
                           )}
-                        </span>
+                        </div>
                         <button 
                           onClick={() => handleRevertVacation(v.id)}
                           className="btn btn-secondary"
@@ -1814,7 +1919,47 @@ export default function EbbinghausPlanner({ onClose }) {
                 </div>
               </button>
 
-              {/* Option 2: Hard / Needs Re-review */}
+              {/* Option 2: Normal / Standard Complete */}
+              <button
+                type="button"
+                onClick={() => handleSelectDifficulty('normal')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  background: 'rgba(59, 130, 246, 0.12)',
+                  border: '2px solid rgba(59, 130, 246, 0.5)',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                  color: '#fff'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.22)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.12)'}
+              >
+                <div style={{
+                  width: '42px', height: '42px', borderRadius: '50%',
+                  background: 'rgba(59, 130, 246, 0.25)',
+                  border: '1px solid #3b82f6',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.4rem', flexShrink: 0
+                }}>
+                  😐
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#93c5fd', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    보통 · 적정 수준 이해
+                    <span style={{ fontSize: '0.68rem', background: 'rgba(59, 130, 246, 0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#bfdbfe' }}>+15 XP</span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.15rem', lineHeight: '1.35' }}>
+                    주요 핵심을 잘 알고 있으며 문제풀이에 무리가 없습니다.
+                  </div>
+                </div>
+              </button>
+
+              {/* Option 3: Hard / Needs Re-review */}
               <button
                 type="button"
                 onClick={() => handleSelectDifficulty('hard')}
@@ -1855,8 +2000,23 @@ export default function EbbinghausPlanner({ onClose }) {
               </button>
             </div>
 
-            {/* Cancel Button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.2rem' }}>
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
+              <button
+                type="button"
+                onClick={() => handleSelectDifficulty(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  padding: '0.45rem 0.5rem',
+                  textDecoration: 'underline'
+                }}
+              >
+                평가 없이 바로 완료
+              </button>
               <button
                 type="button"
                 onClick={() => setDifficultyModalTarget(null)}

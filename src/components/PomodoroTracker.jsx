@@ -159,6 +159,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showSubjectConfirmModal, setShowSubjectConfirmModal] = useState(false);
   const [showSleepModal, setShowSleepModal] = useState(false);
+  const [showEarlyCompleteModal, setShowEarlyCompleteModal] = useState(false);
   const [modalBedTime, setModalBedTime] = useState('23:30');
   const [modalWakeTime, setModalWakeTime] = useState('06:30');
   const [modalBedDateType, setModalBedDateType] = useState('prev');
@@ -800,11 +801,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
       const focusMins = Math.max(1, Math.round(focusSecs / 60));
       const sStartStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog);
+      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog, 'completed');
       sessionStartTsRef.current = null;
     }
 
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog);
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog, 'completed');
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -1012,11 +1013,19 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
   };
 
-  const handleEarlyComplete = () => {
-    if (!window.confirm("지금까지 집중한 시간을 저장하고 조기 완료하시겠습니까?")) {
+  const handleOpenEarlyComplete = () => {
+    const elapsedSeconds = timerState.duration - timerState.timeLeft;
+    const minutesCompleted = Math.floor(elapsedSeconds / 60);
+
+    if (minutesCompleted <= 0) {
+      alert("1분 이상 진행된 후 완료할 수 있습니다.");
       return;
     }
+    setShowEarlyCompleteModal(true);
+  };
 
+  const executeEarlyComplete = (endReason = 'completed_early') => {
+    setShowEarlyCompleteModal(false);
     playSound('complete');
     cancelNativeAlarm();
     
@@ -1041,7 +1050,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
       const focusMins = Math.max(1, Math.round(focusSecs / 60));
       const sStartStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog);
+      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog, endReason);
       sessionStartTsRef.current = null;
     }
 
@@ -1053,7 +1062,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       });
     } catch (e) {}
 
-    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog);
+    storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog, endReason);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
@@ -1963,7 +1972,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
               {(timerState.isRunning || timerState.isPaused) && (
                 <button
-                  onClick={handleEarlyComplete}
+                  onClick={handleOpenEarlyComplete}
                   className="btn btn-primary"
                   style={{ padding: '0.65rem 1.25rem', fontSize: '0.9rem', background: 'var(--accent-secondary)' }}
                 >
@@ -3267,6 +3276,115 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
       {/* Subject Management Modal */}
       <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
+
+      {/* Early Complete Reason Modal */}
+      {showEarlyCompleteModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: '380px',
+            width: '100%',
+            background: '#13151f',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            borderRadius: '16px',
+            padding: '1.25rem',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)'
+          }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 'bold', color: '#fff', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              ⏱️ 집중 세션 조기 완료
+            </h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: '1.4' }}>
+              현재까지 진행된 집중 시간을 저장합니다.<br />
+              종료 사유를 선택해 주세요:
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={() => executeEarlyComplete('completed_early')}
+                style={{
+                  padding: '0.85rem 1rem',
+                  background: activeTimerMode === 'lecture'
+                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                    : 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid #10b981',
+                  borderRadius: '10px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
+                    🎓 {activeTimerMode === 'lecture' ? '강의 종료 / 목표 달성' : '목표 달성 (정상 완료)'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: activeTimerMode === 'lecture' ? '#d1fae5' : 'var(--text-muted)', marginTop: '2px' }}>
+                    {activeTimerMode === 'lecture' ? '강의가 계획보다 일찍 끝남' : '계획한 공부 분량을 마침'}
+                  </div>
+                </div>
+                {activeTimerMode === 'lecture' && (
+                  <span style={{ fontSize: '0.65rem', background: '#047857', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+                    추천
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => executeEarlyComplete('interrupted')}
+                style={{
+                  padding: '0.85rem 1rem',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  borderRadius: '10px',
+                  color: '#fca5a5',
+                  cursor: 'pointer',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
+                  ⚡ 집중 저하 · 흐름 중단
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'rgba(255, 255, 255, 0.55)', marginTop: '2px' }}>
+                  피로, 집중 흐트러짐, 급한 용무 등
+                </div>
+              </button>
+            </div>
+
+            <div style={{ marginTop: '1rem', textAlign: 'right' }}>
+              <button
+                type="button"
+                onClick={() => setShowEarlyCompleteModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  padding: '0.4rem 0.6rem'
+                }}
+              >
+                취소 (계속 진행)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

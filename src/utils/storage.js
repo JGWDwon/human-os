@@ -358,7 +358,7 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoro(dateStr, timeStr, minutes = 25, startTimeStr = null, subject = null, activityType = 'review') {
+  addCustomPomodoro(dateStr, timeStr, minutes = 25, startTimeStr = null, subject = null, activityType = 'review', endReason = null) {
     const rawData = localStorage.getItem(STORAGE_KEYS.POMODORO);
     const data = safeParse(rawData, {});
     
@@ -410,7 +410,8 @@ export const storage = {
       startTime: calculatedStart,
       endTime: timeStr,
       subject: subject || null,
-      activityType: activityType || 'review'
+      activityType: activityType || 'review',
+      endReason: endReason || (minutes >= 25 ? 'completed' : 'completed_early')
     });
     
     // Sort timestamps chronologically
@@ -459,8 +460,8 @@ export const storage = {
     return data[dateStr];
   },
 
-  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes, startTimeStr = null, subject = null, activityType = 'review') {
-    return this.addCustomPomodoro(dateStr, timeStr, minutes, startTimeStr, subject, activityType);
+  addCustomPomodoroWithMinutes(dateStr, timeStr, minutes, startTimeStr = null, subject = null, activityType = 'review', endReason = null) {
+    return this.addCustomPomodoro(dateStr, timeStr, minutes, startTimeStr, subject, activityType, endReason);
   },
 
   getActivityStats(dateStr) {
@@ -1231,7 +1232,7 @@ export const storage = {
   },
 
   // --- Detailed Study Sessions & Time Waste Analysis ---
-  logStudySession(dateStr, type, startTimeStr, endTimeStr, durationMins, subject = null, activityType = null) {
+  logStudySession(dateStr, type, startTimeStr, endTimeStr, durationMins, subject = null, activityType = null, endReason = null) {
     if (!dateStr) {
       const d = new Date();
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -1260,6 +1261,12 @@ export const storage = {
       resolvedActivityType = localStorage.getItem('human_os_timer_mode_v1') || 'review';
     }
 
+    // Auto-resolve endReason: 'completed' | 'completed_early' | 'interrupted' | 'pause'
+    let resolvedEndReason = endReason;
+    if (!resolvedEndReason) {
+      resolvedEndReason = type === 'pause' ? 'pause' : 'completed';
+    }
+
     const newSession = {
       id: `sess_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       type, // 'focus' | 'pause'
@@ -1268,7 +1275,8 @@ export const storage = {
       durationMins: Math.max(1, Math.round(durationMins)),
       timestamp: Date.now(),
       subject: resolvedSubject || '기타',
-      activityType: resolvedActivityType
+      activityType: resolvedActivityType,
+      endReason: resolvedEndReason
     };
 
     data[dateStr].push(newSession);
@@ -1864,7 +1872,7 @@ export const storage = {
             }
 
             if (difficulty) {
-              rev.difficulty = difficulty; // 'easy' | 'hard'
+              rev.difficulty = difficulty; // 'easy' | 'normal' | 'hard'
               if (difficulty === 'hard') {
                 rev.needsReReview = true;
                 rev.reReviewStatus = 'pending'; // 'pending' | 'completed'
@@ -1873,7 +1881,13 @@ export const storage = {
                 rev.needsReReview = false;
                 rev.reReviewStatus = 'mastered';
                 rev.easyRecordedAt = now.toISOString();
+              } else if (difficulty === 'normal') {
+                rev.needsReReview = false;
+                rev.reReviewStatus = 'normal';
+                rev.normalRecordedAt = now.toISOString();
               }
+            } else {
+              rev.difficulty = null;
             }
             found = true;
           }
@@ -1884,6 +1898,47 @@ export const storage = {
     if (found) {
       localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
       this.addXP(15); // Reward 15 XP for a review
+      this._dispatchSync();
+    }
+    return lectures;
+  },
+
+  setReviewDifficulty(lectureId, reviewId, difficulty = null) {
+    const lectures = this.getLectures();
+    let found = false;
+    const now = new Date();
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId) {
+            if (difficulty) {
+              rev.difficulty = difficulty; // 'easy' | 'normal' | 'hard'
+              if (difficulty === 'hard') {
+                rev.needsReReview = true;
+                rev.reReviewStatus = 'pending';
+                rev.hardRecordedAt = now.toISOString();
+              } else if (difficulty === 'easy') {
+                rev.needsReReview = false;
+                rev.reReviewStatus = 'mastered';
+                rev.easyRecordedAt = now.toISOString();
+              } else if (difficulty === 'normal') {
+                rev.needsReReview = false;
+                rev.reReviewStatus = 'normal';
+                rev.normalRecordedAt = now.toISOString();
+              }
+            } else {
+              rev.difficulty = null;
+              rev.needsReReview = false;
+              delete rev.reReviewStatus;
+            }
+            found = true;
+          }
+        });
+      }
+    });
+
+    if (found) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
       this._dispatchSync();
     }
     return lectures;
@@ -1908,6 +1963,8 @@ export const storage = {
             delete rev.needsReReview;
             delete rev.reReviewStatus;
             delete rev.hardRecordedAt;
+            delete rev.easyRecordedAt;
+            delete rev.normalRecordedAt;
             delete rev.easyRecordedAt;
             delete rev.reReviewCompletedAt;
             found = true;
@@ -2351,7 +2408,7 @@ export const storage = {
     return safeParse(raw, []);
   },
 
-  addVacation(startDate, endDate) {
+  addVacation(startDate, endDate, reason = '') {
     if (!startDate || !endDate) return { days: 0, count: 0 };
     
     const start = new Date(startDate + 'T00:00:00');
@@ -2368,6 +2425,7 @@ export const storage = {
       startDate,
       endDate,
       days,
+      reason: (reason || '').trim(),
       appliedAt: new Date().toISOString()
     };
     vacations.unshift(newVacation);
