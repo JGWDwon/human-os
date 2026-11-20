@@ -73,9 +73,12 @@ export default function SupplementaryModal({ isOpen, onClose }) {
       return;
     }
 
+    const currentSelected = localStorage.getItem('human_os_selected_subject_v1');
+    const finalSubject = subjectInput.trim() || currentSelected || (subjects[0] || '기타');
+
     storage.addSupplementarySlot({
       title: trimmedTitle,
-      subject: subjectInput.trim() || '기타',
+      subject: finalSubject,
       memo: memoInput.trim()
     });
 

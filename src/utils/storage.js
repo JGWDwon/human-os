@@ -979,13 +979,25 @@ export const storage = {
     const dateStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     
     // Auto-detect subject from title if not explicitly given
-    let detectedSubject = (subject || '').trim();
-    if (!detectedSubject) {
+    let resolvedSubject = (subject || '').trim();
+    if (!resolvedSubject || resolvedSubject === '기타') {
       const subjects = this.getSubjects();
       for (const s of subjects) {
         if (title.includes(s)) {
-          detectedSubject = s;
+          resolvedSubject = s;
           break;
+        }
+      }
+    }
+    // Fall back to currently selected subject if still empty or '기타'
+    if (!resolvedSubject || resolvedSubject === '기타') {
+      const currentSelected = localStorage.getItem('human_os_selected_subject_v1');
+      if (currentSelected && currentSelected.trim()) {
+        resolvedSubject = currentSelected.trim();
+      } else {
+        const subjects = this.getSubjects();
+        if (subjects && subjects.length > 0) {
+          resolvedSubject = subjects[0];
         }
       }
     }
@@ -993,12 +1005,12 @@ export const storage = {
     const newSlot = {
       id: `slot_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       title: title.trim(),
-      subject: detectedSubject || '기타',
+      subject: resolvedSubject || '기타',
       memo: (memo || '').trim(),
       date: dateStr,
       isCompleted: false,
       completedAt: null,
-      createdAt: Date.now()
+      createdAt: now.toISOString()
     };
 
     slots.unshift(newSlot);
@@ -1012,8 +1024,10 @@ export const storage = {
     const slots = this.getSupplementarySlots();
     const idx = slots.findIndex(s => s.id === slotId);
     if (idx === -1) return null;
-    slots[idx].isCompleted = !slots[idx].isCompleted;
-    slots[idx].completedAt = slots[idx].isCompleted ? Date.now() : null;
+    const isNowCompleted = !slots[idx].isCompleted;
+    slots[idx].isCompleted = isNowCompleted;
+    slots[idx].completedAt = isNowCompleted ? new Date().toISOString() : null;
+    slots[idx].updatedAt = new Date().toISOString();
     localStorage.setItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS, JSON.stringify(slots));
     this._dispatchSync();
     window.dispatchEvent(new CustomEvent('supplementary-slots-updated'));
@@ -1033,7 +1047,15 @@ export const storage = {
     const slots = this.getSupplementarySlots();
     const idx = slots.findIndex(s => s.id === slotId);
     if (idx === -1) return null;
-    slots[idx] = { ...slots[idx], ...updates, updatedAt: Date.now() };
+    const nextItem = { ...slots[idx], ...updates, updatedAt: new Date().toISOString() };
+    if (updates && updates.isCompleted !== undefined) {
+      if (updates.isCompleted && !nextItem.completedAt) {
+        nextItem.completedAt = new Date().toISOString();
+      } else if (!updates.isCompleted) {
+        nextItem.completedAt = null;
+      }
+    }
+    slots[idx] = nextItem;
     localStorage.setItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS, JSON.stringify(slots));
     this._dispatchSync();
     window.dispatchEvent(new CustomEvent('supplementary-slots-updated'));
@@ -1209,7 +1231,7 @@ export const storage = {
   },
 
   // --- Detailed Study Sessions & Time Waste Analysis ---
-  logStudySession(dateStr, type, startTimeStr, endTimeStr, durationMins) {
+  logStudySession(dateStr, type, startTimeStr, endTimeStr, durationMins, subject = null, activityType = null) {
     if (!dateStr) {
       const d = new Date();
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -1218,13 +1240,35 @@ export const storage = {
     const data = safeParse(raw, {});
     if (!data[dateStr]) data[dateStr] = [];
 
+    // Auto-resolve subject: explicit -> localStorage selected subject -> first registered subject
+    let resolvedSubject = (subject || '').trim();
+    if (!resolvedSubject) {
+      const currentSelected = localStorage.getItem('human_os_selected_subject_v1');
+      if (currentSelected && currentSelected.trim()) {
+        resolvedSubject = currentSelected.trim();
+      } else {
+        const subjects = this.getSubjects();
+        if (subjects && subjects.length > 0) {
+          resolvedSubject = subjects[0];
+        }
+      }
+    }
+
+    // Auto-resolve activityType: explicit -> localStorage timer mode -> 'review'
+    let resolvedActivityType = activityType;
+    if (!resolvedActivityType) {
+      resolvedActivityType = localStorage.getItem('human_os_timer_mode_v1') || 'review';
+    }
+
     const newSession = {
       id: `sess_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       type, // 'focus' | 'pause'
       startTime: startTimeStr, // "14:00"
       endTime: endTimeStr,     // "14:25"
       durationMins: Math.max(1, Math.round(durationMins)),
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      subject: resolvedSubject || '기타',
+      activityType: resolvedActivityType
     };
 
     data[dateStr].push(newSession);

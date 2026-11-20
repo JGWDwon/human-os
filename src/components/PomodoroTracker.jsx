@@ -240,9 +240,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const trimmed = quickSlotTitle.trim();
     if (!trimmed) return;
 
+    const currentSub = selectedSubject || timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '기타');
+
     storage.addSupplementarySlot({
       title: trimmed,
-      subject: selectedSubject || '기타',
+      subject: currentSub,
       memo: ''
     });
     setQuickSlotTitle('');
@@ -794,6 +796,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
     const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
 
+    if (sessionStartTsRef.current) {
+      const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
+      const focusMins = Math.max(1, Math.round(focusSecs / 60));
+      const sStartStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
+      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog);
+      sessionStartTsRef.current = null;
+    }
+
     storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, startTimeStr, subjectToLog, activityTypeToLog);
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
@@ -915,7 +925,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       const pauseSecs = Math.round((Date.now() - pauseStartTsRef.current) / 1000);
       const pauseMins = Math.max(1, Math.round(pauseSecs / 60));
       const pauseStartStr = new Date(pauseStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(actualToday, 'pause', pauseStartStr, timeStr, pauseMins);
+      const sessionSubject = timerState.currentSubject || targetSubject || selectedSubjectRef.current || selectedSubject || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '');
+      const sessionActivityType = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
+      storage.logStudySession(actualToday, 'pause', pauseStartStr, timeStr, pauseMins, sessionSubject, sessionActivityType);
       pauseStartTsRef.current = null;
     }
 
@@ -982,7 +994,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
       const focusMins = Math.max(1, Math.round(focusSecs / 60));
       const startStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(actualToday, 'focus', startStr, nowStr, focusMins);
+      const sessionSubject = timerState.currentSubject || selectedSubjectRef.current || selectedSubject || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '');
+      const sessionActivityType = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
+      storage.logStudySession(actualToday, 'focus', startStr, nowStr, focusMins, sessionSubject, sessionActivityType);
       sessionStartTsRef.current = null;
     }
     pauseStartTsRef.current = Date.now();
@@ -1022,6 +1036,14 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
 
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || null);
     const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
+
+    if (sessionStartTsRef.current) {
+      const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
+      const focusMins = Math.max(1, Math.round(focusSecs / 60));
+      const sStartStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
+      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog);
+      sessionStartTsRef.current = null;
+    }
 
     try {
       confetti({
