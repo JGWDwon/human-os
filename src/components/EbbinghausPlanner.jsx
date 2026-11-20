@@ -86,10 +86,8 @@ export default function EbbinghausPlanner({ onClose }) {
   const [vacReason, setVacReason] = useState('');
   const [vacations, setVacations] = useState([]);
 
-  // 30일차 복습 평가 모달 및 약점 극복 재복습함 상태
-  const [difficultyModalTarget, setDifficultyModalTarget] = useState(null); // { lectureId, reviewId, subject, title }
-  const [showReReviewVault, setShowReReviewVault] = useState(true);
-  const [reReviewFilter, setReReviewFilter] = useState('pending'); // 'pending' | 'completed' | 'all'
+  // 14일차 100점 만점 자동 채점 결과 모달 상태
+  const [score14ModalTarget, setScore14ModalTarget] = useState(null);
 
   // 복습 플래너 보기 방식 (과목별 모아보기 vs 일차별 순) 및 과목 필터링
   const [reviewViewMode, setReviewViewMode] = useState('subject'); // 'subject' (과목별 모아보기) | 'cycle' (일차별 순)
@@ -144,92 +142,65 @@ export default function EbbinghausPlanner({ onClose }) {
     });
   };
 
-  const handleToggleReview = (lectureId, reviewId, isCompleted, revDetails = null) => {
+  const handleToggleReview = (lectureId, reviewId, isCompleted, achievement = 'mid') => {
     if (isCompleted) {
       storage.undoReview(lectureId, reviewId);
       refreshData();
       return;
     }
 
-    // 30일차 복습(5회독 최종 복습)인지 판별
-    let dayOffset = revDetails?.dayOffset;
-    let subject = revDetails?.subject;
-    let title = revDetails?.title;
-
-    if (dayOffset === undefined) {
-      const currentLectures = storage.getLectures();
-      const lec = currentLectures.find(l => l.id === lectureId);
-      const rev = lec?.reviews.find(r => r.id === reviewId);
-      dayOffset = rev?.dayOffset;
-      subject = lec?.subject;
-      title = lec?.title;
-    }
-
-    if (Number(dayOffset) === 30) {
-      setDifficultyModalTarget({
-        lectureId,
-        reviewId,
-        subject: subject || '과목',
-        title: title || '30일차 복습'
-      });
-      return;
-    }
-
-    storage.completeReview(lectureId, reviewId);
-    confetti({
-      particleCount: 30,
-      spread: 40,
-      origin: { y: 0.7 },
-      colors: ['#10b981']
-    });
-    window.dispatchEvent(new CustomEvent('xp-updated'));
-    refreshData();
-  };
-
-  const handleSelectDifficulty = (difficulty) => {
-    if (!difficultyModalTarget) return;
-    const { lectureId, reviewId } = difficultyModalTarget;
+    const { score14Result } = storage.completeReview(lectureId, reviewId, achievement);
     
-    storage.completeReview(lectureId, reviewId, difficulty);
-    window.dispatchEvent(new CustomEvent('xp-updated'));
-    
-    if (difficulty === 'easy') {
-      confetti({
-        particleCount: 65,
-        spread: 75,
-        origin: { y: 0.6 },
-        colors: ['#10b981', '#3b82f6', '#f59e0b']
-      });
-    } else if (difficulty === 'hard') {
-      setShowReReviewVault(true);
-      setReReviewFilter('pending');
-      confetti({
-        particleCount: 35,
-        spread: 50,
-        origin: { y: 0.7 },
-        colors: ['#f97316', '#ef4444', '#fbbf24']
-      });
+    // 14일차 판정이 새로 발생한 경우 모달 팝업 표시
+    if (score14Result) {
+      setScore14ModalTarget(score14Result);
+      if (score14Result.score14 >= 80) {
+        confetti({
+          particleCount: 80,
+          spread: 80,
+          origin: { y: 0.5 },
+          colors: ['#10b981', '#3b82f6', '#facc15']
+        });
+      } else {
+        confetti({
+          particleCount: 45,
+          spread: 55,
+          origin: { y: 0.6 },
+          colors: ['#f97316', '#ef4444', '#fbbf24']
+        });
+      }
     } else {
       confetti({
         particleCount: 30,
         spread: 40,
         origin: { y: 0.7 },
-        colors: ['#3b82f6', '#60a5fa']
+        colors: achievement === 'high' ? ['#10b981', '#34d399'] : (achievement === 'low' ? ['#f87171', '#ef4444'] : ['#60a5fa', '#3b82f6'])
       });
     }
 
-    setDifficultyModalTarget(null);
+    window.dispatchEvent(new CustomEvent('xp-updated'));
     refreshData();
   };
 
-  const handleToggleReReviewStatus = (lectureId, reviewId) => {
-    storage.toggleReReviewComplete(lectureId, reviewId);
+  const handleSelectAchievement = (lectureId, reviewId, achievement) => {
+    const { score14Result } = storage.setReviewAchievement(lectureId, reviewId, achievement);
+    if (score14Result) {
+      setScore14ModalTarget(score14Result);
+    }
     refreshData();
   };
 
-  const handleDismissReReview = (lectureId, reviewId) => {
-    if (window.confirm("이 항목을 약점 재복습함에서 제거(완전 정복 완료)하시겠습니까?")) {
-      storage.removeReReview(lectureId, reviewId);
+  const handleRegisterReReview = (lectureId) => {
+    const newLec = storage.registerReReviewLecture(lectureId);
+    if (newLec) {
+      confetti({
+        particleCount: 65,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#f97316', '#fbbf24', '#10b981']
+      });
+      alert(`🎉 "${newLec.title}" 항목이 오늘부터 새로운 1-4-7-14-30 복습 스케줄로 자동 등록되었습니다!`);
+      setScore14ModalTarget(null);
       refreshData();
     }
   };
@@ -344,6 +315,9 @@ export default function EbbinghausPlanner({ onClose }) {
             lectureId: lec.id,
             subject: lec.subject,
             title: lec.title,
+            score14: lec.score14,
+            verdict14: lec.verdict14,
+            hasReReviewRegistered: lec.hasReReviewRegistered,
             ...rev
           });
         }
@@ -354,47 +328,6 @@ export default function EbbinghausPlanner({ onClose }) {
 
   const todayCompletedCount = todayReviews.filter(r => r.isCompleted).length;
   const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && r.targetDate < todayStr).length;
-
-  // 약점 극복 재복습 목록 (30일차 복습에서 '어려움'을 선택한 항목들)
-  const reReviewList = useMemo(() => {
-    const list = [];
-    lectures.forEach(lec => {
-      lec.reviews.forEach(rev => {
-        if (rev.needsReReview || (rev.difficulty === 'hard' && rev.reReviewStatus)) {
-          list.push({
-            lectureId: lec.id,
-            subject: lec.subject,
-            title: lec.title,
-            dateAdded: lec.dateAdded,
-            reviewId: rev.id,
-            targetDate: rev.targetDate,
-            completedAt: rev.completedAt,
-            dayOffset: rev.dayOffset,
-            difficulty: rev.difficulty,
-            needsReReview: rev.needsReReview,
-            reReviewStatus: rev.reReviewStatus || 'pending',
-            reReviewCompletedAt: rev.reReviewCompletedAt || null,
-            hardRecordedAt: rev.hardRecordedAt || rev.completedAt
-          });
-        }
-      });
-    });
-    return list.sort((a, b) => new Date(b.hardRecordedAt || 0) - new Date(a.hardRecordedAt || 0));
-  }, [lectures]);
-
-  const pendingReReviewCount = useMemo(() => {
-    return reReviewList.filter(item => item.reReviewStatus !== 'completed').length;
-  }, [reReviewList]);
-
-  const filteredReReviews = useMemo(() => {
-    if (reReviewFilter === 'pending') {
-      return reReviewList.filter(item => item.reReviewStatus !== 'completed');
-    }
-    if (reReviewFilter === 'completed') {
-      return reReviewList.filter(item => item.reReviewStatus === 'completed');
-    }
-    return reReviewList;
-  }, [reReviewList, reReviewFilter]);
 
   // Generate 7 days of current week
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
@@ -411,6 +344,9 @@ export default function EbbinghausPlanner({ onClose }) {
             lectureId: lec.id,
             subject: lec.subject,
             title: lec.title,
+            score14: lec.score14,
+            verdict14: lec.verdict14,
+            hasReReviewRegistered: lec.hasReReviewRegistered,
             ...rev
           });
         }
@@ -483,34 +419,6 @@ export default function EbbinghausPlanner({ onClose }) {
             <Settings size={15} /> 복습 설정
           </button>
 
-          {reReviewList.length > 0 && (
-            <button 
-              onClick={() => {
-                setShowReReviewVault(true);
-                document.getElementById('re-review-vault-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="btn btn-secondary"
-              style={{
-                fontSize: '0.82rem',
-                padding: '0.4rem 0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                border: pendingReReviewCount > 0 ? '1px solid rgba(249, 115, 22, 0.6)' : '1px solid rgba(255,255,255,0.12)',
-                background: pendingReReviewCount > 0 ? 'rgba(249, 115, 22, 0.15)' : 'rgba(255,255,255,0.04)',
-                color: pendingReReviewCount > 0 ? '#fb923c' : 'var(--text-secondary)'
-              }}
-              title="약점 극복 재복습함 바로가기"
-            >
-              <Flame size={15} color={pendingReReviewCount > 0 ? '#f97316' : '#94a3b8'} />
-              약점 재복습 {pendingReReviewCount > 0 && (
-                <span style={{ background: '#f97316', color: '#fff', fontSize: '0.65rem', padding: '0.05rem 0.35rem', borderRadius: '10px', fontWeight: 'bold' }}>
-                  {pendingReReviewCount}
-                </span>
-              )}
-            </button>
-          )}
-
           {onClose && (
             <button 
               onClick={onClose}
@@ -578,7 +486,6 @@ export default function EbbinghausPlanner({ onClose }) {
               return (
                 <div
                   key={rev.id}
-                  onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted, rev)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -589,29 +496,34 @@ export default function EbbinghausPlanner({ onClose }) {
                     borderLeft: `3px solid ${rev.isCompleted ? '#10b981' : badge.color}`,
                     borderRadius: '8px',
                     padding: '0.55rem 0.8rem',
-                    cursor: 'pointer',
                     transition: 'all 0.2s'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
-                    <div style={{
-                      width: '18px',
-                      height: '18px',
-                      borderRadius: '5px',
-                      border: `2px solid ${rev.isCompleted ? '#10b981' : 'rgba(255,255,255,0.3)'}`,
-                      background: rev.isCompleted ? '#10b981' : 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
+                    <div 
+                      onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted, 'mid')}
+                      style={{
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '5px',
+                        border: `2px solid ${rev.isCompleted ? '#10b981' : 'rgba(255,255,255,0.3)'}`,
+                        background: rev.isCompleted ? '#10b981' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        cursor: 'pointer'
+                      }}
+                      title={rev.isCompleted ? '완료 취소' : '중(보통)으로 완료'}
+                    >
                       {rev.isCompleted && <Check size={13} color="#000" strokeWidth={3} />}
                     </div>
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       {(() => {
                         const subColor = getSubjectColor(rev.subject, registeredSubjects);
+                        const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
                         return (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.12rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.15rem', flexWrap: 'wrap' }}>
                             <span style={{ 
                               fontSize: '0.68rem', 
                               color: subColor, 
@@ -635,19 +547,37 @@ export default function EbbinghausPlanner({ onClose }) {
                             }}>
                               {badge.label}
                             </span>
-                            {rev.isCompleted && rev.difficulty === 'easy' && (
-                              <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                                😊 마스터
+                            {rev.isCompleted && curAch === 'high' && (
+                              <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                🟢 상
                               </span>
                             )}
-                            {rev.isCompleted && rev.difficulty === 'normal' && (
-                              <span style={{ fontSize: '0.65rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                                😐 보통
+                            {rev.isCompleted && curAch === 'mid' && (
+                              <span style={{ fontSize: '0.65rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                🟡 중
                               </span>
                             )}
-                            {rev.isCompleted && rev.difficulty === 'hard' && (
-                              <span style={{ fontSize: '0.65rem', color: '#fb923c', background: 'rgba(249, 115, 22, 0.2)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                                🔥 약점
+                            {rev.isCompleted && curAch === 'low' && (
+                              <span style={{ fontSize: '0.65rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                🔴 하
+                              </span>
+                            )}
+                            {rev.score14 !== undefined && (
+                              <span style={{
+                                fontSize: '0.65rem',
+                                color: rev.score14 >= 80 ? '#34d399' : (rev.score14 >= 70 ? '#fbbf24' : '#f87171'),
+                                background: rev.score14 >= 80 ? 'rgba(16, 185, 129, 0.15)' : (rev.score14 >= 70 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
+                                border: `1px solid ${rev.score14 >= 80 ? 'rgba(16, 185, 129, 0.4)' : (rev.score14 >= 70 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)')}`,
+                                padding: '0.05rem 0.35rem',
+                                borderRadius: '3px',
+                                fontWeight: 'bold'
+                              }}>
+                                {rev.score14 >= 80 ? `🟢 14일차 통과 (${rev.score14}점)` : (rev.score14 >= 70 ? `🟡 재복습 권장 (${rev.score14}점)` : `🔴 재복습 필수 (${rev.score14}점)`)}
+                              </span>
+                            )}
+                            {rev.hasReReviewRegistered && (
+                              <span style={{ fontSize: '0.65rem', color: '#c084fc', background: 'rgba(192, 132, 252, 0.15)', border: '1px solid rgba(192, 132, 252, 0.35)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                🔁 재복습 등록됨
                               </span>
                             )}
                             {rev.isCompleted && rev.isDelayed && (
@@ -672,354 +602,218 @@ export default function EbbinghausPlanner({ onClose }) {
                     </div>
                   </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
-                  {rev.isCompleted ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = rev.difficulty === 'easy' ? null : 'easy';
-                          storage.setReviewDifficulty(rev.lectureId, rev.id, next);
-                          refreshData();
-                        }}
-                        style={{
-                          fontSize: '0.66rem',
-                          padding: '0.12rem 0.35rem',
-                          borderRadius: '3px',
-                          border: rev.difficulty === 'easy' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
-                          background: rev.difficulty === 'easy' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255,255,255,0.04)',
-                          color: rev.difficulty === 'easy' ? '#34d399' : 'var(--text-muted)',
-                          cursor: 'pointer',
-                          fontWeight: rev.difficulty === 'easy' ? 'bold' : 'normal'
-                        }}
-                        title="쉬움 (마스터)"
-                      >
-                        쉬움
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = rev.difficulty === 'normal' ? null : 'normal';
-                          storage.setReviewDifficulty(rev.lectureId, rev.id, next);
-                          refreshData();
-                        }}
-                        style={{
-                          fontSize: '0.66rem',
-                          padding: '0.12rem 0.35rem',
-                          borderRadius: '3px',
-                          border: rev.difficulty === 'normal' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                          background: rev.difficulty === 'normal' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.04)',
-                          color: rev.difficulty === 'normal' ? '#93c5fd' : 'var(--text-muted)',
-                          cursor: 'pointer',
-                          fontWeight: rev.difficulty === 'normal' ? 'bold' : 'normal'
-                        }}
-                        title="보통"
-                      >
-                        보통
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = rev.difficulty === 'hard' ? null : 'hard';
-                          storage.setReviewDifficulty(rev.lectureId, rev.id, next);
-                          refreshData();
-                        }}
-                        style={{
-                          fontSize: '0.66rem',
-                          padding: '0.12rem 0.35rem',
-                          borderRadius: '3px',
-                          border: rev.difficulty === 'hard' ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.1)',
-                          background: rev.difficulty === 'hard' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255,255,255,0.04)',
-                          color: rev.difficulty === 'hard' ? '#fca5a5' : 'var(--text-muted)',
-                          cursor: 'pointer',
-                          fontWeight: rev.difficulty === 'hard' ? 'bold' : 'normal'
-                        }}
-                        title="어려움 (약점 보관함 등록)"
-                      >
-                        어려움
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
-                        style={{
-                          background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          color: 'var(--text-muted)',
-                          fontSize: '0.68rem',
-                          padding: '0.15rem 0.35rem',
-                          borderRadius: '3px',
-                          cursor: 'pointer'
-                        }}
-                        title="어제로 당기기 (-1일)"
-                      >
-                        -1일
-                      </button>
-                      <button
-                        onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
-                        style={{
-                          background: 'rgba(255,255,255,0.06)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          color: 'var(--text-muted)',
-                          fontSize: '0.68rem',
-                          padding: '0.15rem 0.35rem',
-                          borderRadius: '3px',
-                          cursor: 'pointer'
-                        }}
-                        title="내일로 미루기 (+1일)"
-                      >
-                        +1일
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          </div>
-        )}
-      </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                    {rev.isCompleted ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.stopPropagation()}>
+                        {(() => {
+                          const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'high')}
+                                style={{
+                                  fontSize: '0.66rem',
+                                  padding: '0.15rem 0.4rem',
+                                  borderRadius: '3px',
+                                  border: curAch === 'high' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.08)',
+                                  background: curAch === 'high' ? 'rgba(16, 185, 129, 0.28)' : 'rgba(255,255,255,0.03)',
+                                  color: curAch === 'high' ? '#34d399' : 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  fontWeight: curAch === 'high' ? 'bold' : 'normal'
+                                }}
+                                title="성취도: 상 (완벽 이해)"
+                              >
+                                상
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'mid')}
+                                style={{
+                                  fontSize: '0.66rem',
+                                  padding: '0.15rem 0.4rem',
+                                  borderRadius: '3px',
+                                  border: curAch === 'mid' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                                  background: curAch === 'mid' ? 'rgba(59, 130, 246, 0.28)' : 'rgba(255,255,255,0.03)',
+                                  color: curAch === 'mid' ? '#93c5fd' : 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  fontWeight: curAch === 'mid' ? 'bold' : 'normal'
+                                }}
+                                title="성취도: 중 (적정 이해)"
+                              >
+                                중
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'low')}
+                                style={{
+                                  fontSize: '0.66rem',
+                                  padding: '0.15rem 0.4rem',
+                                  borderRadius: '3px',
+                                  border: curAch === 'low' ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.08)',
+                                  background: curAch === 'low' ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.03)',
+                                  color: curAch === 'low' ? '#fca5a5' : 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  fontWeight: curAch === 'low' ? 'bold' : 'normal'
+                                }}
+                                title="성취도: 하 (부족·취약)"
+                              >
+                                하
+                              </button>
+                            </>
+                          );
+                        })()}
 
-      {/* ========================================================================= */}
-      {/* 🔥 약점 극복 재복습함 (Re-Review Weakness Vault) */}
-      {/* ========================================================================= */}
-      <div 
-        id="re-review-vault-section"
-        style={{
-          background: 'var(--panel-bg)',
-          border: pendingReReviewCount > 0 ? '1px solid rgba(249, 115, 22, 0.4)' : '1px solid var(--panel-border)',
-          borderRadius: '12px',
-          padding: '1rem',
-          marginBottom: '1.25rem',
-          transition: 'border 0.2s'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div 
-            onClick={() => setShowReReviewVault(prev => !prev)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', cursor: 'pointer', userSelect: 'none' }}
-          >
-            <div style={{
-              width: '26px', height: '26px', borderRadius: '6px',
-              background: 'rgba(249, 115, 22, 0.2)',
-              border: '1px solid rgba(249, 115, 22, 0.4)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-              <Flame size={15} color="#f97316" />
-            </div>
-            <div>
-              <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#f8fafc' }}>
-                약점 극복 재복습함
-              </span>
-              <span style={{
-                marginLeft: '0.5rem',
-                fontSize: '0.72rem',
-                padding: '0.1rem 0.45rem',
-                borderRadius: '10px',
-                background: pendingReReviewCount > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                border: `1px solid ${pendingReReviewCount > 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`,
-                color: pendingReReviewCount > 0 ? '#f87171' : '#34d399',
-                fontWeight: 'bold'
-              }}>
-                {pendingReReviewCount > 0 ? `${pendingReReviewCount}개 재복습 대기` : (reReviewList.length > 0 ? '모두 완료됨' : '대기 없음')}
-              </span>
-            </div>
-          </div>
+                        {/* 14일차 재복습 권장/필수이고 아직 미등록된 경우 원클릭 재복습 등록 버튼 */}
+                        {rev.score14 !== undefined && rev.score14 < 80 && !rev.hasReReviewRegistered && (
+                          <button
+                            type="button"
+                            onClick={() => handleRegisterReReview(rev.lectureId)}
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '4px',
+                              border: '1px solid #f97316',
+                              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                              color: '#fff',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              marginLeft: '0.2rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '2px'
+                            }}
+                            title="새로운 1-4-7-14-30 복습 스케줄로 즉시 재복습 등록"
+                          >
+                            <Flame size={11} /> + 재복습
+                          </button>
+                        )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-            {reReviewList.length > 0 && showReReviewVault && (
-              <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '0.15rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <button
-                  type="button"
-                  onClick={() => setReReviewFilter('pending')}
-                  style={{
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.7rem',
-                    borderRadius: '4px',
-                    border: 'none',
-                    background: reReviewFilter === 'pending' ? 'rgba(249, 115, 22, 0.3)' : 'transparent',
-                    color: reReviewFilter === 'pending' ? '#fb923c' : 'var(--text-muted)',
-                    fontWeight: reReviewFilter === 'pending' ? 'bold' : 'normal',
-                    cursor: 'pointer'
-                  }}
-                >
-                  대기 ({reReviewList.filter(i => i.reReviewStatus !== 'completed').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReReviewFilter('completed')}
-                  style={{
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.7rem',
-                    borderRadius: '4px',
-                    border: 'none',
-                    background: reReviewFilter === 'completed' ? 'rgba(16, 185, 129, 0.3)' : 'transparent',
-                    color: reReviewFilter === 'completed' ? '#34d399' : 'var(--text-muted)',
-                    fontWeight: reReviewFilter === 'completed' ? 'bold' : 'normal',
-                    cursor: 'pointer'
-                  }}
-                >
-                  완료 ({reReviewList.filter(i => i.reReviewStatus === 'completed').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReReviewFilter('all')}
-                  style={{
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.7rem',
-                    borderRadius: '4px',
-                    border: 'none',
-                    background: reReviewFilter === 'all' ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
-                    color: reReviewFilter === 'all' ? '#fff' : 'var(--text-muted)',
-                    fontWeight: reReviewFilter === 'all' ? 'bold' : 'normal',
-                    cursor: 'pointer'
-                  }}
-                >
-                  전체 ({reReviewList.length})
-                </button>
-              </div>
-            )}
-            <button
-              onClick={() => setShowReReviewVault(prev => !prev)}
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
-              title={showReReviewVault ? '접기' : '펼치기'}
-            >
-              {showReReviewVault ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-          </div>
-        </div>
-
-        {showReReviewVault && (
-          <div style={{ marginTop: '0.85rem' }}>
-            {reReviewList.length === 0 ? (
-              <div style={{
-                padding: '0.75rem',
-                textAlign: 'center',
-                color: 'var(--text-muted)',
-                fontSize: '0.82rem',
-                background: 'rgba(0,0,0,0.2)',
-                borderRadius: '8px'
-              }}>
-                🌱 등록된 약점 재복습 항목이 없습니다.
-              </div>
-            ) : filteredReReviews.length === 0 ? (
-              <div style={{
-                padding: '0.75rem',
-                textAlign: 'center',
-                color: 'var(--text-muted)',
-                fontSize: '0.8rem',
-                background: 'rgba(0,0,0,0.15)',
-                borderRadius: '8px'
-              }}>
-                선택한 필터 조건에 해당하는 항목이 없습니다.
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.5rem' }}>
-                {filteredReReviews.map(item => {
-                  const isDone = item.reReviewStatus === 'completed';
-                  return (
-                    <div
-                      key={item.reviewId}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '0.75rem',
-                        background: isDone ? 'rgba(16, 185, 129, 0.08)' : 'rgba(249, 115, 22, 0.08)',
-                        border: `1px solid ${isDone ? 'rgba(16, 185, 129, 0.3)' : 'rgba(249, 115, 22, 0.35)'}`,
-                        borderRadius: '8px',
-                        padding: '0.65rem 0.85rem'
-                      }}
-                    >
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' }}>
-                          {(() => {
-                            const subColor = getSubjectColor(item.subject, registeredSubjects);
-                            return (
-                              <span style={{
-                                fontSize: '0.68rem',
-                                color: subColor,
-                                background: `${subColor}1e`,
-                                border: `1px solid ${subColor}4d`,
-                                padding: '0.05rem 0.35rem',
-                                borderRadius: '3px',
-                                fontWeight: 'bold'
-                              }}>
-                                {item.subject}
-                              </span>
-                            );
-                          })()}
-                          <span style={{
-                            fontSize: '0.66rem',
-                            color: isDone ? '#34d399' : '#fb923c',
-                            background: isDone ? 'rgba(16, 185, 129, 0.15)' : 'rgba(249, 115, 22, 0.15)',
-                            padding: '0.05rem 0.35rem',
-                            borderRadius: '3px',
-                            fontWeight: 'bold'
-                          }}>
-                            {isDone ? '✓ 재복습 완료' : '🚨 재복습 필요'}
-                          </span>
-                        </div>
-                        <div style={{
-                          fontSize: '0.85rem',
-                          fontWeight: 'bold',
-                          color: isDone ? 'var(--text-muted)' : '#f8fafc',
-                          textDecoration: isDone ? 'line-through' : 'none',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}>
-                          {item.title}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
                         <button
                           type="button"
-                          onClick={() => handleToggleReReviewStatus(item.lectureId, item.reviewId)}
+                          onClick={() => handleToggleReview(rev.lectureId, rev.id, true)}
                           style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            fontSize: '0.72rem',
-                            fontWeight: 'bold',
-                            padding: '0.25rem 0.55rem',
-                            borderRadius: '5px',
-                            border: `1px solid ${isDone ? 'rgba(16, 185, 129, 0.4)' : 'rgba(249, 115, 22, 0.5)'}`,
-                            background: isDone ? 'rgba(16, 185, 129, 0.2)' : 'rgba(249, 115, 22, 0.2)',
-                            color: isDone ? '#34d399' : '#fb923c',
-                            cursor: 'pointer'
-                          }}
-                          title={isDone ? '다시 미완료로 변경' : '재복습 완료 체크'}
-                        >
-                          <Check size={12} strokeWidth={2.5} />
-                          {isDone ? '완료됨' : '재복습 완료'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDismissReReview(item.lectureId, item.reviewId)}
-                          style={{
-                            padding: '0.25rem 0.35rem',
-                            borderRadius: '5px',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            background: 'rgba(255,255,255,0.04)',
+                            background: 'none',
+                            border: 'none',
                             color: 'var(--text-muted)',
-                            cursor: 'pointer'
+                            fontSize: '0.72rem',
+                            cursor: 'pointer',
+                            padding: '0.1rem 0.25rem',
+                            marginLeft: '2px'
                           }}
-                          title="약점 보관함에서 삭제"
+                          title="완료 취소 (미완료로 복구)"
                         >
-                          <X size={12} />
+                          ↩️
                         </button>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }} onClick={(e) => e.stopPropagation()}>
+                        {/* 원클릭 성취도 완료 버튼 그룹 [상] [중] [하] */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '2px',
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          padding: '2px',
+                          borderRadius: '5px',
+                          border: '1px solid rgba(255, 255, 255, 0.1)'
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'high')}
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '0.18rem 0.42rem',
+                              borderRadius: '3px',
+                              border: '1px solid rgba(16, 185, 129, 0.5)',
+                              background: 'rgba(16, 185, 129, 0.18)',
+                              color: '#34d399',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="상 (완벽 이해) - 원클릭 완료"
+                          >
+                            상
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'mid')}
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '0.18rem 0.42rem',
+                              borderRadius: '3px',
+                              border: '1px solid rgba(59, 130, 246, 0.5)',
+                              background: 'rgba(59, 130, 246, 0.18)',
+                              color: '#93c5fd',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="중 (적정 이해) - 원클릭 완료"
+                          >
+                            중
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'low')}
+                            style={{
+                              fontSize: '0.68rem',
+                              padding: '0.18rem 0.42rem',
+                              borderRadius: '3px',
+                              border: '1px solid rgba(239, 68, 68, 0.5)',
+                              background: 'rgba(239, 68, 68, 0.18)',
+                              color: '#fca5a5',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="하 (부족·취약) - 원클릭 완료"
+                          >
+                            하
+                          </button>
+                        </div>
+
+                        {/* 일정 조정 버튼 */}
+                        <button
+                          onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
+                          style={{
+                            background: 'rgba(255,255,255,0.06)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            color: 'var(--text-muted)',
+                            fontSize: '0.68rem',
+                            padding: '0.15rem 0.35rem',
+                            borderRadius: '3px',
+                            cursor: 'pointer'
+                          }}
+                          title="어제로 당기기 (-1일)"
+                        >
+                          -1일
+                        </button>
+                        <button
+                          onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
+                          style={{
+                            background: 'rgba(255,255,255,0.06)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            color: 'var(--text-muted)',
+                            fontSize: '0.68rem',
+                            padding: '0.15rem 0.35rem',
+                            borderRadius: '3px',
+                            cursor: 'pointer'
+                          }}
+                          title="내일로 미루기 (+1일)"
+                        >
+                          +1일
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            </div>
+          )}
+        </div>
 
       {/* Add Form (Collapsible) */}
       {showAddForm && (
@@ -1346,7 +1140,7 @@ export default function EbbinghausPlanner({ onClose }) {
                           transition: 'all 0.2s ease',
                           opacity: (day.dateStr < todayStr && !rev.isCompleted) ? 0.7 : 1
                         }}
-                        onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted, rev)}
+                        onClick={() => handleToggleReview(rev.lectureId, rev.id, rev.isCompleted, 'mid')}
                       >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
                         <span style={{ 
@@ -1395,21 +1189,40 @@ export default function EbbinghausPlanner({ onClose }) {
                             </button>
                           </>
                         )}
-                        {rev.isCompleted && rev.difficulty === 'easy' && (
-                          <span style={{ fontSize: '0.62rem' }} title="완벽 마스터">
-                            😊
-                          </span>
-                        )}
-                        {rev.isCompleted && rev.difficulty === 'normal' && (
-                          <span style={{ fontSize: '0.62rem' }} title="보통 (정상 완료)">
-                            😐
-                          </span>
-                        )}
-                        {rev.isCompleted && rev.difficulty === 'hard' && (
-                          <span style={{ fontSize: '0.62rem' }} title="약점 재복습 대상">
-                            🔥
-                          </span>
-                        )}
+                        {(() => {
+                          const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
+                          return (
+                            <>
+                              {rev.isCompleted && curAch === 'high' && (
+                                <span style={{ fontSize: '0.62rem', fontWeight: 'bold', color: '#34d399' }} title="성취도: 상">
+                                  🟢상
+                                </span>
+                              )}
+                              {rev.isCompleted && curAch === 'mid' && (
+                                <span style={{ fontSize: '0.62rem', fontWeight: 'bold', color: '#93c5fd' }} title="성취도: 중">
+                                  🟡중
+                                </span>
+                              )}
+                              {rev.isCompleted && curAch === 'low' && (
+                                <span style={{ fontSize: '0.62rem', fontWeight: 'bold', color: '#f87171' }} title="성취도: 하">
+                                  🔴하
+                                </span>
+                              )}
+                              {rev.score14 !== undefined && (
+                                <span style={{
+                                  fontSize: '0.58rem',
+                                  fontWeight: 'bold',
+                                  padding: '1px 3px',
+                                  borderRadius: '2px',
+                                  background: rev.score14 >= 80 ? 'rgba(16, 185, 129, 0.25)' : (rev.score14 >= 70 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(239, 68, 68, 0.25)'),
+                                  color: rev.score14 >= 80 ? '#34d399' : (rev.score14 >= 70 ? '#fbbf24' : '#f87171')
+                                }} title={`14일차 채점: ${rev.score14}점`}>
+                                  {rev.score14}점
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
                         {rev.isCompleted && rev.isDelayed && (
                           <span style={{ fontSize: '0.6rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.2)', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold' }} title={rev.delayNote || `${rev.delayedDays}일 지연 완료`}>
                             +{rev.delayedDays}d
@@ -1820,45 +1633,56 @@ export default function EbbinghausPlanner({ onClose }) {
         </div>
       )}
 
-      {/* 30일차(5회독) 복습 완료 난이도 진단 모달 */}
-      {difficultyModalTarget && (
+      {/* 14일차 100점 만점 자동 채점 & 재복습 판정 결과 모달 */}
+      {score14ModalTarget && (
         <div style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0, 0, 0, 0.82)', backdropFilter: 'blur(6px)',
+          background: 'rgba(0, 0, 0, 0.82)', backdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '1rem'
         }}>
           <div className="glass-panel animate-fade-in" style={{
-            maxWidth: '480px', width: '100%', background: '#0f172a', border: '1px solid #f59e0b',
-            borderRadius: '16px', padding: '1.75rem', boxShadow: '0 15px 40px rgba(0,0,0,0.7)',
+            maxWidth: '460px', width: '100%', background: '#0f172a',
+            border: score14ModalTarget.score14 >= 80
+              ? '1px solid #10b981'
+              : (score14ModalTarget.score14 >= 70 ? '1px solid #f59e0b' : '1px solid #ef4444'),
+            borderRadius: '16px', padding: '1.75rem', boxShadow: '0 20px 50px rgba(0,0,0,0.7)',
             display: 'flex', flexDirection: 'column', gap: '1.15rem'
           }}>
             {/* Header */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                 <span style={{
-                  fontSize: '0.72rem',
+                  fontSize: '0.74rem',
                   fontWeight: 'bold',
-                  padding: '0.15rem 0.55rem',
+                  padding: '0.2rem 0.6rem',
                   borderRadius: '20px',
-                  background: 'rgba(250, 204, 21, 0.2)',
-                  border: '1px solid rgba(250, 204, 21, 0.5)',
-                  color: '#facc15',
+                  background: score14ModalTarget.score14 >= 80
+                    ? 'rgba(16, 185, 129, 0.2)'
+                    : (score14ModalTarget.score14 >= 70 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
+                  border: score14ModalTarget.score14 >= 80
+                    ? '1px solid #10b981'
+                    : (score14ModalTarget.score14 >= 70 ? '1px solid #f59e0b' : '1px solid #ef4444'),
+                  color: score14ModalTarget.score14 >= 80
+                    ? '#34d399'
+                    : (score14ModalTarget.score14 >= 70 ? '#fbbf24' : '#f87171'),
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.3rem'
+                  gap: '0.35rem'
                 }}>
-                  <Sparkles size={13} /> 30일차 (5회독) 최종 완주!
+                  {score14ModalTarget.score14 >= 80 && <>🟢 14일차 통과 (30일차 최종 인출 진행)</>}
+                  {score14ModalTarget.score14 >= 70 && score14ModalTarget.score14 < 80 && <>🟡 14일차 재복습 권장</>}
+                  {score14ModalTarget.score14 < 70 && <>🔴 14일차 재복습 필수</>}
                 </span>
                 <button
-                  onClick={() => setDifficultyModalTarget(null)}
+                  onClick={() => setScore14ModalTarget(null)}
                   style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
                   title="닫기"
                 >
                   <X size={18} />
                 </button>
               </div>
-              <h3 style={{ margin: '0.2rem 0', fontSize: '1.15rem', color: '#fff', fontWeight: 'bold' }}>
-                30일차 복습 이해도 진단
+              <h3 style={{ margin: '0.2rem 0', fontSize: '1.2rem', color: '#fff', fontWeight: 'bold' }}>
+                14일차 복습 100점 만점 채점 결과
               </h3>
             </div>
 
@@ -1867,163 +1691,154 @@ export default function EbbinghausPlanner({ onClose }) {
               background: 'rgba(255, 255, 255, 0.04)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '10px',
-              padding: '0.85rem 1rem'
+              padding: '0.85rem 1rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
             }}>
-              <div style={{ fontSize: '0.75rem', color: '#93c5fd', fontWeight: 'bold', marginBottom: '0.2rem' }}>
-                [{difficultyModalTarget.subject}]
+              <div>
+                <div style={{ fontSize: '0.74rem', color: '#93c5fd', fontWeight: 'bold', marginBottom: '0.15rem' }}>
+                  [{score14ModalTarget.subject}]
+                </div>
+                <div style={{ fontSize: '0.98rem', fontWeight: 'bold', color: '#f8fafc' }}>
+                  {score14ModalTarget.title}
+                </div>
               </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#f8fafc' }}>
-                {difficultyModalTarget.title}
+              <div style={{ textAlign: 'right' }}>
+                <span style={{
+                  fontSize: '2rem',
+                  fontWeight: '900',
+                  color: score14ModalTarget.score14 >= 80 ? '#34d399' : (score14ModalTarget.score14 >= 70 ? '#fbbf24' : '#f87171')
+                }}>
+                  {score14ModalTarget.score14}
+                </span>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 'bold' }}> / 100점</span>
               </div>
             </div>
 
-            {/* Assessment Options */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {/* Option 1: Easy / Mastered */}
-              <button
-                type="button"
-                onClick={() => handleSelectDifficulty('easy')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  padding: '1rem',
-                  borderRadius: '12px',
-                  background: 'rgba(16, 185, 129, 0.12)',
-                  border: '2px solid rgba(16, 185, 129, 0.5)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s',
-                  color: '#fff'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.22)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.12)'}
-              >
-                <div style={{
-                  width: '42px', height: '42px', borderRadius: '50%',
-                  background: 'rgba(16, 185, 129, 0.25)',
-                  border: '1px solid #10b981',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.4rem', flexShrink: 0
-                }}>
-                  😊
+            {/* Score Breakdown Table */}
+            {score14ModalTarget.breakdown && (
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.35)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '10px',
+                padding: '0.75rem 0.9rem'
+              }}>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>회차별 성취도 평가</span>
+                  <span>배점 및 획득 점수</span>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    쉬움 · 완벽 이해 (최종 마스터)
-                    <span style={{ fontSize: '0.68rem', background: 'rgba(16, 185, 129, 0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#6ee7b7' }}>+15 XP</span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.15rem', lineHeight: '1.35' }}>
-                    내용이 머릿속에 확실히 정착되었습니다. 5회독을 완벽히 졸업합니다.
-                  </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {[
+                    { day: 1, name: '1일차 복습', max: 15, info: score14ModalTarget.breakdown[1] },
+                    { day: 4, name: '4일차 복습', max: 20, info: score14ModalTarget.breakdown[4] },
+                    { day: 7, name: '7일차 복습', max: 30, info: score14ModalTarget.breakdown[7] },
+                    { day: 14, name: '14일차 복습', max: 35, info: score14ModalTarget.breakdown[14] }
+                  ].map(row => {
+                    const achLabel = row.info?.achievement === 'high' ? '상' : (row.info?.achievement === 'low' ? '하' : '중');
+                    const achColor = row.info?.achievement === 'high' ? '#34d399' : (row.info?.achievement === 'low' ? '#f87171' : '#60a5fa');
+                    return (
+                      <div key={row.day} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
+                        <span style={{ color: '#cbd5e1' }}>{row.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 'bold',
+                            padding: '0.1rem 0.35rem',
+                            borderRadius: '3px',
+                            background: `${achColor}22`,
+                            color: achColor,
+                            border: `1px solid ${achColor}55`
+                          }}>
+                            {achLabel}
+                          </span>
+                          <span style={{ fontWeight: 'bold', color: '#fff', minWidth: '45px', textAlign: 'right' }}>
+                            {row.info?.score ?? 0} <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>/ {row.max}점</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </button>
+              </div>
+            )}
 
-              {/* Option 2: Normal / Standard Complete */}
-              <button
-                type="button"
-                onClick={() => handleSelectDifficulty('normal')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  padding: '1rem',
-                  borderRadius: '12px',
-                  background: 'rgba(59, 130, 246, 0.12)',
-                  border: '2px solid rgba(59, 130, 246, 0.5)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s',
-                  color: '#fff'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.22)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.12)'}
-              >
-                <div style={{
-                  width: '42px', height: '42px', borderRadius: '50%',
-                  background: 'rgba(59, 130, 246, 0.25)',
-                  border: '1px solid #3b82f6',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.4rem', flexShrink: 0
-                }}>
-                  😐
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#93c5fd', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    보통 · 적정 수준 이해
-                    <span style={{ fontSize: '0.68rem', background: 'rgba(59, 130, 246, 0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#bfdbfe' }}>+15 XP</span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.15rem', lineHeight: '1.35' }}>
-                    주요 핵심을 잘 알고 있으며 문제풀이에 무리가 없습니다.
-                  </div>
-                </div>
-              </button>
-
-              {/* Option 3: Hard / Needs Re-review */}
-              <button
-                type="button"
-                onClick={() => handleSelectDifficulty('hard')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  padding: '1rem',
-                  borderRadius: '12px',
-                  background: 'rgba(249, 115, 22, 0.12)',
-                  border: '2px solid rgba(249, 115, 22, 0.55)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s',
-                  color: '#fff'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(249, 115, 22, 0.22)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(249, 115, 22, 0.12)'}
-              >
-                <div style={{
-                  width: '42px', height: '42px', borderRadius: '50%',
-                  background: 'rgba(249, 115, 22, 0.25)',
-                  border: '1px solid #f97316',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.4rem', flexShrink: 0
-                }}>
-                  🤔
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fb923c', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    어려움 · 재복습 필요 (약점 보관함 등록)
-                    <span style={{ fontSize: '0.68rem', background: 'rgba(249, 115, 22, 0.3)', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#fdba74' }}>+15 XP</span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.15rem', lineHeight: '1.35' }}>
-                    아직 헷갈리거나 암기가 덜 되었습니다. '약점 극복 재복습함'에 보관하여 반복 점검합니다.
-                  </div>
-                </div>
-              </button>
+            {/* Verdict Explanation Message */}
+            <div style={{
+              padding: '0.85rem 1rem',
+              borderRadius: '10px',
+              background: score14ModalTarget.score14 >= 80
+                ? 'rgba(16, 185, 129, 0.1)'
+                : (score14ModalTarget.score14 >= 70 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)'),
+              border: score14ModalTarget.score14 >= 80
+                ? '1px solid rgba(16, 185, 129, 0.3)'
+                : (score14ModalTarget.score14 >= 70 ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'),
+              fontSize: '0.82rem',
+              lineHeight: '1.45',
+              color: score14ModalTarget.score14 >= 80
+                ? '#d1fae5'
+                : (score14ModalTarget.score14 >= 70 ? '#fef3c7' : '#fee2e2')
+            }}>
+              {score14ModalTarget.score14 >= 80 ? (
+                <>
+                  🎉 <strong>기억 정착 우수 (통과):</strong> 1·4·7·14일차 복습을 성공적으로 완주했습니다! 기억이 안정 궤도에 올랐으므로 30일차 최종 인출(5회독 졸업) 단계로 바로 진행합니다.
+                </>
+              ) : score14ModalTarget.score14 >= 70 ? (
+                <>
+                  ⚠️ <strong>망각 주의 (재복습 권장):</strong> 개념의 일부가 아직 완전히 체화되지 않았습니다. 30일차로 넘어가기 전, 오늘 날짜로 새로운 1-4-7-14-30 복습 스케줄을 추가 등록해 약점을 보완하는 것을 권장합니다.
+                </>
+              ) : (
+                <>
+                  🚨 <strong>재복습 필수:</strong> 망각 곡선 임계점을 넘어 복습 효과가 낮아졌습니다. 확실한 시험 합격을 위해 오늘부터 새로운 1-4-7-14-30 복습 스케줄로 즉시 다시 시작해 주세요.
+                </>
+              )}
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.2rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.3rem' }}>
+              {score14ModalTarget.score14 < 80 && (
+                <button
+                  type="button"
+                  onClick={() => handleRegisterReReview(score14ModalTarget.lectureId)}
+                  className="btn btn-primary"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    fontSize: '0.92rem',
+                    fontWeight: 'bold',
+                    background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 15px rgba(249, 115, 22, 0.4)'
+                  }}
+                >
+                  <Flame size={17} /> [+ 재복습 등록] 새 1-4-7-14-30 스케줄 생성
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={() => handleSelectDifficulty(null)}
+                onClick={() => setScore14ModalTarget(null)}
+                className="btn btn-secondary"
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  fontSize: '0.8rem',
-                  cursor: 'pointer',
-                  padding: '0.45rem 0.5rem',
-                  textDecoration: 'underline'
+                  width: '100%',
+                  padding: '0.65rem',
+                  fontSize: '0.85rem',
+                  fontWeight: score14ModalTarget.score14 >= 80 ? 'bold' : 'normal',
+                  background: score14ModalTarget.score14 >= 80 ? '#10b981' : 'rgba(255,255,255,0.06)',
+                  color: score14ModalTarget.score14 >= 80 ? '#000' : 'var(--text-muted)',
+                  border: score14ModalTarget.score14 >= 80 ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: '8px',
+                  cursor: 'pointer'
                 }}
               >
-                평가 없이 바로 완료
-              </button>
-              <button
-                type="button"
-                onClick={() => setDifficultyModalTarget(null)}
-                className="btn btn-secondary"
-                style={{ fontSize: '0.8rem', padding: '0.45rem 0.9rem' }}
-              >
-                취소 (완료하지 않음)
+                {score14ModalTarget.score14 >= 80 ? '🎉 확인 (30일차 최종 인출 진행)' : '30일차 그대로 진행 (닫기)'}
               </button>
             </div>
           </div>

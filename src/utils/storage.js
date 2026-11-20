@@ -46,6 +46,66 @@ export function calculateSleepDuration(bedTime, wakeTime, bedDateType = null) {
   return { hours, mins, totalMinutes: diffMinutes };
 }
 
+// --- Ebbinghaus 14-Day Achievement & Score System (100-Point System) ---
+export const EBBINGHAUS_14_SCORES = {
+  1: { high: 15, mid: 10, low: 5 },
+  4: { high: 20, mid: 13, low: 6 },
+  7: { high: 30, mid: 20, low: 10 },
+  14: { high: 35, mid: 20, low: 10 }
+};
+
+export function normalizeAchievement(val) {
+  if (!val) return 'mid';
+  if (val === 'high' || val === 'mid' || val === 'low') return val;
+  if (val === 'easy') return 'high';
+  if (val === 'normal') return 'mid';
+  if (val === 'hard') return 'low';
+  return 'mid';
+}
+
+export function calculateLecture14Score(lec) {
+  if (!lec || !lec.reviews) return null;
+  const rev1 = lec.reviews.find(r => Number(r.dayOffset) === 1 && r.isCompleted);
+  const rev4 = lec.reviews.find(r => Number(r.dayOffset) === 4 && r.isCompleted);
+  const rev7 = lec.reviews.find(r => Number(r.dayOffset) === 7 && r.isCompleted);
+  const rev14 = lec.reviews.find(r => Number(r.dayOffset) === 14 && r.isCompleted);
+
+  // 1, 4, 7, 14일차가 모두 완료되어야 100점 만점 score14 계산
+  if (!rev1 || !rev4 || !rev7 || !rev14) return null;
+
+  const a1 = normalizeAchievement(rev1.achievement || rev1.difficulty);
+  const a4 = normalizeAchievement(rev4.achievement || rev4.difficulty);
+  const a7 = normalizeAchievement(rev7.achievement || rev7.difficulty);
+  const a14 = normalizeAchievement(rev14.achievement || rev14.difficulty);
+
+  const s1 = EBBINGHAUS_14_SCORES[1][a1] || 10;
+  const s4 = EBBINGHAUS_14_SCORES[4][a4] || 13;
+  const s7 = EBBINGHAUS_14_SCORES[7][a7] || 20;
+  const s14 = EBBINGHAUS_14_SCORES[14][a14] || 20;
+
+  const totalScore = s1 + s4 + s7 + s14;
+
+  let verdict = 'pass';
+  if (totalScore < 70) {
+    verdict = 'required'; // 70점 미만: 🔴 재복습 필수
+  } else if (totalScore < 80) {
+    verdict = 'recommend'; // 70점 ~ 79점: 🟡 재복습 권장
+  } else {
+    verdict = 'pass'; // 80점 이상: 🟢 통과 (30일차 최종 인출 진행)
+  }
+
+  return {
+    score14: totalScore,
+    verdict,
+    breakdown: {
+      1: { achievement: a1, score: s1, maxScore: 15 },
+      4: { achievement: a4, score: s4, maxScore: 20 },
+      7: { achievement: a7, score: s7, maxScore: 30 },
+      14: { achievement: a14, score: s14, maxScore: 35 }
+    }
+  };
+}
+
 function safeParse(str, fallback = {}) {
   try {
     if (!str) return fallback;
@@ -1843,22 +1903,23 @@ export const storage = {
     this._dispatchSync();
   },
 
-  completeReview(lectureId, reviewId, difficulty = null) {
+  completeReview(lectureId, reviewId, achievement = 'mid') {
     const lectures = this.getLectures();
     let found = false;
+    let score14Result = null;
     const now = new Date();
     const actualCompletedDate = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-    
+    const normAch = normalizeAchievement(achievement);
+
     lectures.forEach(lec => {
       if (lec.id === lectureId) {
         lec.reviews.forEach(rev => {
-          if (rev.id === reviewId && !rev.isCompleted) {
+          if (rev.id === reviewId) {
             rev.isCompleted = true;
             rev.completedAt = now.toISOString();
-            rev.completedDate = actualCompletedDate; // 실제 완료 일자 (예: "2026-11-21")
-            rev.scheduledDate = rev.targetDate;     // 원래 복습 예정일 (예: "2026-11-20")
+            rev.completedDate = actualCompletedDate;
+            rev.scheduledDate = rev.targetDate;
 
-            // 원래 복습 예정일보다 늦게 완료한 경우 지연 완료 플래그 및 상세 정보 기록
             if (rev.targetDate && actualCompletedDate > rev.targetDate) {
               const [tY, tM, tD] = rev.targetDate.split('-').map(Number);
               const [cY, cM, cD] = actualCompletedDate.split('-').map(Number);
@@ -1871,69 +1932,68 @@ export const storage = {
               rev.delayedDays = 0;
             }
 
-            if (difficulty) {
-              rev.difficulty = difficulty; // 'easy' | 'normal' | 'hard'
-              if (difficulty === 'hard') {
-                rev.needsReReview = true;
-                rev.reReviewStatus = 'pending'; // 'pending' | 'completed'
-                rev.hardRecordedAt = now.toISOString();
-              } else if (difficulty === 'easy') {
-                rev.needsReReview = false;
-                rev.reReviewStatus = 'mastered';
-                rev.easyRecordedAt = now.toISOString();
-              } else if (difficulty === 'normal') {
-                rev.needsReReview = false;
-                rev.reReviewStatus = 'normal';
-                rev.normalRecordedAt = now.toISOString();
-              }
-            } else {
-              rev.difficulty = null;
-            }
+            rev.achievement = normAch; // "high" | "mid" | "low"
+            // 하위 호환 difficulty 필드 동기화
+            rev.difficulty = normAch === 'high' ? 'easy' : (normAch === 'low' ? 'hard' : 'normal');
             found = true;
           }
         });
+
+        // 14일차 포함 1,4,7,14 채점 계산
+        const evalResult = calculateLecture14Score(lec);
+        if (evalResult) {
+          lec.score14 = evalResult.score14;
+          lec.verdict14 = evalResult.verdict;
+          lec.score14CalculatedAt = now.toISOString();
+          lec.score14Breakdown = evalResult.breakdown;
+          score14Result = {
+            lectureId: lec.id,
+            subject: lec.subject,
+            title: lec.title,
+            ...evalResult
+          };
+        }
       }
     });
 
     if (found) {
       localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
-      this.addXP(15); // Reward 15 XP for a review
+      this.addXP(15);
       this._dispatchSync();
     }
-    return lectures;
+    return { lectures, score14Result };
   },
 
-  setReviewDifficulty(lectureId, reviewId, difficulty = null) {
+  setReviewAchievement(lectureId, reviewId, achievement) {
     const lectures = this.getLectures();
     let found = false;
+    let score14Result = null;
     const now = new Date();
+    const normAch = normalizeAchievement(achievement);
+
     lectures.forEach(lec => {
       if (lec.id === lectureId) {
         lec.reviews.forEach(rev => {
           if (rev.id === reviewId) {
-            if (difficulty) {
-              rev.difficulty = difficulty; // 'easy' | 'normal' | 'hard'
-              if (difficulty === 'hard') {
-                rev.needsReReview = true;
-                rev.reReviewStatus = 'pending';
-                rev.hardRecordedAt = now.toISOString();
-              } else if (difficulty === 'easy') {
-                rev.needsReReview = false;
-                rev.reReviewStatus = 'mastered';
-                rev.easyRecordedAt = now.toISOString();
-              } else if (difficulty === 'normal') {
-                rev.needsReReview = false;
-                rev.reReviewStatus = 'normal';
-                rev.normalRecordedAt = now.toISOString();
-              }
-            } else {
-              rev.difficulty = null;
-              rev.needsReReview = false;
-              delete rev.reReviewStatus;
-            }
+            rev.achievement = normAch;
+            rev.difficulty = normAch === 'high' ? 'easy' : (normAch === 'low' ? 'hard' : 'normal');
             found = true;
           }
         });
+
+        const evalResult = calculateLecture14Score(lec);
+        if (evalResult) {
+          lec.score14 = evalResult.score14;
+          lec.verdict14 = evalResult.verdict;
+          lec.score14CalculatedAt = now.toISOString();
+          lec.score14Breakdown = evalResult.breakdown;
+          score14Result = {
+            lectureId: lec.id,
+            subject: lec.subject,
+            title: lec.title,
+            ...evalResult
+          };
+        }
       }
     });
 
@@ -1941,7 +2001,11 @@ export const storage = {
       localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
       this._dispatchSync();
     }
-    return lectures;
+    return { lectures, score14Result };
+  },
+
+  setReviewDifficulty(lectureId, reviewId, difficulty = null) {
+    return this.setReviewAchievement(lectureId, reviewId, difficulty);
   },
 
   undoReview(lectureId, reviewId) {
@@ -1960,16 +2024,29 @@ export const storage = {
             delete rev.delayedDays;
             delete rev.delayNote;
             delete rev.difficulty;
+            delete rev.achievement;
             delete rev.needsReReview;
             delete rev.reReviewStatus;
             delete rev.hardRecordedAt;
             delete rev.easyRecordedAt;
             delete rev.normalRecordedAt;
-            delete rev.easyRecordedAt;
             delete rev.reReviewCompletedAt;
             found = true;
           }
         });
+
+        // 4개 회차 중 일부가 취소되면 score14 재계산 또는 정리
+        const evalResult = calculateLecture14Score(lec);
+        if (evalResult) {
+          lec.score14 = evalResult.score14;
+          lec.verdict14 = evalResult.verdict;
+          lec.score14Breakdown = evalResult.breakdown;
+        } else {
+          delete lec.score14;
+          delete lec.verdict14;
+          delete lec.score14CalculatedAt;
+          delete lec.score14Breakdown;
+        }
       }
     });
 
@@ -1981,79 +2058,53 @@ export const storage = {
     return lectures;
   },
 
-  // 약점 극복 재복습함 (Re-Review Vault) API
-  getReReviewList() {
+  // 4. [+ 재복습 등록] 원클릭 복제 기능
+  registerReReviewLecture(lectureId) {
     const lectures = this.getLectures();
-    const list = [];
-    lectures.forEach(lec => {
-      lec.reviews.forEach(rev => {
-        if (rev.needsReReview || (rev.difficulty === 'hard' && rev.reReviewStatus)) {
-          list.push({
-            lectureId: lec.id,
-            subject: lec.subject,
-            title: lec.title,
-            dateAdded: lec.dateAdded,
-            reviewId: rev.id,
-            targetDate: rev.targetDate,
-            completedAt: rev.completedAt,
-            dayOffset: rev.dayOffset,
-            difficulty: rev.difficulty,
-            needsReReview: rev.needsReReview,
-            reReviewStatus: rev.reReviewStatus || 'pending',
-            reReviewCompletedAt: rev.reReviewCompletedAt || null,
-            hardRecordedAt: rev.hardRecordedAt || rev.completedAt
-          });
-        }
-      });
-    });
-    return list.sort((a, b) => new Date(b.hardRecordedAt || 0) - new Date(a.hardRecordedAt || 0));
+    const target = lectures.find(l => l.id === lectureId);
+    if (!target) return null;
+
+    const d = new Date();
+    const todayStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    // 제목 앞에 [재복습] 붙이기
+    let baseTitle = target.title.trim();
+    let newTitle = '';
+    if (!baseTitle.startsWith('[재복습]')) {
+      newTitle = `[재복습] ${baseTitle}`;
+    } else {
+      // 이미 [재복습]이 붙어있는 경우 [재복습 2회차] 등으로 깔끔하게 확장
+      const roundMatch = baseTitle.match(/^\[재복습\s*(\d+)회차\]\s*(.*)$/);
+      if (roundMatch) {
+        const nextRound = parseInt(roundMatch[1], 10) + 1;
+        newTitle = `[재복습 ${nextRound}회차] ${roundMatch[2]}`;
+      } else {
+        const pureTitle = baseTitle.replace(/^\[재복습\]\s*/, '');
+        newTitle = `[재복습 2회차] ${pureTitle}`;
+      }
+    }
+
+    // 원본 강의에 재복습 생성 플래그 기록
+    target.hasReReviewRegistered = true;
+    target.reReviewRegisteredAt = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+
+    // 오늘 날짜를 기준으로 새로운 1-4-7-14-30 복습 스케줄 생성
+    const newLec = this.addLecture(target.subject, newTitle, todayStr);
+    return newLec;
+  },
+
+  // 하위 호환용 stubs (기존 수동 재복습 UI 삭제에 따른 안전 처리)
+  getReReviewList() {
+    return [];
   },
 
   toggleReReviewComplete(lectureId, reviewId) {
-    const lectures = this.getLectures();
-    let found = false;
-    lectures.forEach(lec => {
-      if (lec.id === lectureId) {
-        lec.reviews.forEach(rev => {
-          if (rev.id === reviewId) {
-            if (rev.reReviewStatus === 'completed') {
-              rev.reReviewStatus = 'pending';
-              rev.reReviewCompletedAt = null;
-            } else {
-              rev.reReviewStatus = 'completed';
-              rev.reReviewCompletedAt = new Date().toISOString();
-            }
-            found = true;
-          }
-        });
-      }
-    });
-    if (found) {
-      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
-      this._dispatchSync();
-    }
-    return lectures;
+    return this.getLectures();
   },
 
   removeReReview(lectureId, reviewId) {
-    const lectures = this.getLectures();
-    let found = false;
-    lectures.forEach(lec => {
-      if (lec.id === lectureId) {
-        lec.reviews.forEach(rev => {
-          if (rev.id === reviewId) {
-            rev.needsReReview = false;
-            rev.reReviewStatus = 'dismissed';
-            found = true;
-          }
-        });
-      }
-    });
-    if (found) {
-      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
-      this._dispatchSync();
-    }
-    return lectures;
+    return this.getLectures();
   },
 
   getReviewsForDate(dateStr) {
