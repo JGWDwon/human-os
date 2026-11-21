@@ -148,6 +148,7 @@ export default function EbbinghausPlanner({ onClose }) {
   const handleToggleReview = (lectureId, reviewId, isCompleted, achievement = 'mid') => {
     if (isCompleted) {
       storage.undoReview(lectureId, reviewId);
+      window.dispatchEvent(new CustomEvent('xp-updated'));
       refreshData();
       return;
     }
@@ -196,11 +197,17 @@ export default function EbbinghausPlanner({ onClose }) {
   // 성취도 알림박스(모달)에서 상/중/하 클릭 시 완료 및 점수 반영
   const handleSelectReviewAchievement = (target, chosenAchievement) => {
     if (!target) return;
+    const reviewId = target.reviewId || target.id;
+    const lectureId = target.lectureId;
     setAchievementModalTarget(null);
 
-    if (target.isCompleted) {
+    const targetLec = lectures.find(l => l.id === lectureId);
+    const targetRev = targetLec?.reviews.find(r => r.id === reviewId);
+    const isCompleted = targetRev ? targetRev.isCompleted : target.isCompleted;
+
+    if (isCompleted) {
       // 이미 완료된 회차의 성취도 수정
-      const { score14Result } = storage.setReviewAchievement(target.lectureId, target.reviewId, chosenAchievement);
+      const { score14Result } = storage.setReviewAchievement(lectureId, reviewId, chosenAchievement);
       if (score14Result) {
         setScore14ModalTarget(score14Result);
         if (score14Result.score14 >= 80) {
@@ -222,15 +229,17 @@ export default function EbbinghausPlanner({ onClose }) {
       refreshData();
     } else {
       // 신규 완료 처리
-      handleToggleReview(target.lectureId, target.reviewId, false, chosenAchievement);
+      handleToggleReview(lectureId, reviewId, false, chosenAchievement);
     }
   };
 
   // 성취도 알림박스에서 완료 취소(미완료 복구)
   const handleUndoReviewFromModal = (target) => {
     if (!target) return;
+    const reviewId = target.reviewId || target.id;
+    const lectureId = target.lectureId;
     setAchievementModalTarget(null);
-    handleToggleReview(target.lectureId, target.reviewId, true);
+    handleToggleReview(lectureId, reviewId, true);
   };
 
   const handleRegisterReReview = (lectureId) => {
@@ -1682,11 +1691,16 @@ export default function EbbinghausPlanner({ onClose }) {
       {/* 복습 카드 클릭 시 상/중/하 성취도(점수메김) 선택 알림박스 모달 */}
       {achievementModalTarget && (() => {
         const target = achievementModalTarget;
+        const reviewId = target.reviewId || target.id;
+        const currentLec = lectures.find(l => l.id === target.lectureId);
+        const currentRev = currentLec?.reviews.find(r => r.id === reviewId);
+        const isCompleted = currentRev ? Boolean(currentRev.isCompleted) : Boolean(target.isCompleted);
         const dayNum = Number(target.dayOffset);
         const scoreInfo = EBBINGHAUS_14_SCORES ? EBBINGHAUS_14_SCORES[dayNum] : null;
         const badge = getDayOffsetBadgeStyle(target.dayOffset);
         const subColor = getSubjectColor(target.subject, registeredSubjects);
-        const curAch = target.achievement || (target.difficulty === 'easy' ? 'high' : (target.difficulty === 'normal' ? 'mid' : (target.difficulty === 'hard' ? 'low' : null)));
+        const rawAch = currentRev ? (currentRev.achievement || currentRev.difficulty) : (target.achievement || target.difficulty);
+        const curAch = rawAch === 'high' || rawAch === 'easy' ? 'high' : (rawAch === 'low' || rawAch === 'hard' ? 'low' : (rawAch ? 'mid' : null));
 
         return (
           <div 
@@ -1804,7 +1818,7 @@ export default function EbbinghausPlanner({ onClose }) {
                   </div>
                 )}
 
-                {target.isCompleted && (
+                {isCompleted && (
                   <div style={{
                     marginTop: '0.45rem',
                     padding: '0.25rem 0.5rem',
@@ -1832,8 +1846,8 @@ export default function EbbinghausPlanner({ onClose }) {
                   style={{
                     padding: '0.75rem 0.9rem',
                     borderRadius: '8px',
-                    background: curAch === 'high' && target.isCompleted ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.08)',
-                    border: curAch === 'high' && target.isCompleted ? '2px solid #10b981' : '1px solid rgba(16, 185, 129, 0.3)',
+                    background: curAch === 'high' && isCompleted ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.08)',
+                    border: curAch === 'high' && isCompleted ? '2px solid #10b981' : '1px solid rgba(16, 185, 129, 0.3)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     display: 'flex',
@@ -1869,8 +1883,8 @@ export default function EbbinghausPlanner({ onClose }) {
                   style={{
                     padding: '0.75rem 0.9rem',
                     borderRadius: '8px',
-                    background: curAch === 'mid' && target.isCompleted ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.08)',
-                    border: curAch === 'mid' && target.isCompleted ? '2px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.3)',
+                    background: curAch === 'mid' && isCompleted ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.08)',
+                    border: curAch === 'mid' && isCompleted ? '2px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.3)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     display: 'flex',
@@ -1906,8 +1920,8 @@ export default function EbbinghausPlanner({ onClose }) {
                   style={{
                     padding: '0.75rem 0.9rem',
                     borderRadius: '8px',
-                    background: curAch === 'low' && target.isCompleted ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.08)',
-                    border: curAch === 'low' && target.isCompleted ? '2px solid #ef4444' : '1px solid rgba(239, 68, 68, 0.3)',
+                    background: curAch === 'low' && isCompleted ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.08)',
+                    border: curAch === 'low' && isCompleted ? '2px solid #ef4444' : '1px solid rgba(239, 68, 68, 0.3)',
                     cursor: 'pointer',
                     textAlign: 'left',
                     display: 'flex',
@@ -1939,7 +1953,7 @@ export default function EbbinghausPlanner({ onClose }) {
 
               {/* Footer Actions */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.3rem' }}>
-                {target.isCompleted ? (
+                {isCompleted ? (
                   <button
                     type="button"
                     onClick={() => handleUndoReviewFromModal(target)}
