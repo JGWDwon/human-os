@@ -11,6 +11,7 @@ import SupplementaryModal from './components/SupplementaryModal';
 import { storage } from './utils/storage';
 import TierBadge from './components/TierBadge';
 import DefenseBanner from './components/DefenseBanner';
+import ExamPrinciplesBanner from './components/ExamPrinciplesBanner';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -831,6 +832,7 @@ function App() {
           /* MAIN VIEW: 1:1 SIDE-BY-SIDE (타이머 & 캘린더 한눈에 보기) */
           /* ========================================================================= */
           <>
+            <ExamPrinciplesBanner />
             <DefenseBanner 
               selectedDate={selectedDate} 
               onNavigateToReviews={() => setActiveView('ebbinghaus')} 

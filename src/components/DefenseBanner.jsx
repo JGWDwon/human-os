@@ -34,7 +34,7 @@ export default function DefenseBanner({ onNavigateToReviews, selectedDate }) {
   if (isVacation) {
     return (
       <div style={{
-        margin: '0.5rem 0 1rem 0',
+        margin: '0.35rem 0 1rem 0',
         padding: '0.75rem 1rem',
         borderRadius: '12px',
         background: 'rgba(16, 185, 129, 0.1)',
@@ -66,7 +66,7 @@ export default function DefenseBanner({ onNavigateToReviews, selectedDate }) {
       <div 
         onClick={onNavigateToReviews}
         style={{
-          margin: '0.5rem 0 1rem 0',
+          margin: '0.35rem 0 1rem 0',
           padding: '0.85rem 1.15rem',
           borderRadius: '12px',
           background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(239, 68, 68, 0.18))',
@@ -134,7 +134,7 @@ export default function DefenseBanner({ onNavigateToReviews, selectedDate }) {
       <div 
         onClick={onNavigateToReviews}
         style={{
-          margin: '0.5rem 0 1rem 0',
+          margin: '0.35rem 0 1rem 0',
           padding: '0.85rem 1.15rem',
           borderRadius: '12px',
           background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.2))',
@@ -203,7 +203,7 @@ export default function DefenseBanner({ onNavigateToReviews, selectedDate }) {
     <div 
       onClick={onNavigateToReviews}
       style={{
-        margin: '0.5rem 0 1rem 0',
+        margin: '0.35rem 0 1rem 0',
         padding: '0.8rem 1.1rem',
         borderRadius: '12px',
         background: 'rgba(30, 41, 59, 0.75)',
