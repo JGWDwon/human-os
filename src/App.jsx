@@ -10,6 +10,7 @@ import SubjectModal from './components/SubjectModal';
 import SupplementaryModal from './components/SupplementaryModal';
 import { storage } from './utils/storage';
 import TierBadge from './components/TierBadge';
+import DefenseBanner from './components/DefenseBanner';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -829,27 +830,33 @@ function App() {
           /* ========================================================================= */
           /* MAIN VIEW: 1:1 SIDE-BY-SIDE (타이머 & 캘린더 한눈에 보기) */
           /* ========================================================================= */
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-            gap: '1.5rem',
-            alignItems: 'stretch',
-            width: '100%'
-          }}>
-            {/* Left Column: Pomodoro Timer */}
-            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-              <PomodoroTracker 
-                selectedDate={selectedDate} 
-                onUpdate={triggerRefresh} 
-                onOpenSupplementary={() => setShowSupplementaryModal(true)} 
-              />
+          <>
+            <DefenseBanner 
+              selectedDate={selectedDate} 
+              onNavigateToReviews={() => setActiveView('ebbinghaus')} 
+            />
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+              gap: '1.5rem',
+              alignItems: 'stretch',
+              width: '100%'
+            }}>
+              {/* Left Column: Pomodoro Timer */}
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+                <PomodoroTracker 
+                  selectedDate={selectedDate} 
+                  onUpdate={triggerRefresh} 
+                  onOpenSupplementary={() => setShowSupplementaryModal(true)} 
+                />
+              </div>
+              
+              {/* Right Column: Calendar Forest (4h/6h/8h Study Goal Pixel Map) */}
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+                <ForestPixelMap refreshTrigger={refreshTrigger} selectedDate={selectedDate} onDateSelect={handleDateSelect} />
+              </div>
             </div>
-            
-            {/* Right Column: Calendar Forest (4h/6h/8h Study Goal Pixel Map) */}
-            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-              <ForestPixelMap refreshTrigger={refreshTrigger} selectedDate={selectedDate} onDateSelect={handleDateSelect} />
-            </div>
-          </div>
+          </>
         )}
 
         {/* Global D-Day, Subject, & Supplementary Modals */}

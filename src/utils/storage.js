@@ -687,23 +687,42 @@ export const storage = {
 
   // --- Data Backup & Stats ---
   getAllData() {
+    // Normalise vacations to ensure date, reservedAt, countsTowardQuota explicitly exist
+    const rawVacations = safeParse(localStorage.getItem(STORAGE_KEYS.VACATIONS), []);
+    const normalisedVacations = rawVacations.map(vac => ({
+      ...vac,
+      date: vac.date || vac.startDate,
+      reservedAt: vac.reservedAt || vac.appliedAt || null,
+      countsTowardQuota: vac.countsTowardQuota === true
+    }));
+
+    // Normalise dailyLogs to ensure defenseStatus explicitly exists
+    const rawLogs = safeParse(localStorage.getItem(STORAGE_KEYS.DAILY_LOGS), {});
+    const normalisedLogs = {};
+    for (const [dateKey, log] of Object.entries(rawLogs)) {
+      normalisedLogs[dateKey] = {
+        ...log,
+        defenseStatus: log.defenseStatus || 'none'
+      };
+    }
+
     return {
       quests: localStorage.getItem(STORAGE_KEYS.QUESTS),
       customQuests: localStorage.getItem('human-os-custom-quests'),
       pomodoro: localStorage.getItem(STORAGE_KEYS.POMODORO),
       diary: localStorage.getItem(STORAGE_KEYS.DIARY),
       lectures: localStorage.getItem(STORAGE_KEYS.LECTURES),
-      vacations: localStorage.getItem(STORAGE_KEYS.VACATIONS),
+      vacations: JSON.stringify(normalisedVacations),
       studySessions: localStorage.getItem(STORAGE_KEYS.STUDY_SESSIONS),
       subjects: localStorage.getItem(STORAGE_KEYS.SUBJECTS),
       ddays: localStorage.getItem(STORAGE_KEYS.DDAYS),
       selectedSubject: localStorage.getItem('human_os_selected_subject_v1'),
       meals: localStorage.getItem(STORAGE_KEYS.MEALS),
-      dailyLogs: localStorage.getItem(STORAGE_KEYS.DAILY_LOGS),
+      dailyLogs: JSON.stringify(normalisedLogs),
       supplementarySlots: localStorage.getItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS),
       theme: localStorage.getItem('dairy_theme'),
       profile: localStorage.getItem(STORAGE_KEYS.USER_PROFILE),
-      version: '1.3'
+      version: '1.4'
     };
   },
 
@@ -1027,6 +1046,75 @@ export const storage = {
     return this.saveDailyLog(dateStr, payload);
   },
 
+  // --- Daily Defense Mission Status (최저 방어선 & 정상 주행) ---
+  getDailyDefenseStatus(dateStr) {
+    if (!dateStr) {
+      const d = new Date();
+      dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    }
+
+    const isVac = this.isVacationDate(dateStr);
+    const lectures = this.getLectures();
+    const todayReviews = [];
+    lectures.forEach(lec => {
+      (lec.reviews || []).forEach(rev => {
+        if (rev.targetDate === dateStr) {
+          todayReviews.push(rev);
+        }
+      });
+    });
+
+    const totalReviews = todayReviews.length;
+    const completedReviews = todayReviews.filter(r => r.isCompleted).length;
+
+    // 1단계 [최저 방어선]: 오늘 예정된 에빙하우스 복습 100% 완료
+    const isStep1Cleared = totalReviews > 0 && completedReviews === totalReviews;
+
+    // 2단계 [정상 주행]: 오늘 새 강의 수강 + 해당 강의 1일차 복습 완료
+    const dailySessions = this.getDailySessions(dateStr);
+    const hasLectureStudySession = (dailySessions || []).some(s => s.activityType === 'lecture' && s.type === 'focus');
+    const lecturesCreatedToday = lectures.filter(lec => lec.createdAt === dateStr);
+    const hasNewLecture = lecturesCreatedToday.length > 0 || hasLectureStudySession;
+
+    // 해당 강의 1일차 복습 완료: 오늘 생성된 강의 중 1일차(dayOffset === 1) 복습이 완료되었는지 확인
+    const hasDay1ReviewCompleted = lecturesCreatedToday.some(lec =>
+      (lec.reviews || []).some(r => r.dayOffset === 1 && r.isCompleted)
+    );
+
+    const isStep2Cleared = isStep1Cleared && hasNewLecture && hasDay1ReviewCompleted;
+
+    let status = 'none';
+    if (isStep2Cleared) {
+      status = 'full_cleared';
+    } else if (isStep1Cleared) {
+      status = 'review_cleared';
+    }
+
+    // dailyLogs[dateStr]에 defenseStatus 저장 (하위 호환 및 백업/내보내기 필드)
+    const allLogs = this.getDailyLogs();
+    const existingLog = allLogs[dateStr];
+    if (!existingLog || existingLog.defenseStatus !== status) {
+      const updatedLog = {
+        ...(existingLog || { bedTime: '', wakeTime: '', satisfaction: null, diary: '', note: '' }),
+        defenseStatus: status,
+        updatedAt: Date.now()
+      };
+      allLogs[dateStr] = updatedLog;
+      localStorage.setItem(STORAGE_KEYS.DAILY_LOGS, JSON.stringify(allLogs));
+    }
+
+    return {
+      status,
+      isStep1Cleared,
+      isStep2Cleared,
+      totalReviews,
+      completedReviews,
+      hasNewLecture,
+      hasDay1ReviewCompleted,
+      isVacation: isVac
+    };
+  },
+
   // --- Supplementary Slots (막힌 문제 보충 슬롯 - 나중에 풀기/주말 보충) ---
   getSupplementarySlots() {
     const raw = localStorage.getItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS);
@@ -1292,7 +1380,7 @@ export const storage = {
   },
 
   // --- Detailed Study Sessions & Time Waste Analysis ---
-  logStudySession(dateStr, type, startTimeStr, endTimeStr, durationMins, subject = null, activityType = null, endReason = null) {
+  logStudySession(dateStr, type, startTimeStr, endTimeStr, durationMins, subject = null, activityType = null, endReason = null, isCircuitBreaker = false) {
     if (!dateStr) {
       const d = new Date();
       dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -1336,7 +1424,8 @@ export const storage = {
       timestamp: Date.now(),
       subject: resolvedSubject || '기타',
       activityType: resolvedActivityType,
-      endReason: resolvedEndReason
+      endReason: resolvedEndReason,
+      ...(isCircuitBreaker ? { isCircuitBreaker: true } : {})
     };
 
     data[dateStr].push(newSession);
@@ -2459,13 +2548,109 @@ export const storage = {
     return safeParse(raw, []);
   },
 
-  addVacation(startDate, endDate, reason = '') {
-    if (!startDate || !endDate) return { days: 0, count: 0 };
+  // 사유 불문 월간 단일 쿼터 (월 2회 한도)
+  // 소급 적용 금지: countsTowardQuota === true인 항목만 쿼터 차감 (기존 11월 데이터는 0/2일에서 시작)
+  getMonthlyVacationQuota(monthStr) {
+    const targetMonth = monthStr || this._dateToStr(new Date()).substring(0, 7);
+    const vacations = this.getVacations();
     
+    let used = 0;
+    vacations.forEach(vac => {
+      if (vac.countsTowardQuota) {
+        const s = new Date(vac.startDate + 'T00:00:00');
+        const e = new Date((vac.endDate || vac.startDate) + 'T00:00:00');
+        let cur = new Date(s);
+        while (cur <= e) {
+          const curMonth = this._dateToStr(cur).substring(0, 7);
+          if (curMonth === targetMonth) {
+            used++;
+          }
+          cur.setDate(cur.getDate() + 1);
+        }
+      }
+    });
+
+    const max = 2; // 월 2회(일) 한도
+    const remaining = Math.max(0, max - used);
+    return { max, used, remaining };
+  },
+
+  // 전날 밤 22:00 이전 사전 예약제: 가장 빠른 예약 가능 일자 반환
+  // 현재 시각이 22:00 이상이면 내일(D+1)은 마감되었으므로 모레(D+2)부터 가능
+  getEarliestVacationDate(now = new Date()) {
+    const todayStr = this._dateToStr(now);
+    const d = new Date(todayStr + 'T00:00:00');
+    if (now.getHours() >= 22) {
+      d.setDate(d.getDate() + 2);
+    } else {
+      d.setDate(d.getDate() + 1);
+    }
+    return this._dateToStr(d);
+  },
+
+  // 휴가 등록 가능 여부 및 사유 검증
+  canRegisterVacation(startDate, endDate, now = new Date()) {
+    if (!startDate || !endDate) {
+      return { allowed: false, reason: '시작일과 종료일을 입력해주세요.' };
+    }
+    if (endDate < startDate) {
+      return { allowed: false, reason: '종료일은 시작일보다 빠를 수 없습니다.' };
+    }
+
+    const todayStr = this._dateToStr(now);
+    // 당일 휴가 원천 차단 (예외 없음): 오늘 및 과거 날짜 금지
+    if (startDate <= todayStr) {
+      return { allowed: false, reason: '당일 및 지난 날짜는 휴가를 등록할 수 없습니다. (당일 즉흥 휴가 원천 차단)' };
+    }
+
+    // 전날 밤 22:00 이전 사전 예약제 검증
+    const startD = new Date(startDate + 'T00:00:00');
+    const deadline = new Date(startD);
+    deadline.setDate(deadline.getDate() - 1);
+    deadline.setHours(22, 0, 0, 0);
+
+    if (now.getTime() >= deadline.getTime()) {
+      return {
+        allowed: false,
+        reason: `${startDate} 휴가는 전날(${this._dateToStr(deadline)}) 22:00 이전에만 사전 예약이 가능합니다.`
+      };
+    }
+
+    // 사유 불문 월간 단일 쿼터 (월 2회 한도) 검증
+    const endD = new Date(endDate + 'T00:00:00');
+    const monthCounts = {};
+    let cur = new Date(startD);
+    while (cur <= endD) {
+      const m = this._dateToStr(cur).substring(0, 7);
+      monthCounts[m] = (monthCounts[m] || 0) + 1;
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    for (const [m, count] of Object.entries(monthCounts)) {
+      const quota = this.getMonthlyVacationQuota(m);
+      if (count > quota.remaining) {
+        return {
+          allowed: false,
+          reason: `${m}월의 잔여 휴가(${quota.remaining}일)를 초과하여 등록할 수 없습니다. (신청: ${count}일, 한도: 월 2일)`
+        };
+      }
+    }
+
+    const diffTime = endD.getTime() - startD.getTime();
+    const days = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return { allowed: true, days };
+  },
+
+  addVacation(startDate, endDate, reason = '', now = new Date()) {
+    if (!startDate || !endDate) return { success: false, reason: '시작일과 종료일을 입력해주세요.', days: 0, count: 0 };
+    
+    const check = this.canRegisterVacation(startDate, endDate, now);
+    if (!check.allowed) {
+      return { success: false, reason: check.reason, days: 0, count: 0 };
+    }
+
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T00:00:00');
-    if (end < start) return { days: 0, count: 0 };
-
     const diffTime = end.getTime() - start.getTime();
     const days = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
@@ -2475,9 +2660,12 @@ export const storage = {
       id: 'vac_' + Date.now(),
       startDate,
       endDate,
+      date: startDate, // 스키마 필드명: date(휴가 해당일)
       days,
       reason: (reason || '').trim(),
-      appliedAt: new Date().toISOString()
+      appliedAt: now.toISOString(),
+      reservedAt: now.toISOString(), // 스키마 필드명: reservedAt (사전 예약 타임스탬프)
+      countsTowardQuota: true // 스키마 필드명: countsTowardQuota (2026-11-21 이후 등록분은 true)
     };
     vacations.unshift(newVacation);
     localStorage.setItem(STORAGE_KEYS.VACATIONS, JSON.stringify(vacations));
@@ -2508,7 +2696,7 @@ export const storage = {
     }
 
     this._dispatchSync();
-    return { days, count };
+    return { success: true, days, count };
   },
 
   revertVacation(vacationId) {

@@ -77,12 +77,9 @@ export default function EbbinghausPlanner({ onClose }) {
   // Vacation & Overdue Modal states
   const [showVacationModal, setShowVacationModal] = useState(false);
   const [showOverdueModal, setShowOverdueModal] = useState(false);
-  const [vacStartDate, setVacStartDate] = useState(todayStr);
-  const [vacEndDate, setVacEndDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    return new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-  });
+  const earliestVacDate = storage.getEarliestVacationDate();
+  const [vacStartDate, setVacStartDate] = useState(earliestVacDate);
+  const [vacEndDate, setVacEndDate] = useState(earliestVacDate);
   const [vacReason, setVacReason] = useState('');
   const [vacations, setVacations] = useState([]);
 
@@ -312,7 +309,19 @@ export default function EbbinghausPlanner({ onClose }) {
       alert("종료일은 시작일보다 빠를 수 없습니다.");
       return;
     }
+
+    const check = storage.canRegisterVacation(vacStartDate, vacEndDate);
+    if (!check.allowed) {
+      alert(`⚠️ 휴가 등록 불가:\n${check.reason}`);
+      return;
+    }
+
     const result = storage.addVacation(vacStartDate, vacEndDate, vacReason);
+    if (!result.success) {
+      alert(`⚠️ 휴가 등록 실패:\n${result.reason}`);
+      return;
+    }
+
     const reasonMsg = vacReason.trim() ? `\n사유: ${vacReason.trim()}` : '';
     alert(`🌴 휴가 모드 적용 완료!\n${vacStartDate} ~ ${vacEndDate} (총 ${result.days}일간)${reasonMsg}\n\n휴가 기간 및 이후 미완료 복습 ${result.count}개가 정확히 ${result.days}일 뒤로 연기되었습니다! 🎉`);
     setVacReason('');
@@ -1456,21 +1465,31 @@ export default function EbbinghausPlanner({ onClose }) {
               </div>
 
               {/* Option 2: 휴가 모드 */}
-              <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '10px', padding: '1rem' }}>
-                <div style={{ fontWeight: 'bold', color: '#34d399', fontSize: '0.92rem', marginBottom: '0.25rem' }}>
-                  🌴 여행/휴가 모드 관리
-                </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem 0', lineHeight: 1.4 }}>
-                  여행 또는 휴가 기간을 설정하여, 그 기간의 복습 일정을 자동으로 뒤로 연기합니다.
-                </p>
-                <button
-                  onClick={() => { setShowManageModal(false); setShowVacationModal(true); }}
-                  className="btn btn-secondary"
-                  style={{ width: '100%', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#34d399', padding: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold' }}
-                >
-                  <Palmtree size={15} /> 여행/휴가 기간 설정 열기
-                </button>
-              </div>
+              {(() => {
+                const vacQuota = storage.getMonthlyVacationQuota();
+                return (
+                  <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '10px', padding: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                      <div style={{ fontWeight: 'bold', color: '#34d399', fontSize: '0.92rem' }}>
+                        🌴 여행/휴가 모드 관리
+                      </div>
+                      <span style={{ fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.25)', color: '#6ee7b7', padding: '0.1rem 0.45rem', borderRadius: '10px', fontWeight: 'bold' }}>
+                        잔여: {vacQuota.remaining} / 2일
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 0.75rem 0', lineHeight: 1.4 }}>
+                      사전 예약(전날 22:00 전)을 통해 휴가를 등록하고 복습을 자동 연기합니다. (사유 불문 월 2회 한도)
+                    </p>
+                    <button
+                      onClick={() => { setShowManageModal(false); setShowVacationModal(true); }}
+                      className="btn btn-secondary"
+                      style={{ width: '100%', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10b981', color: '#34d399', padding: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+                    >
+                      <Palmtree size={15} /> 여행/휴가 기간 설정 열기 (이번 달 잔여: {vacQuota.remaining} / 2일)
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Option 3: 밀린 복습 스마트 재배치 */}
               <div style={{ background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '10px', padding: '1rem' }}>
@@ -1514,45 +1533,88 @@ export default function EbbinghausPlanner({ onClose }) {
               </button>
             </div>
 
-            <form onSubmit={handleApplyVacation} style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '1rem', borderRadius: '10px', marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: '120px' }}>
-                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>시작일</label>
-                  <input 
-                    type="date" 
-                    value={vacStartDate} 
-                    onChange={(e) => setVacStartDate(e.target.value)} 
-                    required 
-                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }} 
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: '120px' }}>
-                  <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>종료일</label>
-                  <input 
-                    type="date" 
-                    value={vacEndDate} 
-                    onChange={(e) => setVacEndDate(e.target.value)} 
-                    required 
-                    style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }} 
-                  />
-                </div>
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
-                  휴가 사유 (선택)
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="예: 허리 통증 병원, 가족 행사, 정기 휴식 등" 
-                  value={vacReason} 
-                  onChange={(e) => setVacReason(e.target.value)} 
-                  style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }} 
-                />
-              </div>
-              <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.55rem', background: '#10b981', border: 'none', color: '#000', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                🌴 휴가 일정 등록 및 자동 연기
-              </button>
-            </form>
+            {/* Vacation Quota & Anti-Escape Rule Banner */}
+            {(() => {
+              const vacQuota = storage.getMonthlyVacationQuota();
+              return (
+                <>
+                  <div style={{
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    borderRadius: '8px',
+                    padding: '0.65rem 0.85rem',
+                    marginBottom: '1rem',
+                    fontSize: '0.78rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold', color: '#34d399', marginBottom: '0.25rem' }}>
+                      <span>🎯 이번 달 잔여 휴가: {vacQuota.remaining} / 2일</span>
+                      <span style={{ fontSize: '0.7rem', color: '#a7f3d0' }}>월 2회 단일 쿼터</span>
+                    </div>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.72rem', lineHeight: 1.45 }}>
+                      • <strong>당일 즉흥 휴가 원천 차단</strong>: 오늘 및 과거 날짜 등록 불가<br />
+                      • <strong>사전 예약제</strong>: 전날 밤 22:00 이전까지만 예약 가능 (최단 예약 가능일: {earliestVacDate})<br />
+                      • 사유 불문 월 2회 단일 한도 내에서만 차감
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleApplyVacation} style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '1rem', borderRadius: '10px', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: '120px' }}>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>시작일 (당일 불가)</label>
+                        <input 
+                          type="date" 
+                          min={earliestVacDate}
+                          value={vacStartDate} 
+                          onChange={(e) => setVacStartDate(e.target.value)} 
+                          required 
+                          style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }} 
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: '120px' }}>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>종료일</label>
+                        <input 
+                          type="date" 
+                          min={vacStartDate || earliestVacDate}
+                          value={vacEndDate} 
+                          onChange={(e) => setVacEndDate(e.target.value)} 
+                          required 
+                          style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }} 
+                        />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>
+                        휴가 사유 (사유 불문 쿼터 차감)
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="예: 허리 통증 병원, 가족 행사, 정기 휴식 등" 
+                        value={vacReason} 
+                        onChange={(e) => setVacReason(e.target.value)} 
+                        style={{ width: '100%', padding: '0.45rem', background: '#1e293b', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '0.82rem' }} 
+                      />
+                    </div>
+                    <button 
+                      type="submit" 
+                      disabled={vacQuota.remaining <= 0}
+                      className="btn btn-primary" 
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        background: vacQuota.remaining > 0 ? '#10b981' : '#475569',
+                        border: 'none',
+                        color: vacQuota.remaining > 0 ? '#000' : '#94a3b8',
+                        fontWeight: 'bold',
+                        fontSize: '0.85rem',
+                        cursor: vacQuota.remaining > 0 ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      {vacQuota.remaining > 0 ? '🌴 휴가 사전 예약 등록 및 자동 연기' : '⛔ 이번 달 휴가 쿼터 소진 (0 / 2일)'}
+                    </button>
+                  </form>
+                </>
+              );
+            })()}
 
             {/* Existing Vacations */}
             <div>

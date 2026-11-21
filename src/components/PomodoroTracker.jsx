@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun, Edit2, Bookmark, CheckSquare, Square, ExternalLink, Sparkles } from 'lucide-react';
+import { Plus, CalendarDays, Trash2, Clock, Play, Pause, RotateCcw, Bell, Check, BookOpen, Target, X, UtensilsCrossed, Headphones, Moon, Sun, Edit2, Bookmark, CheckSquare, Square, ExternalLink, Sparkles, Zap } from 'lucide-react';
 import { storage, getSubjectColor, calculateSleepDuration } from '../utils/storage';
 import mushroomImg from '../assets/mushroom.png';
 import bell2Sound from '../assets/bell2.mp3';
@@ -160,6 +160,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const [showSubjectConfirmModal, setShowSubjectConfirmModal] = useState(false);
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [showEarlyCompleteModal, setShowEarlyCompleteModal] = useState(false);
+  const [showCircuitBreakerCompleteModal, setShowCircuitBreakerCompleteModal] = useState(false);
   const [modalBedTime, setModalBedTime] = useState('23:30');
   const [modalWakeTime, setModalWakeTime] = useState('06:30');
   const [modalBedDateType, setModalBedDateType] = useState('prev');
@@ -796,12 +797,13 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const startTimeStr = startObj.toTimeString().split(' ')[0].substring(0, 5); // "HH:mm"
 
     const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
+    const isCircuitBreakerSession = !!timerState.isCircuitBreaker;
 
     if (sessionStartTsRef.current) {
       const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
       const focusMins = Math.max(1, Math.round(focusSecs / 60));
       const sStartStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog, 'completed');
+      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog, 'completed', isCircuitBreakerSession);
       sessionStartTsRef.current = null;
     }
 
@@ -809,6 +811,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     refreshData();
     window.dispatchEvent(new CustomEvent('xp-updated'));
     if (onUpdate) onUpdate();
+
+    if (isCircuitBreakerSession) {
+      setShowCircuitBreakerCompleteModal(true);
+    }
 
     // Reset back to selected study time
     const curDuration = activeTimerMode === 'lecture' ? lectureDuration : reviewDuration;
@@ -979,7 +985,90 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       isPaused: false,
       endTime,
       currentSubject: targetSubject,
-      currentActivityType: targetActivityType
+      currentActivityType: targetActivityType,
+      isCircuitBreaker: false
+    };
+    setTimerState(nextState);
+    localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
+  };
+
+  // ⚡ 15분 서킷 브레이커: 원클릭 도피 충동 차단 비상 타이머
+  const handleStartCircuitBreaker = async () => {
+    playSound('click');
+    cancelNativeAlarm();
+
+    // 만약 기존 세션이 실행 중이었고 1분 이상 진행되었다면 선 기록
+    if (timerState.isRunning && sessionStartTsRef.current) {
+      const elapsedSeconds = timerState.duration - timerState.timeLeft;
+      const minutesCompleted = Math.floor(elapsedSeconds / 60);
+      if (minutesCompleted >= 1) {
+        const now = new Date();
+        const actualToday = getTodayStr();
+        const endTimeStr = now.toTimeString().split(' ')[0].substring(0, 5);
+        const sStartStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
+        const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || selectedSubject || (storage.getSubjects()[0] || '기타');
+        const activityTypeToLog = timerState.currentActivityType || (activeTimerMode === 'lecture' ? 'lecture' : 'review');
+        storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, minutesCompleted, subjectToLog, activityTypeToLog, 'completed_early', !!timerState.isCircuitBreaker);
+        storage.addCustomPomodoroWithMinutes(actualToday, endTimeStr, minutesCompleted, sStartStr, subjectToLog, activityTypeToLog, 'completed_early');
+      }
+      sessionStartTsRef.current = null;
+    }
+
+    try {
+      if (!globalAudioCtx && typeof window !== 'undefined') {
+        globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (globalAudioCtx) {
+        if (globalAudioCtx.state === 'suspended') {
+          globalAudioCtx.resume();
+        }
+        loadBellSound(globalAudioCtx);
+      }
+    } catch(e) {}
+
+    const duration = 15 * 60; // 15분 (900초)
+    const endTime = Date.now() + duration * 1000;
+    const targetSubject = timerState.currentSubject || selectedSubjectRef.current || selectedSubject || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '기타');
+    const targetActivityType = (activeTimerMode === 'lecture') ? 'lecture' : 'review';
+
+    sessionStartTsRef.current = Date.now();
+    isCompletingRef.current = false;
+    setCustomDuration('');
+
+    // Native alarm / notification
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await ensurePopupChannel();
+        await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1001,
+              title: '⚡ 15분 버티기 방어 성공!',
+              body: '도피 충동을 멋지게 극복했습니다! 계속 집중하시겠습니까?',
+              schedule: { at: new Date(endTime) },
+              sound: 'pomodoro_bell.wav',
+              channelId: 'human_os_timer_channel',
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
+        });
+        await PomodoroNative.schedule({ triggerAtMillis: endTime });
+      } catch (e) {
+        console.error('Failed to schedule native alarm for circuit breaker:', e);
+      }
+    }
+
+    const nextState = {
+      isRunning: true,
+      isPaused: false,
+      endTime,
+      duration,
+      timeLeft: duration,
+      currentSubject: targetSubject,
+      currentActivityType: targetActivityType,
+      isCircuitBreaker: true
     };
     setTimerState(nextState);
     localStorage.setItem('human_os_timer_state_v1', JSON.stringify(nextState));
@@ -1050,7 +1139,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       const focusSecs = Math.round((Date.now() - sessionStartTsRef.current) / 1000);
       const focusMins = Math.max(1, Math.round(focusSecs / 60));
       const sStartStr = new Date(sessionStartTsRef.current).toTimeString().split(' ')[0].substring(0, 5);
-      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog, endReason);
+      storage.logStudySession(actualToday, 'focus', sStartStr, endTimeStr, focusMins, subjectToLog, activityTypeToLog, endReason, !!timerState.isCircuitBreaker);
       sessionStartTsRef.current = null;
     }
 
@@ -1918,6 +2007,31 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                 );
               })()}
 
+              {/* ⚡ 15분 버티기 비상 버튼 (도피 충동 원천 차단) */}
+              <button
+                type="button"
+                onClick={handleStartCircuitBreaker}
+                title="공부 중 도망치고 싶을 때 15분만 버티는 비상 타이머"
+                style={{
+                  padding: '0.28rem 0.85rem',
+                  borderRadius: '20px',
+                  border: timerState.isCircuitBreaker ? '1.5px solid #facc15' : '1px solid rgba(234, 179, 8, 0.45)',
+                  background: timerState.isCircuitBreaker ? 'linear-gradient(135deg, #eab308, #ca8a04)' : 'rgba(234, 179, 8, 0.12)',
+                  color: timerState.isCircuitBreaker ? '#000' : '#facc15',
+                  fontWeight: 'bold',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  boxShadow: timerState.isCircuitBreaker ? '0 0 10px rgba(234, 179, 8, 0.45)' : 'none'
+                }}
+              >
+                <Zap size={14} />
+                <span>15분 버티기</span>
+              </button>
+
               {/* Custom Duration Input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <input
@@ -1949,6 +2063,30 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>분</span>
               </div>
             </div>
+
+            {/* ⚡ 15분 서킷 브레이커: 초저마찰 행동 가이드 3줄 */}
+            {timerState.isCircuitBreaker && (
+              <div style={{
+                margin: '0 auto 1.15rem auto',
+                maxWidth: '440px',
+                width: '100%',
+                padding: '0.75rem 1rem',
+                borderRadius: '10px',
+                background: 'rgba(234, 179, 8, 0.12)',
+                border: '1.5px solid rgba(234, 179, 8, 0.35)',
+                boxShadow: '0 2px 10px rgba(234, 179, 8, 0.15)',
+                textAlign: 'left'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#facc15', fontWeight: 'bold', fontSize: '0.82rem', marginBottom: '0.4rem' }}>
+                  <Zap size={15} /> 15분 초저마찰 행동 가이드
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#f1f5f9', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <div>① 노트북LM [4일차/7일차] 마킹만 하기</div>
+                  <div>② 이미 맞힌 문제 해설 눈으로 3번 훑기</div>
+                  <div>③ 세법학 키워드 소리 내어 5번 읽기</div>
+                </div>
+              </div>
+            )}
 
             {/* Control Buttons */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -3380,6 +3518,102 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                 }}
               >
                 취소 (계속 진행)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⚡ 15분 서킷 브레이커 방어 성공 선택창 모달 */}
+      {showCircuitBreakerCompleteModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div className="glass-panel animate-fade-in" style={{
+            maxWidth: '430px',
+            width: '100%',
+            background: '#0f172a',
+            border: '2px solid #eab308',
+            borderRadius: '16px',
+            padding: '1.75rem',
+            boxShadow: '0 10px 30px rgba(234, 179, 8, 0.35)',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #eab308, #ca8a04)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem auto',
+              color: '#000',
+              boxShadow: '0 4px 15px rgba(234, 179, 8, 0.4)'
+            }}>
+              <Zap size={32} />
+            </div>
+
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem', color: '#facc15', fontWeight: 'bold' }}>
+              ⚡ 15분 방어 성공!
+            </h3>
+
+            <p style={{ fontSize: '0.9rem', color: '#e2e8f0', lineHeight: 1.55, margin: '0 0 1.5rem 0' }}>
+              도피 충동을 극복하고 정상 학습 15분을 완주했습니다.<br />
+              <strong style={{ color: '#fef08a' }}>계속 이어가시겠습니까, 아니면 합법적으로 종료하시겠습니까?</strong>
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCircuitBreakerCompleteModal(false);
+                  handleStartCircuitBreaker();
+                }}
+                className="btn btn-primary"
+                style={{
+                  padding: '0.75rem',
+                  fontSize: '0.92rem',
+                  fontWeight: 'bold',
+                  background: 'linear-gradient(135deg, #eab308, #f59e0b)',
+                  border: 'none',
+                  color: '#000',
+                  boxShadow: '0 4px 12px rgba(234, 179, 8, 0.35)',
+                  cursor: 'pointer'
+                }}
+              >
+                🔥 계속 이어가기 (+15분 더 버티기)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCircuitBreakerCompleteModal(false);
+                  resetTimer();
+                }}
+                className="btn btn-secondary"
+                style={{
+                  padding: '0.75rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 'bold',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: '#cbd5e1',
+                  cursor: 'pointer'
+                }}
+              >
+                🛡️ 합법적으로 종료 (휴식하기)
               </button>
             </div>
           </div>
