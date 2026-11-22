@@ -4,7 +4,6 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -13,6 +12,7 @@ import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import android.util.Log;
 
 public class PomodoroAlarmHelper {
@@ -20,6 +20,38 @@ public class PomodoroAlarmHelper {
     private static MediaPlayer sMediaPlayer = null;
     private static AudioFocusRequest sFocusRequest = null;
     private static Ringtone sRingtone = null;
+    private static PowerManager.WakeLock sWakeLock = null;
+
+    /**
+     * 알람 재생 중 CPU가 절전 모드로 들어가지 않도록 WakeLock 유지
+     */
+    private static synchronized void acquireWakeLock(Context context) {
+        try {
+            if (sWakeLock == null && context != null) {
+                PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    sWakeLock = pm.newWakeLock(
+                        PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                        "HumanOS:PomodoroPlaybackWakeLock"
+                    );
+                    sWakeLock.setReferenceCounted(false);
+                }
+            }
+            if (sWakeLock != null && !sWakeLock.isHeld()) {
+                sWakeLock.acquire(15000); // 최대 15초 안전 타임아웃
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "WakeLock acquire warning: " + e.getMessage());
+        }
+    }
+
+    private static synchronized void releaseWakeLock() {
+        try {
+            if (sWakeLock != null && sWakeLock.isHeld()) {
+                sWakeLock.release();
+            }
+        } catch (Exception e) {}
+    }
 
     /**
      * 갤럭시탭/스마트폰이 음소거(무음/진동) 모드이거나 인강/동영상이 재생 중이어도
@@ -28,25 +60,29 @@ public class PomodoroAlarmHelper {
     public static synchronized void playAlarmSound(Context context) {
         if (context == null) return;
         stopAlarmSound(context);
+        acquireWakeLock(context);
 
         try {
             AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
+                .build();
+
             if (audioManager != null) {
                 // 1. 알람 볼륨 강제 확보: 볼륨이 너무 작거나 0이면 80%로 올려 무조건 들리게 보장
-                int maxAlarmVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
-                int currentAlarmVol = audioManager.getStreamVolume(AudioManager.STREAM_ALARM);
-                if (currentAlarmVol < (int) (maxAlarmVol * 0.5)) {
-                    audioManager.setStreamVolume(AudioManager.STREAM_ALARM, (int) Math.round(maxAlarmVol * 0.8), 0);
+                try {
+                    int maxAlarmVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
+                    int currentAlarmVol = audioManager.getStreamVolume(AudioManager.STREAM_ALARM);
+                    if (currentAlarmVol < (int) (maxAlarmVol * 0.5)) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, (int) Math.round(maxAlarmVol * 0.8), 0);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Cannot adjust volume: " + e.getMessage());
                 }
 
-                // 2. USAGE_ALARM + FLAG_AUDIBILITY_ENFORCED 속성 (무음/음소거 우회 핵심)
-                AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
-                    .build();
-
-                // 3. 오디오 포커스 획득 (인강/유튜브 소리 일시 ducking/일시정지)
+                // 2. 오디오 포커스 획득 (인강/유튜브 소리 일시 ducking)
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         sFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
@@ -60,59 +96,41 @@ public class PomodoroAlarmHelper {
                 } catch (Exception e) {
                     Log.w(TAG, "Audio focus request warning: " + e.getMessage());
                 }
+            }
 
-                // 4. bell2.mp3 음원 파일 로드 (AssetFileDescriptor 방식으로 100% 보장)
-                boolean loaded = false;
-                sMediaPlayer = new MediaPlayer();
-                sMediaPlayer.setAudioAttributes(audioAttributes);
-
-                try {
-                    int resId = context.getResources().getIdentifier("bell2", "raw", context.getPackageName());
-                    if (resId != 0) {
-                        AssetFileDescriptor afd = context.getResources().openRawResourceFd(resId);
-                        if (afd != null) {
-                            sMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-                            afd.close();
-                            loaded = true;
-                        }
-                    }
-                } catch (Exception e) {
-                    Log.w(TAG, "openRawResourceFd failed, trying URI fallback: " + e.getMessage());
-                }
-
-                if (!loaded) {
-                    try {
-                        Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/raw/bell2");
-                        sMediaPlayer.setDataSource(context, soundUri);
-                        loaded = true;
-                    } catch (Exception e) {
-                        Log.w(TAG, "URI fallback failed: " + e.getMessage());
-                    }
-                }
-
-                if (loaded) {
-                    sMediaPlayer.setLooping(false);
-                    sMediaPlayer.setOnCompletionListener(mp -> stopAlarmSound(context));
-                    sMediaPlayer.setOnErrorListener((mp, what, extra) -> {
-                        Log.e(TAG, "MediaPlayer error: " + what + ", " + extra);
-                        fallbackPlayRingtone(context, audioAttributes);
-                        return true;
-                    });
-                    sMediaPlayer.setOnPreparedListener(mp -> {
-                        try {
-                            mp.setVolume(1.0f, 1.0f);
-                            mp.start();
-                            Log.i(TAG, "MediaPlayer started successfully on STREAM_ALARM");
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error starting MediaPlayer: " + e.getMessage());
-                            fallbackPlayRingtone(context, audioAttributes);
-                        }
-                    });
-                    sMediaPlayer.prepareAsync();
+            // 3. bell2.mp3 음원 파일 로드 및 재생 (MediaPlayer.create 사용으로 가장 안정적)
+            try {
+                if (audioManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2, audioAttributes, audioManager.generateAudioSessionId());
                 } else {
-                    // 음원 파일 로드 실패 시 시스템 기본 알람 사운드로 즉시 대체 재생
-                    fallbackPlayRingtone(context, audioAttributes);
+                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2);
                 }
+            } catch (Throwable t) {
+                Log.w(TAG, "MediaPlayer.create with audioAttributes failed, fallback: " + t.getMessage());
+                try {
+                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2);
+                } catch (Throwable t2) {
+                    sMediaPlayer = null;
+                }
+            }
+
+            if (sMediaPlayer != null) {
+                try {
+                    sMediaPlayer.setAudioAttributes(audioAttributes);
+                } catch (Exception e) {}
+                sMediaPlayer.setVolume(1.0f, 1.0f);
+                sMediaPlayer.setLooping(false);
+                sMediaPlayer.setOnCompletionListener(mp -> stopAlarmSound(context));
+                sMediaPlayer.setOnErrorListener((mp, what, extra) -> {
+                    Log.e(TAG, "MediaPlayer error: " + what + ", " + extra);
+                    fallbackPlayRingtone(context, audioAttributes);
+                    return true;
+                });
+                sMediaPlayer.start();
+                Log.i(TAG, "MediaPlayer started successfully on STREAM_ALARM via R.raw.bell2");
+            } else {
+                Log.w(TAG, "MediaPlayer.create returned null, using fallback Ringtone");
+                fallbackPlayRingtone(context, audioAttributes);
             }
         } catch (Exception e) {
             Log.e(TAG, "playAlarmSound failed: " + e.getMessage(), e);
@@ -175,6 +193,8 @@ public class PomodoroAlarmHelper {
                 }
             }
         } catch (Exception e) {}
+
+        releaseWakeLock();
     }
 
     public static synchronized void stopAlarmSound() {
@@ -183,6 +203,7 @@ public class PomodoroAlarmHelper {
 
     /**
      * 정확한 시간(endTime)에 STREAM_ALARM 사운드가 울리도록 AlarmManager에 예약
+     * 삼성 One UI 및 안드로이드 Doze 모드를 100% 뚫는 setAlarmClock 사용
      */
     public static void scheduleAlarm(Context context, long triggerAtMillis) {
         cancelAlarm(context);
@@ -197,15 +218,19 @@ public class PomodoroAlarmHelper {
             }
             PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 1005, intent, flags);
 
-            // Android 12+ 정확한 알람 허용 여부 체크
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
+            Intent showIntent = new Intent(context, MainActivity.class);
+            showIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent showPendingIntent = PendingIntent.getActivity(context, 1006, showIntent, flags);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                AlarmManager.AlarmClockInfo clockInfo = new AlarmManager.AlarmClockInfo(triggerAtMillis, showPendingIntent);
+                alarmManager.setAlarmClock(clockInfo, pendingIntent);
+                Log.i(TAG, "Scheduled AlarmClock at " + triggerAtMillis);
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
             }
-            Log.i(TAG, "Scheduled alarm sound at " + triggerAtMillis);
         } catch (Exception e) {
             Log.e(TAG, "scheduleAlarm error: " + e.getMessage(), e);
         }

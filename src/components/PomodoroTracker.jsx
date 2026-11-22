@@ -523,7 +523,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         const remaining = Math.max(0, Math.round((timerState.endTime - Date.now()) / 1000));
         if (remaining <= 0) {
           if (intervalRef.current) clearInterval(intervalRef.current);
-          handleTimerComplete(true);
+          handleTimerComplete();
         }
       }
     };
@@ -620,48 +620,45 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const playSound = async (type = 'complete') => {
     if (type === 'complete') {
       const now = Date.now();
-      if (now - lastBellPlayTsRef.current < 2000) {
-        console.log("Prevented duplicate bell sound playback within 2.0s");
+      if (now - lastBellPlayTsRef.current < 2500) {
+        console.log("Prevented duplicate bell sound playback within 2.5s");
         return;
       }
       lastBellPlayTsRef.current = now;
 
-      let played = false;
+      // 1. Try HTML5 Audio directly (매우 직관적이고 견고한 오디오 파이프라인)
+      try {
+        const audio = new Audio(`${bell2Sound}?v=20261122`);
+        audio.volume = 1.0;
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(e => console.warn('HTML5 Audio play warning:', e));
+        }
+      } catch (e) {
+        console.warn('HTML5 Audio fallback error:', e);
+      }
+
+      // 2. Try WebAudio decoded buffer (정밀 버퍼 동시 지원)
       try {
         if (!globalAudioCtx && typeof window !== 'undefined') {
           globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
-        if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
-          await globalAudioCtx.resume();
-        }
-        const audioCtx = globalAudioCtx;
-        if (audioCtx) {
+        if (globalAudioCtx) {
+          if (globalAudioCtx.state === 'suspended') {
+            await globalAudioCtx.resume();
+          }
           if (!decodedBellBuffer) {
-            await loadBellSound(audioCtx);
+            await loadBellSound(globalAudioCtx);
           }
           if (decodedBellBuffer) {
-            const source = audioCtx.createBufferSource();
+            const source = globalAudioCtx.createBufferSource();
             source.buffer = decodedBellBuffer;
-            source.connect(audioCtx.destination);
+            source.connect(globalAudioCtx.destination);
             source.start(0);
-            played = true;
           }
         }
       } catch (e) {
-        console.warn('WebAudio playback failed, trying HTML5 Audio fallback:', e);
-      }
-
-      if (!played) {
-        try {
-          const audio = new Audio(`${bell2Sound}?v=20261119_v2`);
-          audio.volume = 1.0;
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(e => console.warn('HTML5 Audio fallback play error:', e));
-          }
-        } catch (e) {
-          console.warn('Audio fallback error:', e);
-        }
+        console.warn('WebAudio playback warning:', e);
       }
       return;
     }
@@ -738,9 +735,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     }
 
     // 3. Play In-App Sound
-    if (!isFromCatchUp) {
-      playSound('complete');
-    }
+    playSound('complete');
 
     // 3. Trigger celebration confetti
     try {
@@ -899,16 +894,29 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     setShowSubjectConfirmModal(false);
     isCompletingRef.current = false;
     playSound('click');
-    
+
     try {
       if (!globalAudioCtx && typeof window !== 'undefined') {
         globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
       }
       if (globalAudioCtx) {
         if (globalAudioCtx.state === 'suspended') {
-          globalAudioCtx.resume();
+          await globalAudioCtx.resume();
         }
+        const osc = globalAudioCtx.createOscillator();
+        const gain = globalAudioCtx.createGain();
+        gain.gain.value = 0.0001;
+        osc.connect(gain);
+        gain.connect(globalAudioCtx.destination);
+        osc.start();
+        osc.stop(globalAudioCtx.currentTime + 0.01);
         loadBellSound(globalAudioCtx);
+      }
+    } catch(e) {}
+
+    try {
+      if (bgAudioRef.current) {
+        bgAudioRef.current.play().catch(() => {});
       }
     } catch(e) {}
     
@@ -1020,9 +1028,22 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       }
       if (globalAudioCtx) {
         if (globalAudioCtx.state === 'suspended') {
-          globalAudioCtx.resume();
+          await globalAudioCtx.resume();
         }
+        const osc = globalAudioCtx.createOscillator();
+        const gain = globalAudioCtx.createGain();
+        gain.gain.value = 0.0001;
+        osc.connect(gain);
+        gain.connect(globalAudioCtx.destination);
+        osc.start();
+        osc.stop(globalAudioCtx.currentTime + 0.01);
         loadBellSound(globalAudioCtx);
+      }
+    } catch(e) {}
+
+    try {
+      if (bgAudioRef.current) {
+        bgAudioRef.current.play().catch(() => {});
       }
     } catch(e) {}
 
@@ -1038,7 +1059,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     // Native alarm / notification
     if (Capacitor.isNativePlatform()) {
       try {
-        await ensurePopupChannel();
+        const channelId = await ensurePopupChannel();
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
         await LocalNotifications.schedule({
           notifications: [
@@ -1046,9 +1067,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
               id: 1001,
               title: '⚡ 15분 버티기 방어 성공!',
               body: '도피 충동을 멋지게 극복했습니다! 계속 집중하시겠습니까?',
-              schedule: { at: new Date(endTime) },
-              sound: 'pomodoro_bell.wav',
-              channelId: 'human_os_timer_channel',
+              schedule: { at: new Date(endTime), allowWhileIdle: true },
+              sound: 'bell2',
+              channelId: channelId,
               actionTypeId: 'OPEN_APP',
               extra: { route: '/' }
             }
