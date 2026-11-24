@@ -10,6 +10,8 @@ import confetti from 'canvas-confetti';
 
 const PomodoroNative = registerPlugin('PomodoroNative');
 
+const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
 let globalAudioCtx = null;
 let decodedBellBuffer = null;
 
@@ -498,12 +500,24 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const lastBellPlayTsRef = useRef(0);
   const lastCompletedTimerTsRef = useRef(0);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+  // bgAudioRef는 브라우저 슬립 방지용 '무음 루프' 전용입니다. 절대 종소리로 오염되지 않도록 원천 보장
+  const ensureSilentBgAudio = () => {
+    if (typeof window === 'undefined') return;
+    if (!bgAudioRef.current) {
       bgAudioRef.current = new Audio(SILENT_WAV);
       bgAudioRef.current.loop = true;
+    } else if (bgAudioRef.current.src !== SILENT_WAV) {
+      try {
+        bgAudioRef.current.pause();
+        bgAudioRef.current.src = SILENT_WAV;
+        bgAudioRef.current.loop = true;
+        bgAudioRef.current.currentTime = 0;
+      } catch (e) {}
     }
+  };
+
+  useEffect(() => {
+    ensureSilentBgAudio();
   }, []);
 
   const requestWakeLock = async () => {
@@ -541,6 +555,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     
     if (timerState.isRunning) {
       requestWakeLock();
+      ensureSilentBgAudio();
       if (bgAudioRef.current) {
         bgAudioRef.current.play().catch(() => {});
       }
@@ -637,26 +652,18 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       }
       lastBellPlayTsRef.current = now;
 
-      // 0. Primary: bgAudioRef (사용자 제스처로 이미 언락된 백그라운드 오디오 엘리먼트 활용 - 브라우저 Autoplay 100% 통과)
+      // 0. Primary: bgAudioRef는 무음 유지용이므로 일시정지만 수행 (절대 종소리로 src를 오염시키지 않음)
       try {
         if (bgAudioRef.current) {
           bgAudioRef.current.pause();
-          bgAudioRef.current.loop = false;
-          bgAudioRef.current.src = bell2Sound;
-          bgAudioRef.current.currentTime = 0;
-          bgAudioRef.current.volume = 1.0;
-          const bgPlayPromise = bgAudioRef.current.play();
-          if (bgPlayPromise !== undefined) {
-            bgPlayPromise.catch(e => console.warn('bgAudio bell play warning:', e));
-          }
         }
       } catch (e) {
-        console.warn('bgAudio bell error:', e);
+        console.warn('bgAudio pause error:', e);
       }
 
-      // 1. Try HTML5 Audio directly (신규 인스턴스 병렬 시도)
+      // 1. Try HTML5 Audio directly (독립된 신규 오디오 인스턴스로 bell2 종소리 재생)
       try {
-        const audio = new Audio(`${bell2Sound}?v=20261124`);
+        const audio = new Audio(`${bell2Sound}?v=20261124_v3`);
         audio.volume = 1.0;
         const playPromise = audio.play();
         if (playPromise !== undefined) {
@@ -951,6 +958,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     } catch(e) {}
 
     try {
+      ensureSilentBgAudio();
       if (bgAudioRef.current) {
         bgAudioRef.current.play().catch(() => {});
       }
@@ -965,7 +973,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       }
     }
 
-    const duration = timerState.timeLeft;
+    const validDuration = (timerState.timeLeft && timerState.timeLeft > 0)
+      ? timerState.timeLeft
+      : (timerState.duration && timerState.duration > 0 ? timerState.duration : 1800);
+    const duration = validDuration;
     const endTime = Date.now() + duration * 1000;
     const now = new Date();
     const actualToday = getTodayStr();
@@ -1061,6 +1072,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     } catch(e) {}
 
     try {
+      ensureSilentBgAudio();
       if (bgAudioRef.current) {
         bgAudioRef.current.play().catch(() => {});
       }
