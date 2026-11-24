@@ -17,7 +17,7 @@ let decodedBellBuffer = null;
 
 const loadBellSound = async (audioCtx) => {
   try {
-    const response = await fetch(`${bell2Sound}?v=20261119_v2`, { cache: 'no-store' });
+    const response = await fetch(`${bell2Sound}?v=20261112_restored`, { cache: 'no-store' });
     const arrayBuffer = await response.arrayBuffer();
     decodedBellBuffer = await audioCtx.decodeAudioData(arrayBuffer);
   } catch (e) {
@@ -37,13 +37,13 @@ const cancelNativeAlarm = async () => {
 };
 
 const ensurePopupChannel = async () => {
-  if (!Capacitor.isNativePlatform()) return null;
-  const channelId = 'pomodoro-headsup-v8';
+  if (!Capacitor.isNativePlatform()) return 'pomodoro-alarm-v4';
+  const channelId = 'pomodoro-alarm-v4';
   try {
     await LocalNotifications.createChannel({
       id: channelId,
-      name: 'Pomodoro Heads-Up Alarm (뽀모도로 알람 및 헤드업 팝업)',
-      description: '뽀모도로 타이머 완료 시 상단에 내려오는 상태바 헤드업 알림 및 알람',
+      name: 'Pomodoro Alarm (무음 뚫는 강제 알람)',
+      description: '알람 완료 시 무음/방해금지 모드에서도 강제로 슬라이드 팝업과 소리가 울리는 채널',
       importance: 5,
       visibility: 1,
       vibration: true,
@@ -53,7 +53,7 @@ const ensurePopupChannel = async () => {
     return channelId;
   } catch (e) {
     console.warn('Failed to create popup channel:', e);
-    return 'pomodoro-headsup-v8';
+    return 'pomodoro-alarm-v4';
   }
 };
 
@@ -661,9 +661,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         console.warn('bgAudio pause error:', e);
       }
 
-      // 1. Try HTML5 Audio directly (독립된 신규 오디오 인스턴스로 bell2 종소리 재생)
+      // 1. Try HTML5 Audio directly (11월 12일 원본 종소리 재생)
       try {
-        const audio = new Audio(`${bell2Sound}?v=20261124_v3`);
+        const audio = new Audio(`${bell2Sound}?v=20261112_restored`);
         audio.volume = 1.0;
         const playPromise = audio.play();
         if (playPromise !== undefined) {
@@ -764,20 +764,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       } catch (e) {
         console.error('Failed to trigger heads-up notification:', e);
       }
+    }
 
-      // 2. Play STREAM_ALARM Sound (포그라운드 완료 시 1회 재생 - 백그라운드 복귀 시에는 이미 네이티브 헤드업 사운드가 울렸으므로 스킵)
-      if (!isFromCatchUp) {
-        try {
-          await PomodoroNative.playAlarmSound();
-        } catch (e) {
-          console.error('Failed to play native alarm sound:', e);
-        }
-      }
-    } else {
-      // 3. Web / PWA 환경 (전면 상태일 때 재생)
-      if (!isFromCatchUp) {
-        playSound('complete');
-      }
+    // 2. Play Sound (11월 12일 방식: 포그라운드 완료 시 1회 재생, 백그라운드 복귀 시에는 이미 시스템 헤드업 사운드가 울렸으므로 중복 재생 스킵)
+    if (!isFromCatchUp) {
+      playSound('complete');
     }
 
     // 3. Trigger celebration confetti
