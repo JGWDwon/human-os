@@ -27,6 +27,13 @@ public class PomodoroAlarmHelper {
     };
 
     /**
+     * 알람이 백그라운드에서 이미 발생했음을 기록하여 앱 복귀 시 중복 사운드를 방지
+     */
+    public static synchronized void recordAlarmTriggered() {
+        sLastPlayTime = System.currentTimeMillis();
+    }
+
+    /**
      * 알람 재생 중 CPU가 절전 모드로 들어가지 않도록 WakeLock 유지
      */
     private static synchronized void acquireWakeLock(Context context) {

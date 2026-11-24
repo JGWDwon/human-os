@@ -36,7 +36,7 @@ const cancelNativeAlarm = async () => {
 
 const ensurePopupChannel = async () => {
   if (!Capacitor.isNativePlatform()) return null;
-  const channelId = 'pomodoro-headsup-v6';
+  const channelId = 'pomodoro-headsup-v8';
   try {
     await LocalNotifications.createChannel({
       id: channelId,
@@ -46,12 +46,12 @@ const ensurePopupChannel = async () => {
       visibility: 1,
       vibration: true,
       lights: true,
-      sound: null
+      sound: 'bell2'
     }).catch(() => {});
     return channelId;
   } catch (e) {
     console.warn('Failed to create popup channel:', e);
-    return 'pomodoro-headsup-v6';
+    return 'pomodoro-headsup-v8';
   }
 };
 
@@ -733,38 +733,45 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Trigger Native Status Bar Heads-Up Notification (상태바 헤드업 알림 팝업 - 사운드는 네이티브 AlarmManager가 전담)
+    // 1. Trigger Native Status Bar Heads-Up Notification (상태바 헤드업 알림 팝업)
     if (Capacitor.isNativePlatform()) {
       try {
         const channelId = await ensurePopupChannel();
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }] }).catch(() => {});
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 1002,
-              title: '성장의 숲 🍅 집중 완료!',
-              body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-              channelId: channelId,
-              vibrationPattern: [200, 100, 200, 100, 400],
-              actionTypeId: 'OPEN_APP',
-              extra: { route: '/' }
-            }
-          ]
-        });
+        if (!isFromCatchUp) {
+          await LocalNotifications.schedule({
+            notifications: [
+              {
+                id: 1002,
+                title: '성장의 숲 🍅 집중 완료!',
+                body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+                channelId: channelId,
+                sound: 'bell2',
+                vibrationPattern: [200, 100, 200, 100, 400],
+                actionTypeId: 'OPEN_APP',
+                extra: { route: '/' }
+              }
+            ]
+          });
+        }
       } catch (e) {
         console.error('Failed to trigger heads-up notification:', e);
       }
 
-      // 2. Play STREAM_ALARM Sound (네이티브 4초 중복 방지 가드 적용)
-      try {
-        await PomodoroNative.playAlarmSound();
-      } catch (e) {
-        console.error('Failed to play native alarm sound:', e);
+      // 2. Play STREAM_ALARM Sound (포그라운드 완료 시 1회 재생 - 백그라운드 복귀 시에는 이미 네이티브 헤드업 사운드가 울렸으므로 스킵)
+      if (!isFromCatchUp) {
+        try {
+          await PomodoroNative.playAlarmSound();
+        } catch (e) {
+          console.error('Failed to play native alarm sound:', e);
+        }
+      }
+    } else {
+      // 3. Web / PWA 환경 (전면 상태일 때 재생)
+      if (!isFromCatchUp) {
+        playSound('complete');
       }
     }
-
-    // 3. Play In-App Sound (웹 브라우저 및 네이티브 폴백 보장 - 2.5초 중복 방지 락 적용)
-    playSound('complete');
 
     // 3. Trigger celebration confetti
     try {
@@ -978,10 +985,10 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     sessionStartTsRef.current = Date.now();
     const minutesLeft = Math.ceil(duration / 60);
 
-    // Schedule native notification & alarm (백그라운드/화면 꺼짐 시에도 상태바 헤드업 팝업 + 음소거 뚫는 알람 소리)
+    // Schedule native alarm (정확한 시각에 AlarmManager가 깨워 헤드업 알림 팝업 및 bell2 소리를 직접 발송)
     if (Capacitor.isNativePlatform()) {
       try {
-        const channelId = await ensurePopupChannel();
+        await ensurePopupChannel();
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
 
         const perm = await LocalNotifications.checkPermissions();
@@ -989,28 +996,12 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
           await LocalNotifications.requestPermissions();
         }
 
-        // A. 상태바 헤드업 알림 팝업 예약 (LocalNotifications - 검증된 헤드업 슬라이드 팝업)
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 1001,
-              title: '성장의 숲 🍅 집중 완료!',
-              body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
-              schedule: { at: new Date(endTime), allowWhileIdle: true },
-              channelId: channelId,
-              vibrationPattern: [200, 100, 200, 100, 400],
-              actionTypeId: 'OPEN_APP',
-              extra: { route: '/' }
-            }
-          ]
-        });
-
-        // B. 음소거 뚫는 STREAM_ALARM 종소리 예약 (PomodoroNative AlarmManager)
+        // 음소거 뚫는 setAlarmClock 예약 (백그라운드/타 앱 작업 중에도 100% 보장)
         await PomodoroNative.schedule({
           triggerAtMillis: endTime
         });
       } catch (e) {
-        console.error('Failed to schedule native notification/alarm:', e);
+        console.error('Failed to schedule native alarm:', e);
       }
     }
 
@@ -1084,24 +1075,11 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     isCompletingRef.current = false;
     setCustomDuration('');
 
-    // Native alarm / notification
+    // Native alarm (정확한 시각에 AlarmManager가 깨워 헤드업 알림 팝업 및 bell2 소리를 직접 발송)
     if (Capacitor.isNativePlatform()) {
       try {
-        const channelId = await ensurePopupChannel();
+        await ensurePopupChannel();
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 1001,
-              title: '⚡ 15분 버티기 방어 성공!',
-              body: '도피 충동을 멋지게 극복했습니다! 계속 집중하시겠습니까?',
-              schedule: { at: new Date(endTime), allowWhileIdle: true },
-              channelId: channelId,
-              actionTypeId: 'OPEN_APP',
-              extra: { route: '/' }
-            }
-          ]
-        });
         await PomodoroNative.schedule({ triggerAtMillis: endTime });
       } catch (e) {
         console.error('Failed to schedule native alarm for circuit breaker:', e);
