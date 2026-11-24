@@ -627,9 +627,26 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
       }
       lastBellPlayTsRef.current = now;
 
-      // 1. Try HTML5 Audio directly (매우 직관적이고 견고한 오디오 파이프라인)
+      // 0. Primary: bgAudioRef (사용자 제스처로 이미 언락된 백그라운드 오디오 엘리먼트 활용 - 브라우저 Autoplay 100% 통과)
       try {
-        const audio = new Audio(`${bell2Sound}?v=20261122`);
+        if (bgAudioRef.current) {
+          bgAudioRef.current.pause();
+          bgAudioRef.current.loop = false;
+          bgAudioRef.current.src = bell2Sound;
+          bgAudioRef.current.currentTime = 0;
+          bgAudioRef.current.volume = 1.0;
+          const bgPlayPromise = bgAudioRef.current.play();
+          if (bgPlayPromise !== undefined) {
+            bgPlayPromise.catch(e => console.warn('bgAudio bell play warning:', e));
+          }
+        }
+      } catch (e) {
+        console.warn('bgAudio bell error:', e);
+      }
+
+      // 1. Try HTML5 Audio directly (신규 인스턴스 병렬 시도)
+      try {
+        const audio = new Audio(`${bell2Sound}?v=20261124`);
         audio.volume = 1.0;
         const playPromise = audio.play();
         if (playPromise !== undefined) {
@@ -728,18 +745,16 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         console.error('Failed to trigger heads-up notification:', e);
       }
 
-      // 2. Play STREAM_ALARM Sound (백그라운드에서 이미 울린 catch-up 상태가 아닐 때만 1회 단일 재생)
-      if (!isFromCatchUp) {
-        try {
-          await PomodoroNative.playAlarmSound();
-        } catch (e) {
-          console.error('Failed to play native alarm sound:', e);
-        }
+      // 2. Play STREAM_ALARM Sound (네이티브 4초 중복 방지 가드 적용)
+      try {
+        await PomodoroNative.playAlarmSound();
+      } catch (e) {
+        console.error('Failed to play native alarm sound:', e);
       }
-    } else {
-      // 3. Web / PWA 환경에서만 WebAudio / HTML5 Audio 재생 (네이티브와의 이중 울림 원천 차단)
-      playSound('complete');
     }
+
+    // 3. Play In-App Sound (웹 브라우저 및 네이티브 폴백 보장 - 2.5초 중복 방지 락 적용)
+    playSound('complete');
 
     // 3. Trigger celebration confetti
     try {

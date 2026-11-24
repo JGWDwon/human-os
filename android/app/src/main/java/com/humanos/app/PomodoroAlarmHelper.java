@@ -85,12 +85,17 @@ public class PomodoroAlarmHelper {
                 .build();
 
             if (audioManager != null) {
-                // 1. 알람 볼륨 강제 확보: 볼륨이 너무 작거나 0이면 80%로 올려 무조건 들리게 보장
+                // 1. 알람 및 미디어 볼륨 강제 확보: 볼륨이 너무 작거나 0이면 85%로 올려 무조건 들리게 보장
                 try {
                     int maxAlarmVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
                     int currentAlarmVol = audioManager.getStreamVolume(AudioManager.STREAM_ALARM);
-                    if (currentAlarmVol < (int) (maxAlarmVol * 0.5)) {
-                        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, (int) Math.round(maxAlarmVol * 0.8), 0);
+                    if (currentAlarmVol < (int) (maxAlarmVol * 0.7)) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, (int) Math.round(maxAlarmVol * 0.85), 0);
+                    }
+                    int maxMusicVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                    int currentMusicVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                    if (currentMusicVol < (int) (maxMusicVol * 0.5)) {
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (int) Math.round(maxMusicVol * 0.85), 0);
                     }
                 } catch (Exception e) {
                     Log.w(TAG, "Cannot adjust volume: " + e.getMessage());
@@ -122,6 +127,7 @@ public class PomodoroAlarmHelper {
                 android.content.res.AssetFileDescriptor afd = context.getResources().openRawResourceFd(R.raw.bell2);
                 if (afd != null) {
                     sMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                    sMediaPlayer.prepare(); // prepare MUST be called before closing afd!
                     afd.close();
                 }
                 sMediaPlayer.setVolume(1.0f, 1.0f);
@@ -132,13 +138,16 @@ public class PomodoroAlarmHelper {
                     fallbackPlayRingtone(context, audioAttributes);
                     return true;
                 });
-                sMediaPlayer.prepare();
                 sMediaPlayer.start();
                 Log.i(TAG, "MediaPlayer started successfully on STREAM_ALARM with USAGE_ALARM via bell2");
             } catch (Throwable t) {
                 Log.w(TAG, "MediaPlayer setup with raw fd failed: " + t.getMessage() + ", trying create fallback");
                 try {
-                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        sMediaPlayer = MediaPlayer.create(context, R.raw.bell2, audioAttributes, audioManager.generateAudioSessionId());
+                    } else {
+                        sMediaPlayer = MediaPlayer.create(context, R.raw.bell2);
+                    }
                     if (sMediaPlayer != null) {
                         sMediaPlayer.setVolume(1.0f, 1.0f);
                         sMediaPlayer.setOnCompletionListener(mp -> stopAlarmSound(context));
