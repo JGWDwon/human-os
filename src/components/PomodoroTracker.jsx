@@ -999,7 +999,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     // Schedule native alarm (정확한 시각에 AlarmManager가 깨워 헤드업 알림 팝업 및 bell2 소리를 직접 발송)
     if (Capacitor.isNativePlatform()) {
       try {
-        await ensurePopupChannel();
+        const channelId = await ensurePopupChannel();
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
 
         const perm = await LocalNotifications.checkPermissions();
@@ -1007,10 +1007,32 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
           await LocalNotifications.requestPermissions();
         }
 
-        // 음소거 뚫는 setAlarmClock 예약 (백그라운드/타 앱 작업 중에도 100% 보장)
-        await PomodoroNative.schedule({
-          triggerAtMillis: endTime
+        // 1. [과거 검증된 핵심 구조 복원] Capacitor 공식 LocalNotifications 스케줄링
+        // 사용자가 다른 앱(유튜브/동영상 등)을 시청하여 웹뷰 JS 엔진이 완전히 멈춰도(freeze),
+        // 안드로이드 OS 자체의 AlarmManager가 allowWhileIdle로 정확한 시각(endTime)에 깨어나
+        // 화면 상단 헤드업 알림 팝업을 떨어뜨리고 bell2 종소리를 확실하게 울립니다.
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1001,
+              title: '성장의 숲 🍅 집중 완료!',
+              body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
+              schedule: { at: new Date(endTime), allowWhileIdle: true },
+              channelId: channelId,
+              sound: 'bell2',
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
         });
+
+        // 2. 보조: 네이티브 PomodoroNative 플러그인이 탑재된 환경을 위한 병렬 예약
+        try {
+          await PomodoroNative.schedule({
+            triggerAtMillis: endTime
+          });
+        } catch (nativeErr) {}
       } catch (e) {
         console.error('Failed to schedule native alarm:', e);
       }
@@ -1090,9 +1112,33 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
     // Native alarm (정확한 시각에 AlarmManager가 깨워 헤드업 알림 팝업 및 bell2 소리를 직접 발송)
     if (Capacitor.isNativePlatform()) {
       try {
-        await ensurePopupChannel();
+        const channelId = await ensurePopupChannel();
         await LocalNotifications.cancel({ notifications: [{ id: 1001 }, { id: 1002 }] }).catch(() => {});
-        await PomodoroNative.schedule({ triggerAtMillis: endTime });
+
+        const perm = await LocalNotifications.checkPermissions();
+        if (perm.display !== 'granted') {
+          await LocalNotifications.requestPermissions();
+        }
+
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 1001,
+              title: '⚡ 15분 서킷 브레이커 완료!',
+              body: `🎉 [${targetSubject}] 15분 비상 집중 완료! 충동을 성공적으로 이겨냈습니다.`,
+              schedule: { at: new Date(endTime), allowWhileIdle: true },
+              channelId: channelId,
+              sound: 'bell2',
+              vibrationPattern: [200, 100, 200, 100, 400],
+              actionTypeId: 'OPEN_APP',
+              extra: { route: '/' }
+            }
+          ]
+        });
+
+        try {
+          await PomodoroNative.schedule({ triggerAtMillis: endTime });
+        } catch (nativeErr) {}
       } catch (e) {
         console.error('Failed to schedule native alarm for circuit breaker:', e);
       }
