@@ -33,9 +33,7 @@ public class PomodoroAlarmReceiver extends BroadcastReceiver {
                 }
                 PendingIntent pendingIntent = PendingIntent.getActivity(context, 1007, tapIntent, flags);
 
-                Uri soundUri = Uri.parse("android.resource://" + context.getPackageName() + "/raw/bell2");
-
-                NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "pomodoro-headsup-v5")
+                NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "pomodoro-headsup-v6")
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .setContentTitle("성장의 숲 🍅 집중 완료!")
                     .setContentText("🎉 목표 집중 시간이 완료되었습니다! 수고하셨습니다.")
@@ -45,7 +43,7 @@ public class PomodoroAlarmReceiver extends BroadcastReceiver {
                     .setAutoCancel(true)
                     .setContentIntent(pendingIntent)
                     .setFullScreenIntent(pendingIntent, true)
-                    .setSound(soundUri)
+                    .setSound(null) // 알람 소리는 PomodoroAlarmHelper.playAlarmSound(context)가 단일 전담
                     .setVibrate(new long[]{0, 200, 100, 200, 100, 400});
 
                 nm.notify(1002, builder.build());

@@ -19,15 +19,17 @@ public class MainActivity extends BridgeActivity {
   }
 
   /**
-   * 최고 중요도(HIGH) + 전용 사운드 URI를 가진 헤드업 알림 채널 생성.
-   * 삼성 One UI에서 헤드업 슬라이드 팝업이 상단에 무조건 내려오도록 보장합니다.
+   * 최고 중요도(HIGH) + 헤드업 슬라이드 팝업 전용 알림 채널 생성.
+   * 채널 ID 버전을 v6로 갱신하여 기존 캐시를 무효화하고,
+   * 알림음 자체는 무음(null)으로 설정하여 시스템 알림음과 MediaPlayer 종소리의 이중 울림을 방지합니다.
+   * (종소리 및 인강 일시정지 오디오 포커스는 PomodoroAlarmHelper가 USAGE_ALARM으로 단일 전담)
    */
   private void createHeadsUpNotificationChannel() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       NotificationManager notificationManager =
         (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
       if (notificationManager != null) {
-        String channelId = "pomodoro-headsup-v5";
+        String channelId = "pomodoro-headsup-v6";
         CharSequence channelName = "Pomodoro Heads-Up Alarm (뽀모도로 알람 및 헤드업 팝업)";
         String channelDesc = "뽀모도로 완료 시 화면 상단에 슬라이드 팝업이 내려오는 최고 중요도 채널";
         int importance = NotificationManager.IMPORTANCE_HIGH;
@@ -40,13 +42,8 @@ public class MainActivity extends BridgeActivity {
         channel.setBypassDnd(true);
         channel.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
 
-        Uri soundUri = Uri.parse("android.resource://" + getPackageName() + "/raw/bell2");
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-          .setUsage(AudioAttributes.USAGE_ALARM)
-          .setFlags(AudioAttributes.FLAG_AUDIBILITY_ENFORCED)
-          .build();
-        channel.setSound(soundUri, audioAttributes);
+        // 채널 자체 사운드는 null로 설정하여 중복 알림음 원천 방지
+        channel.setSound(null, null);
 
         notificationManager.createNotificationChannel(channel);
       }

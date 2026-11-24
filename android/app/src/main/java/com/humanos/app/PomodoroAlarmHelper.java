@@ -21,6 +21,10 @@ public class PomodoroAlarmHelper {
     private static AudioFocusRequest sFocusRequest = null;
     private static Ringtone sRingtone = null;
     private static PowerManager.WakeLock sWakeLock = null;
+    private static long sLastPlayTime = 0;
+    private static final AudioManager.OnAudioFocusChangeListener sFocusListener = focusChange -> {
+        Log.d(TAG, "Audio focus changed: " + focusChange);
+    };
 
     /**
      * 알람 재생 중 CPU가 절전 모드로 들어가지 않도록 WakeLock 유지
@@ -55,10 +59,20 @@ public class PomodoroAlarmHelper {
 
     /**
      * 갤럭시탭/스마트폰이 음소거(무음/진동) 모드이거나 인강/동영상이 재생 중이어도
-     * 알람 시계와 동일한 STREAM_ALARM으로 무음을 뚫고 100% 확실하게 종소리를 재생합니다.
+     * 알람 시계와 동일한 STREAM_ALARM 및 USAGE_ALARM으로 무음을 뚫고 100% 확실하게 종소리를 재생합니다.
+     * 재생 전 오디오 포커스를 획득하여 강의 앱을 일시정지/Ducking시키고, 종료 후 반환합니다.
      */
     public static synchronized void playAlarmSound(Context context) {
         if (context == null) return;
+
+        // 중복 실행 방지 가드: 4초 이내 중복 트리거 차단
+        long now = System.currentTimeMillis();
+        if (now - sLastPlayTime < 4000) {
+            Log.i(TAG, "Prevented duplicate alarm sound within 4 seconds");
+            return;
+        }
+        sLastPlayTime = now;
+
         stopAlarmSound(context);
         acquireWakeLock(context);
 
@@ -82,42 +96,34 @@ public class PomodoroAlarmHelper {
                     Log.w(TAG, "Cannot adjust volume: " + e.getMessage());
                 }
 
-                // 2. 오디오 포커스 획득 (인강/유튜브 소리 일시 ducking)
+                // 2. 오디오 포커스 획득 (강의/유튜브 소리 일시 정지 또는 ducking)
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         sFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                             .setAudioAttributes(audioAttributes)
-                            .setWillPauseWhenDucked(false)
+                            .setOnAudioFocusChangeListener(sFocusListener)
+                            .setWillPauseWhenDucked(true)
                             .build();
-                        audioManager.requestAudioFocus(sFocusRequest);
+                        int focusRes = audioManager.requestAudioFocus(sFocusRequest);
+                        Log.i(TAG, "requestAudioFocus (O+) result: " + focusRes);
                     } else {
-                        audioManager.requestAudioFocus(null, AudioManager.STREAM_ALARM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+                        int focusRes = audioManager.requestAudioFocus(sFocusListener, AudioManager.STREAM_ALARM, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+                        Log.i(TAG, "requestAudioFocus (<O) result: " + focusRes);
                     }
                 } catch (Exception e) {
                     Log.w(TAG, "Audio focus request warning: " + e.getMessage());
                 }
             }
 
-            // 3. bell2.mp3 음원 파일 로드 및 재생 (MediaPlayer.create 사용으로 가장 안정적)
+            // 3. bell2.mp3 음원 파일 로드 및 USAGE_ALARM으로 재생
             try {
-                if (audioManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2, audioAttributes, audioManager.generateAudioSessionId());
-                } else {
-                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2);
+                sMediaPlayer = new MediaPlayer();
+                sMediaPlayer.setAudioAttributes(audioAttributes);
+                android.content.res.AssetFileDescriptor afd = context.getResources().openRawResourceFd(R.raw.bell2);
+                if (afd != null) {
+                    sMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                    afd.close();
                 }
-            } catch (Throwable t) {
-                Log.w(TAG, "MediaPlayer.create with audioAttributes failed, fallback: " + t.getMessage());
-                try {
-                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2);
-                } catch (Throwable t2) {
-                    sMediaPlayer = null;
-                }
-            }
-
-            if (sMediaPlayer != null) {
-                try {
-                    sMediaPlayer.setAudioAttributes(audioAttributes);
-                } catch (Exception e) {}
                 sMediaPlayer.setVolume(1.0f, 1.0f);
                 sMediaPlayer.setLooping(false);
                 sMediaPlayer.setOnCompletionListener(mp -> stopAlarmSound(context));
@@ -126,11 +132,23 @@ public class PomodoroAlarmHelper {
                     fallbackPlayRingtone(context, audioAttributes);
                     return true;
                 });
+                sMediaPlayer.prepare();
                 sMediaPlayer.start();
-                Log.i(TAG, "MediaPlayer started successfully on STREAM_ALARM via R.raw.bell2");
-            } else {
-                Log.w(TAG, "MediaPlayer.create returned null, using fallback Ringtone");
-                fallbackPlayRingtone(context, audioAttributes);
+                Log.i(TAG, "MediaPlayer started successfully on STREAM_ALARM with USAGE_ALARM via bell2");
+            } catch (Throwable t) {
+                Log.w(TAG, "MediaPlayer setup with raw fd failed: " + t.getMessage() + ", trying create fallback");
+                try {
+                    sMediaPlayer = MediaPlayer.create(context, R.raw.bell2);
+                    if (sMediaPlayer != null) {
+                        sMediaPlayer.setVolume(1.0f, 1.0f);
+                        sMediaPlayer.setOnCompletionListener(mp -> stopAlarmSound(context));
+                        sMediaPlayer.start();
+                    } else {
+                        fallbackPlayRingtone(context, audioAttributes);
+                    }
+                } catch (Throwable t2) {
+                    fallbackPlayRingtone(context, audioAttributes);
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "playAlarmSound failed: " + e.getMessage(), e);
@@ -188,7 +206,7 @@ public class PomodoroAlarmHelper {
                         audioManager.abandonAudioFocusRequest(sFocusRequest);
                         sFocusRequest = null;
                     } else {
-                        audioManager.abandonAudioFocus(null);
+                        audioManager.abandonAudioFocus(sFocusListener);
                     }
                 }
             }

@@ -36,7 +36,7 @@ const cancelNativeAlarm = async () => {
 
 const ensurePopupChannel = async () => {
   if (!Capacitor.isNativePlatform()) return null;
-  const channelId = 'pomodoro-headsup-v5';
+  const channelId = 'pomodoro-headsup-v6';
   try {
     await LocalNotifications.createChannel({
       id: channelId,
@@ -46,12 +46,12 @@ const ensurePopupChannel = async () => {
       visibility: 1,
       vibration: true,
       lights: true,
-      sound: 'bell2'
+      sound: null
     }).catch(() => {});
     return channelId;
   } catch (e) {
     console.warn('Failed to create popup channel:', e);
-    return 'pomodoro-headsup-v5';
+    return 'pomodoro-headsup-v6';
   }
 };
 
@@ -486,6 +486,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   const bgAudioRef = useRef(null);
   const isCompletingRef = useRef(false);
   const lastBellPlayTsRef = useRef(0);
+  const lastCompletedTimerTsRef = useRef(0);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -523,7 +524,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         const remaining = Math.max(0, Math.round((timerState.endTime - Date.now()) / 1000));
         if (remaining <= 0) {
           if (intervalRef.current) clearInterval(intervalRef.current);
-          handleTimerComplete();
+          handleTimerComplete(true);
         }
       }
     };
@@ -559,7 +560,7 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         const remaining = Math.max(0, Math.round((timerState.endTime - Date.now()) / 1000));
         
         if (remaining <= 0) {
-          handleTimerComplete();
+          handleTimerComplete(false);
         } else {
           setTimerState(prev => {
             const nextState = { ...prev, timeLeft: remaining };
@@ -695,15 +696,17 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   };
 
   const handleTimerComplete = async (isFromCatchUp = false) => {
-    if (isCompletingRef.current) return;
+    const now = Date.now();
+    if (isCompletingRef.current || (now - lastCompletedTimerTsRef.current < 4000)) return;
     isCompletingRef.current = true;
+    lastCompletedTimerTsRef.current = now;
 
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     const minutesCompleted = Math.round(timerState.duration / 60);
     const subjectToLog = timerState.currentSubject || selectedSubjectRef.current || localStorage.getItem('human_os_selected_subject_v1') || (storage.getSubjects()[0] || '공부');
 
-    // 1. Trigger Native Status Bar Heads-Up Notification (상태바 헤드업 알림 팝업)
+    // 1. Trigger Native Status Bar Heads-Up Notification (상태바 헤드업 알림 팝업 - 사운드는 네이티브 AlarmManager가 전담)
     if (Capacitor.isNativePlatform()) {
       try {
         const channelId = await ensurePopupChannel();
@@ -715,7 +718,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
               title: '성장의 숲 🍅 집중 완료!',
               body: `🎉 [${subjectToLog}] ${minutesCompleted}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
               channelId: channelId,
-              sound: 'bell2',
               vibrationPattern: [200, 100, 200, 100, 400],
               actionTypeId: 'OPEN_APP',
               extra: { route: '/' }
@@ -726,16 +728,18 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         console.error('Failed to trigger heads-up notification:', e);
       }
 
-      // 2. Play STREAM_ALARM Sound (음소거/무음 모드 뚫기 & 인강 오디오 덕킹)
-      try {
-        await PomodoroNative.playAlarmSound();
-      } catch (e) {
-        console.error('Failed to play native alarm sound:', e);
+      // 2. Play STREAM_ALARM Sound (백그라운드에서 이미 울린 catch-up 상태가 아닐 때만 1회 단일 재생)
+      if (!isFromCatchUp) {
+        try {
+          await PomodoroNative.playAlarmSound();
+        } catch (e) {
+          console.error('Failed to play native alarm sound:', e);
+        }
       }
+    } else {
+      // 3. Web / PWA 환경에서만 WebAudio / HTML5 Audio 재생 (네이티브와의 이중 울림 원천 차단)
+      playSound('complete');
     }
-
-    // 3. Play In-App Sound
-    playSound('complete');
 
     // 3. Trigger celebration confetti
     try {
@@ -969,7 +973,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
               body: `🎉 [${targetSubject || '공부'}] ${minutesLeft}분 집중 완료! 기록이 안전하게 저장되었습니다.`,
               schedule: { at: new Date(endTime), allowWhileIdle: true },
               channelId: channelId,
-              sound: 'bell2',
               vibrationPattern: [200, 100, 200, 100, 400],
               actionTypeId: 'OPEN_APP',
               extra: { route: '/' }
@@ -1068,7 +1071,6 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
               title: '⚡ 15분 버티기 방어 성공!',
               body: '도피 충동을 멋지게 극복했습니다! 계속 집중하시겠습니까?',
               schedule: { at: new Date(endTime), allowWhileIdle: true },
-              sound: 'bell2',
               channelId: channelId,
               actionTypeId: 'OPEN_APP',
               extra: { route: '/' }
