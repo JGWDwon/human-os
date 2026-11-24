@@ -225,6 +225,23 @@ const allSessions = storage.getDailySessions(testDate);
 const foundCb = allSessions.find(s => s.id === cbSession.id);
 assert(foundCb?.isCircuitBreaker === true, 'studySessions 로컬 스토리지에 isCircuitBreaker: true 정상 보존');
 
+// -------------------------------------------------------------
+// Test 4: 막힌 문제 보충슬롯 과거 날짜순(오래된 등록순) 정렬 검증
+// -------------------------------------------------------------
+console.log('\n--- 4. 막힌 문제 보충슬롯 과거 날짜순 정렬 테스트 ---');
+
+store[STORAGE_KEYS.SUPPLEMENTARY_SLOTS] = JSON.stringify([
+  { id: 'slot_3', title: '문제3 (오늘)', date: '2026-11-24', createdAt: '2026-11-24T10:00:00Z', isCompleted: false },
+  { id: 'slot_1', title: '문제1 (가장 오래된 과거)', date: '2026-11-18', createdAt: '2026-11-18T09:00:00Z', isCompleted: false },
+  { id: 'slot_2', title: '문제2 (중간 과거)', date: '2026-11-20', createdAt: '2026-11-20T14:00:00Z', isCompleted: false }
+]);
+
+const sortedSlots = storage.getSupplementarySlots();
+assert(sortedSlots.length === 3, '보충 슬롯 3개 조회 성공');
+assert(sortedSlots[0].id === 'slot_1', '가장 오래된 과거(11월 18일) 문제가 1번째로 정렬됨');
+assert(sortedSlots[1].id === 'slot_2', '중간 과거(11월 20일) 문제가 2번째로 정렬됨');
+assert(sortedSlots[2].id === 'slot_3', '최근 날짜(11월 24일) 문제가 3번째로 정렬됨');
+
 console.log(`\n========================================`);
 console.log(`테스트 결과: ${passed} 통과, ${failed} 실패`);
 console.log(`========================================`);

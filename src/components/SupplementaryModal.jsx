@@ -119,17 +119,26 @@ export default function SupplementaryModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  // Filter slots
-  const filteredSlots = slots.filter(slot => {
-    // Tab filter
-    if (activeTab === 'pending' && slot.isCompleted) return false;
-    if (activeTab === 'completed' && !slot.isCompleted) return false;
+  // Filter & sort slots by past date (과거 날짜순 - 오래된 문제부터 우선 해결)
+  const filteredSlots = slots
+    .filter(slot => {
+      // Tab filter
+      if (activeTab === 'pending' && slot.isCompleted) return false;
+      if (activeTab === 'completed' && !slot.isCompleted) return false;
 
-    // Subject filter
-    if (selectedSubjectFilter !== 'all' && slot.subject !== selectedSubjectFilter) return false;
+      // Subject filter
+      if (selectedSubjectFilter !== 'all' && slot.subject !== selectedSubjectFilter) return false;
 
-    return true;
-  });
+      return true;
+    })
+    .sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+      if (timeA && timeB && timeA !== timeB) return timeA - timeB;
+      const idA = parseInt((a.id || '').split('_')[1], 10) || 0;
+      const idB = parseInt((b.id || '').split('_')[1], 10) || 0;
+      return idA - idB;
+    });
 
   const pendingCount = slots.filter(s => !s.isCompleted).length;
   const completedCount = slots.filter(s => s.isCompleted).length;
@@ -380,26 +389,31 @@ export default function SupplementaryModal({ isOpen, onClose }) {
             </button>
           </div>
 
-          {/* Subject Filter */}
-          <select
-            value={selectedSubjectFilter}
-            onChange={(e) => setSelectedSubjectFilter(e.target.value)}
-            style={{
-              padding: '0.25rem 0.55rem',
-              borderRadius: '6px',
-              background: 'rgba(0,0,0,0.35)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'var(--text-muted)',
-              fontSize: '0.74rem',
-              outline: 'none'
-            }}
-          >
-            <option value="all">전체 과목</option>
-            {subjects.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-            <option value="기타">기타</option>
-          </select>
+          {/* Subject Filter & Sort Indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 'bold' }}>
+              📅 과거순
+            </span>
+            <select
+              value={selectedSubjectFilter}
+              onChange={(e) => setSelectedSubjectFilter(e.target.value)}
+              style={{
+                padding: '0.25rem 0.55rem',
+                borderRadius: '6px',
+                background: 'rgba(0,0,0,0.35)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'var(--text-muted)',
+                fontSize: '0.74rem',
+                outline: 'none'
+              }}
+            >
+              <option value="all">전체 과목</option>
+              {subjects.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+              <option value="기타">기타</option>
+            </select>
+          </div>
         </div>
 
         {/* Slot Items List */}

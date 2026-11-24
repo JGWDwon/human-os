@@ -1118,7 +1118,16 @@ export const storage = {
   // --- Supplementary Slots (막힌 문제 보충 슬롯 - 나중에 풀기/주말 보충) ---
   getSupplementarySlots() {
     const raw = localStorage.getItem(STORAGE_KEYS.SUPPLEMENTARY_SLOTS);
-    return safeParse(raw, []);
+    const slots = safeParse(raw, []);
+    // 과거 날짜순(오래된 등록일순 오름차순: 과거 날짜의 문제가 가장 먼저 보이도록 정렬)
+    return slots.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+      if (timeA && timeB && timeA !== timeB) return timeA - timeB;
+      const idA = parseInt((a.id || '').split('_')[1], 10) || 0;
+      const idB = parseInt((b.id || '').split('_')[1], 10) || 0;
+      return idA - idB;
+    });
   },
 
   addSupplementarySlot({ title, subject = '', memo = '' }) {

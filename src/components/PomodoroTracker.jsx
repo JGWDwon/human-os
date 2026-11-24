@@ -269,7 +269,17 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
   };
 
   const pendingSlots = useMemo(() => {
-    return (supplementarySlots || []).filter(s => !s.isCompleted);
+    return (supplementarySlots || [])
+      .filter(s => !s.isCompleted)
+      .slice()
+      .sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+        if (timeA && timeB && timeA !== timeB) return timeA - timeB;
+        const idA = parseInt((a.id || '').split('_')[1], 10) || 0;
+        const idB = parseInt((b.id || '').split('_')[1], 10) || 0;
+        return idA - idB;
+      });
   }, [supplementarySlots]);
 
   const checkAndTriggerWarmupModal = () => {
@@ -2623,6 +2633,19 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                       }}>
                         {slot.title}
                       </span>
+
+                      {slot.date && (
+                        <span style={{
+                          fontSize: '0.65rem',
+                          color: '#f59e0b',
+                          background: 'rgba(245, 158, 11, 0.1)',
+                          padding: '0.05rem 0.3rem',
+                          borderRadius: '3px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {slot.date.substring(5)}
+                        </span>
+                      )}
                     </div>
 
                     <button
@@ -3384,6 +3407,19 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
                         }}>
                           {slot.title}
                         </span>
+
+                        {slot.date && (
+                          <span style={{
+                            fontSize: '0.65rem',
+                            color: '#f59e0b',
+                            background: 'rgba(245, 158, 11, 0.1)',
+                            padding: '0.05rem 0.3rem',
+                            borderRadius: '3px',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {slot.date.substring(5)}
+                          </span>
+                        )}
                       </div>
 
                       <button
