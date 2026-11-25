@@ -17,7 +17,7 @@ let decodedBellBuffer = null;
 
 const loadBellSound = async (audioCtx) => {
   try {
-    const response = await fetch(`${bell2Sound}?v=20261124_userbell`, { cache: 'no-store' });
+    const response = await fetch(`${bell2Sound}?v=20261112_restored`, { cache: 'no-store' });
     const arrayBuffer = await response.arrayBuffer();
     decodedBellBuffer = await audioCtx.decodeAudioData(arrayBuffer);
   } catch (e) {
@@ -661,9 +661,9 @@ export default function PomodoroTracker({ selectedDate, onUpdate, onOpenSuppleme
         console.warn('bgAudio pause error:', e);
       }
 
-      // 1. Try HTML5 Audio directly (사용자 지정 종소리 재생)
+      // 1. Try HTML5 Audio directly (11월 12일 원본 종소리 재생)
       try {
-        const audio = new Audio(`${bell2Sound}?v=20261124_userbell`);
+        const audio = new Audio(`${bell2Sound}?v=20261112_restored`);
         audio.volume = 1.0;
         const playPromise = audio.play();
         if (playPromise !== undefined) {
