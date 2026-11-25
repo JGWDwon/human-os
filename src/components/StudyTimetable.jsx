@@ -2,8 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import { storage, getSubjectColor, calculateSleepDuration } from '../utils/storage';
 
-// 24 Hours starting at 06:00 to 05:00 next morning (matching traditional Korean 10-minute study planner)
-const PLANNER_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5];
+// 24 Hours starting at 05:00 to 04:00 next morning (matching 05:00 AM daily start study planner)
+const PLANNER_HOURS = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4];
 
 const changeDayBy = (dateStr, delta) => {
   if (!dateStr) return '';
@@ -93,12 +93,12 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
   let totalSleepMinutes = 0;
 
   // 1. Map sleep session (lifestyle foundation) in calm violet (#8b5cf6)
-  // 플래너 레이아웃은 [6시~23시] (당일 주간/야간) + [0시~5시] (당일 밤이 이어지는 익일 새벽) 순서입니다.
+  // 플래너 레이아웃은 [5시~23시] (당일 새벽/주간/야간) + [0시~4시] (당일 밤이 이어지는 익일 새벽) 순서입니다.
   // A) 당일 아침 기상 수면 (todayLog):
-  //    - 당일 오전 06:00(360분) ~ 기상 시각(wTotal)까지를 당일 상단(h = 6..23)에만 표시
-  //    - 하단(h = 0..5)은 당일 밤(오늘 밤) 영역이므로 아침 수면을 절대 하단에 칠하지 않음!
+  //    - 당일 오전 05:00(300분) ~ 기상 시각(wTotal)까지를 당일 상단(h = 5..23)에만 표시
+  //    - 하단(h = 0..4)은 당일 밤(오늘 밤) 영역이므로 아침 수면을 절대 하단에 칠하지 않음!
   // B) 당일 밤 취침 수면 (nextLog):
-  //    - 익일 아침 기상 기록(nextLog)이 있을 때만 당일 밤(h = 23) 및 익일 새벽(h = 0..5)에 표시
+  //    - 익일 아침 기상 기록(nextLog)이 있을 때만 당일 밤(h = 23) 및 익일 새벽(h = 0..4)에 표시
   //    - 오늘 밤처럼 아직 도래하지 않은 날(nextLog 없음)은 하단이 100% 빈칸(미수면 상태)으로 유지됨
   const sleepColor = '#8b5cf6';
   const sleepSubject = '수면';
@@ -132,7 +132,7 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
     }
   };
 
-  // A) 당일 아침 수면 (06:00 ~ 기상 시각) -> matrix[6..23] 상단 영역에만 매핑
+  // A) 당일 아침 수면 (05:00 ~ 기상 시각) -> matrix[5..23] 상단 영역에만 매핑
   const dLog = storage.getDailyLogByDate(dateStr);
   if (dLog && dLog.bedTime && dLog.wakeTime) {
     const sleepDur = calculateSleepDuration(dLog.bedTime, dLog.wakeTime, dLog.bedDateType);
@@ -147,20 +147,20 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
       const wTotal = wH * 60 + (wM || 0);
       const bTotal = !isNaN(bH) ? bH * 60 + (bM || 0) : 0;
 
-      if (dLog.bedDateType === 'same' && bTotal >= 360) {
+      if (dLog.bedDateType === 'same' && bTotal >= 300) {
         // 주간 수면 (예: 07:00 취침 ~ 15:00 기상)
-        markSleepRange(6, 23, bTotal, Math.min(1440, wTotal));
+        markSleepRange(5, 23, bTotal, Math.min(1440, wTotal));
       } else {
         // 일반적 야간 취침 후 아침 기상 (예: 23:00 또는 01:00 취침 후 07:15 기상):
-        // 06:00(360분)부터 기상 시각까지 당일 아침 상단에 수면 표시
-        if (wTotal > 360) {
-          markSleepRange(6, 23, 360, Math.min(1440, wTotal));
+        // 05:00(300분)부터 기상 시각까지 당일 아침 상단에 수면 표시
+        if (wTotal > 300) {
+          markSleepRange(5, 23, 300, Math.min(1440, wTotal));
         }
       }
     }
   }
 
-  // B) 당일 밤 수면 (취침 시각 ~ 익일 새벽 05:59) -> 익일 아침 기상 기록(nextLog)을 통해 하단에 매핑
+  // B) 당일 밤 수면 (취침 시각 ~ 익일 새벽 04:59) -> 익일 아침 기상 기록(nextLog)을 통해 하단에 매핑
   const nextDateStr = changeDayBy(dateStr, 1);
   const nextLog = storage.getDailyLogByDate(nextDateStr);
   if (nextLog && nextLog.bedTime && nextLog.wakeTime) {
@@ -175,18 +175,18 @@ const buildActiveMatrixForDate = (dateStr, subjectsList = null) => {
         // 자정 전 취침 (예: 23:00 취침 ~ 07:15 기상)
         // 1. 당일 밤 취침 시각 (nbTotal ~ 1440): matrix[23] 등 저녁 영역에 표시
         if (nbTotal < 1440) {
-          markSleepRange(6, 23, Math.max(360, nbTotal), 1440);
+          markSleepRange(5, 23, Math.max(300, nbTotal), 1440);
         }
-        // 2. 익일 자정~새벽 (00:00 ~ Math.min(360, nwTotal)): matrix[0..5] (하단 새벽 영역)에 표시
+        // 2. 익일 자정~새벽 (00:00 ~ Math.min(300, nwTotal)): matrix[0..4] (하단 새벽 영역)에 표시
         if (nwTotal > 0) {
-          markSleepRange(0, 5, 0, Math.min(360, nwTotal));
+          markSleepRange(0, 4, 0, Math.min(300, nwTotal));
         }
       } else {
         // 자정 후 취침 (예: 익일 새벽 01:00 취침 ~ 08:00 기상)
-        // 당일 밤 저녁(matrix[6..23])에는 수면 없음
-        // 익일 새벽(matrix[0..5])에 nbTotal ~ Math.min(360, nwTotal) 표시
-        if (nwTotal > nbTotal && nbTotal < 360) {
-          markSleepRange(0, 5, Math.max(0, nbTotal), Math.min(360, nwTotal));
+        // 당일 밤 저녁(matrix[5..23])에는 수면 없음
+        // 익일 새벽(matrix[0..4])에 nbTotal ~ Math.min(300, nwTotal) 표시
+        if (nwTotal > nbTotal && nbTotal < 300) {
+          markSleepRange(0, 4, Math.max(0, nbTotal), Math.min(300, nwTotal));
         }
       }
     }
@@ -669,7 +669,7 @@ export default function StudyTimetable({
               {/* Header Row: Days of Week (통일된 78px 높이 및 3단 레이아웃) */}
               <div style={{ display: 'flex', alignItems: 'stretch', borderBottom: '2px solid rgba(255,255,255,0.12)', paddingBottom: '0.45rem', marginBottom: '0.35rem' }}>
                 {/* Time Label Column Header */}
-                <div style={{ width: '38px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ width: '48px', textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   시간
                 </div>
 
@@ -800,35 +800,88 @@ export default function StudyTimetable({
                 })}
               </div>
 
-              {/* Rows: 24 Hours (6am to 5am next day) */}
+              {/* Rows: 24 Hours (5am to 4am next day) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {PLANNER_HOURS.map((h) => (
-                  <div key={h} style={{ display: 'flex', alignItems: 'center', height: '17px' }}>
-                    {/* Hour Number (e.g. 6, 7, ... 12, 1, 2) */}
-                    <div style={{ width: '38px', textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                      {getHourDisplayLabel(h)}
-                    </div>
+                {PLANNER_HOURS.map((h) => {
+                  const isAM = h < 12;
+                  const periodLabel = isAM ? '오전' : '오후';
+                  const isNoonBoundary = h === 12;
+                  const isMidnightBoundary = h === 0;
 
-                    {/* 7 Days 6-block tracks */}
-                    {weekDays.map(day => (
-                      <div key={day.dateStr} style={{ flex: 1, display: 'flex', gap: '2px', padding: '0 3px', height: '100%' }}>
-                        {[0, 1, 2, 3, 4, 5].map(b => {
-                          const cell = day.data.matrix[h]?.[b] || { left: false, right: false };
-                          const fallbackColor = day.isToday ? '#34d399' : 'rgba(52, 211, 153, 0.75)';
-                          const tooltip = getBlockTooltip(`${day.dayName}요일`, h, b, cell);
-                          return (
-                            <TimetableBlock
-                              key={b}
-                              cell={cell}
-                              fallbackColor={fallbackColor}
-                              tooltip={tooltip}
-                            />
-                          );
-                        })}
+                  return (
+                    <div
+                      key={h}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        height: '18px',
+                        borderTop: isNoonBoundary
+                          ? '1px dashed rgba(251, 191, 36, 0.35)'
+                          : isMidnightBoundary
+                            ? '1px dashed rgba(125, 211, 252, 0.35)'
+                            : 'none',
+                        paddingTop: (isNoonBoundary || isMidnightBoundary) ? '2px' : '0',
+                        marginTop: (isNoonBoundary || isMidnightBoundary) ? '2px' : '0'
+                      }}
+                    >
+                      {/* AM/PM + Hour Number (e.g. 오전 5, ..., 오후 12, ..., 오전 4) */}
+                      <div
+                        style={{
+                          width: '48px',
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'flex-end',
+                          gap: '3px',
+                          paddingRight: '5px',
+                          fontFamily: 'monospace',
+                          lineHeight: 1
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '0.56rem',
+                            fontWeight: '600',
+                            color: isAM ? '#7dd3fc' : '#fbbf24',
+                            opacity: 0.9
+                          }}
+                        >
+                          {periodLabel}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 'bold',
+                            color: 'var(--text-muted)',
+                            minWidth: '15px',
+                            textAlign: 'right'
+                          }}
+                        >
+                          {getHourDisplayLabel(h)}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                ))}
+
+                      {/* 7 Days 6-block tracks */}
+                      {weekDays.map(day => (
+                        <div key={day.dateStr} style={{ flex: 1, display: 'flex', gap: '2px', padding: '0 3px', height: '100%' }}>
+                          {[0, 1, 2, 3, 4, 5].map(b => {
+                            const cell = day.data.matrix[h]?.[b] || { left: false, right: false };
+                            const fallbackColor = day.isToday ? '#34d399' : 'rgba(52, 211, 153, 0.75)';
+                            const tooltip = getBlockTooltip(`${day.dayName}요일`, h, b, cell);
+                            return (
+                              <TimetableBlock
+                                key={b}
+                                cell={cell}
+                                fallbackColor={fallbackColor}
+                                tooltip={tooltip}
+                              />
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
 
             </div>
