@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon, Check, Edit3, Save } from 'lucide-react';
+import { TreePine, Trophy, Flame, ChevronLeft, ChevronRight, Moon, Check, Edit3, Save, Plus, Clock } from 'lucide-react';
 import { storage, calculateSleepDuration } from '../utils/storage';
 import confetti from 'canvas-confetti';
 
@@ -30,6 +30,8 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     return l?.diary || l?.note || '';
   });
   const [diarySavedStatus, setDiarySavedStatus] = useState(false);
+  const [quickDiaryLine, setQuickDiaryLine] = useState('');
+  const [quickSavedTime, setQuickSavedTime] = useState('');
   const diaryInputRef = useRef(null);
 
   const handlePrevMonth = () => {
@@ -101,6 +103,31 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
     setDailyLog(updated);
     setDiarySavedStatus(true);
     setTimeout(() => setDiarySavedStatus(false), 2000);
+  };
+
+  // 생각나는 그때그때 [HH:mm] 시간과 함께 한 줄씩 즉시 누적 저장 (JSON dailyLogs 연동)
+  const handleAddQuickDiaryLine = (e) => {
+    if (e) e.preventDefault();
+    const trimmed = quickDiaryLine.trim();
+    if (!trimmed) return;
+
+    const now = new Date();
+    const timeTag = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const newEntry = `[${timeTag}] ${trimmed}`;
+    const updatedText = diaryText.trim()
+      ? `${diaryText.trimEnd()}\n${newEntry}`
+      : newEntry;
+
+    const updated = storage.saveDailyLog(selectedDate, { diary: updatedText, note: updatedText });
+    setDailyLog(updated);
+    setDiaryText(updatedText);
+    setQuickDiaryLine('');
+    setQuickSavedTime(timeTag);
+    setDiarySavedStatus(true);
+    setTimeout(() => {
+      setQuickSavedTime('');
+      setDiarySavedStatus(false);
+    }, 2200);
   };
 
   const getDiaryPlaceholder = (satisfaction) => {
@@ -781,25 +808,72 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
           </div>
         </div>
 
-        {/* 오늘의 한줄평 · 짧은 일기 */}
+        {/* 오늘의 수시 한줄일기 (생각나는 그때그때 누적 기록 + JSON 저장) */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.03)',
-          padding: '0.55rem 0.75rem',
+          padding: '0.6rem 0.75rem',
           borderRadius: '8px',
-          border: '1px solid rgba(255, 255, 255, 0.06)',
+          border: '1px solid rgba(192, 132, 252, 0.2)',
           display: 'flex',
           flexDirection: 'column',
           flex: 1,
-          minHeight: '105px'
+          minHeight: '135px',
+          gap: '0.45rem'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-            <span style={{ fontSize: '0.76rem', color: '#e2e8f0', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <Edit3 size={13} color="#c084fc" /> {selectedDate === todayStr ? '오늘의 한줄평 · 짧은 일기' : `${selectedDate} 한줄평 · 일기`}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.76rem', color: '#e9d5ff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <Edit3 size={13} color="#c084fc" /> {selectedDate === todayStr ? '오늘의 수시 한줄일기' : `${selectedDate} 수시 한줄일기`}
             </span>
             <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
               {(diaryText || '').length}자
             </span>
           </div>
+
+          {/* 생각나는 그때그때 바로 추가하는 퀵 입력줄 */}
+          <form onSubmit={handleAddQuickDiaryLine} style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+              <Clock size={12} color="#c084fc" style={{ position: 'absolute', left: '0.5rem', pointerEvents: 'none', opacity: 0.8 }} />
+              <input
+                type="text"
+                value={quickDiaryLine}
+                onChange={(e) => setQuickDiaryLine(e.target.value)}
+                placeholder="생각날 때마다 적고 Enter (현재 시각 자동 기록)..."
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  border: '1px solid rgba(192, 132, 252, 0.35)',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '0.76rem',
+                  padding: '0.38rem 0.55rem 0.38rem 1.65rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!quickDiaryLine.trim()}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.2rem',
+                background: quickDiaryLine.trim()
+                  ? 'linear-gradient(135deg, #a855f7, #7c3aed)'
+                  : 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(192, 132, 252, 0.35)',
+                borderRadius: '6px',
+                color: quickDiaryLine.trim() ? '#fff' : 'var(--text-muted)',
+                fontSize: '0.72rem',
+                fontWeight: 'bold',
+                padding: '0.36rem 0.6rem',
+                cursor: quickDiaryLine.trim() ? 'pointer' : 'not-allowed',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Plus size={12} /> 추가
+            </button>
+          </form>
 
           <textarea
             ref={diaryInputRef}
@@ -839,16 +913,20 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
             }}
           />
 
-          {/* 저장 버튼 및 피드백 알림 행 (수동 저장 시에만 '저장 완료' 표시) */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
+          {/* 저장 버튼 및 피드백 알림 행 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              {diarySavedStatus ? (
+              {quickSavedTime ? (
+                <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Check size={12} /> [{quickSavedTime}] 한 줄 추가 & 저장 완료
+                </span>
+              ) : diarySavedStatus ? (
                 <span style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Check size={12} /> 저장 완료
                 </span>
               ) : (
                 <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>
-                  Ctrl+Enter로도 저장 가능
+                  수시 추가 또는 직접 수정 후 저장 (JSON 백업 포함)
                 </span>
               )}
             </div>
