@@ -705,7 +705,7 @@ export default function ForestPixelMap({ refreshTrigger, selectedDate, onDateSel
               ⭐ {selectedDate === todayStr ? '오늘의 공부 성취도' : `${selectedDate} 공부 성취도`}
             </span>
             <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              하루를 마무리하며 평가 (클릭 시 일기 작성)
+              생각날 때마다 수시로 평가 · 일기 기록
             </span>
           </div>
 

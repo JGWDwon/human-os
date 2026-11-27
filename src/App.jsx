@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen, Target, RotateCw, Bookmark } from 'lucide-react';
+import { Settings, BarChart2, Zap, Trophy, Download, Upload, X, Sparkles, BookOpen, Target, RotateCw, Bookmark, Edit3 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import PomodoroTracker from './components/PomodoroTracker';
 import ForestPixelMap from './components/ForestPixelMap';
@@ -8,6 +8,7 @@ import EbbinghausPlanner from './components/EbbinghausPlanner';
 import DDayModal from './components/DDayModal';
 import SubjectModal from './components/SubjectModal';
 import SupplementaryModal from './components/SupplementaryModal';
+import QuickDiaryModal from './components/QuickDiaryModal';
 import { storage } from './utils/storage';
 import TierBadge from './components/TierBadge';
 import DefenseBanner from './components/DefenseBanner';
@@ -35,6 +36,7 @@ function App() {
   const [showDDayModal, setShowDDayModal] = useState(false);
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [showSupplementaryModal, setShowSupplementaryModal] = useState(false);
+  const [showQuickDiaryModal, setShowQuickDiaryModal] = useState(false);
   const [pendingSlotsCount, setPendingSlotsCount] = useState(() => {
     return storage.getSupplementarySlots().filter(s => !s.isCompleted).length;
   });
@@ -320,6 +322,25 @@ function App() {
                     {pendingSlotsCount}
                   </span>
                 )}
+              </button>
+
+              <button
+                onClick={() => setShowQuickDiaryModal(true)}
+                className="btn btn-secondary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.82rem',
+                  padding: '0.4rem 0.75rem',
+                  background: 'rgba(168, 85, 247, 0.16)',
+                  color: '#e9d5ff',
+                  border: '1px solid rgba(192, 132, 252, 0.45)'
+                }}
+                title="생각나는 그때그때 오늘의 한줄일기 바로 작성하기"
+              >
+                <Edit3 size={15} color="#c084fc" />
+                <span>한줄일기</span>
               </button>
 
               <button
@@ -861,10 +882,11 @@ function App() {
           </>
         )}
 
-        {/* Global D-Day, Subject, & Supplementary Modals */}
+        {/* Global D-Day, Subject, Supplementary, & Quick Diary Modals */}
         <DDayModal isOpen={showDDayModal} onClose={() => setShowDDayModal(false)} />
         <SubjectModal isOpen={showSubjectModal} onClose={() => setShowSubjectModal(false)} />
         <SupplementaryModal isOpen={showSupplementaryModal} onClose={() => setShowSupplementaryModal(false)} />
+        <QuickDiaryModal isOpen={showQuickDiaryModal} onClose={() => setShowQuickDiaryModal(false)} targetDate={selectedDate} />
       </div>
     </>
   );
