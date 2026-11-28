@@ -64,26 +64,30 @@ export function normalizeAchievement(val) {
 }
 
 export function calculateLecture14Score(lec) {
-  if (!lec || !lec.reviews) return null;
+  if (!lec || !Array.isArray(lec.reviews)) return null;
   const rev1 = lec.reviews.find(r => Number(r.dayOffset) === 1 && r.isCompleted);
-  const rev4 = lec.reviews.find(r => Number(r.dayOffset) === 4 && r.isCompleted);
-  const rev7 = lec.reviews.find(r => Number(r.dayOffset) === 7 && r.isCompleted);
-  const rev14 = lec.reviews.find(r => Number(r.dayOffset) === 14 && r.isCompleted);
+  const rev4 = lec.reviews.find(r => Number(r.dayOffset) === 4 && (r.isCompleted || r.isSkipped));
+  const rev7 = lec.reviews.find(r => Number(r.dayOffset) === 7 && (r.isCompleted || r.isSkipped));
+  const rev14 = lec.reviews.find(r => Number(r.dayOffset) === 14 && (r.isCompleted || r.isSkipped));
 
-  // 1, 4, 7, 14일차가 모두 완료되어야 100점 만점 score14 계산
+  // 1일차(완료 필수) 및 4, 7, 14일차(완료 또는 스킵)가 모두 처리되어야 100점 만점 score14 계산
   if (!rev1 || !rev4 || !rev7 || !rev14) return null;
 
-  const a1 = normalizeAchievement(rev1.achievement || rev1.difficulty);
-  const a4 = normalizeAchievement(rev4.achievement || rev4.difficulty);
-  const a7 = normalizeAchievement(rev7.achievement || rev7.difficulty);
-  const a14 = normalizeAchievement(rev14.achievement || rev14.difficulty);
+  const getEntryScore = (rev, offset, defaultVal) => {
+    if (rev.isSkipped && !rev.isCompleted) {
+      return { achievement: 'skipped', score: 0, skipped: true };
+    }
+    const ach = normalizeAchievement(rev.achievement || rev.difficulty);
+    const sc = Number(EBBINGHAUS_14_SCORES[offset]?.[ach] ?? defaultVal) || 0;
+    return { achievement: ach, score: sc, skipped: false };
+  };
 
-  const s1 = EBBINGHAUS_14_SCORES[1][a1] || 10;
-  const s4 = EBBINGHAUS_14_SCORES[4][a4] || 13;
-  const s7 = EBBINGHAUS_14_SCORES[7][a7] || 20;
-  const s14 = EBBINGHAUS_14_SCORES[14][a14] || 20;
+  const r1 = getEntryScore(rev1, 1, 10);
+  const r4 = getEntryScore(rev4, 4, 13);
+  const r7 = getEntryScore(rev7, 7, 20);
+  const r14 = getEntryScore(rev14, 14, 20);
 
-  const totalScore = s1 + s4 + s7 + s14;
+  const totalScore = (r1.score || 0) + (r4.score || 0) + (r7.score || 0) + (r14.score || 0);
 
   let verdict = 'pass';
   if (totalScore < 70) {
@@ -95,13 +99,13 @@ export function calculateLecture14Score(lec) {
   }
 
   return {
-    score14: totalScore,
+    score14: Number.isFinite(totalScore) ? totalScore : 0,
     verdict,
     breakdown: {
-      1: { achievement: a1, score: s1, maxScore: 15 },
-      4: { achievement: a4, score: s4, maxScore: 20 },
-      7: { achievement: a7, score: s7, maxScore: 30 },
-      14: { achievement: a14, score: s14, maxScore: 35 }
+      1: { achievement: r1.achievement, score: r1.score, maxScore: 15, skipped: r1.skipped },
+      4: { achievement: r4.achievement, score: r4.score, maxScore: 20, skipped: r4.skipped },
+      7: { achievement: r7.achievement, score: r7.score, maxScore: 30, skipped: r7.skipped },
+      14: { achievement: r14.achievement, score: r14.score, maxScore: 35, skipped: r14.skipped }
     }
   };
 }
@@ -740,7 +744,19 @@ export const storage = {
     if (jsonData.customQuests) localStorage.setItem('human-os-custom-quests', ensureString(jsonData.customQuests));
     if (jsonData.pomodoro) localStorage.setItem(STORAGE_KEYS.POMODORO, ensureString(jsonData.pomodoro));
     if (jsonData.diary) localStorage.setItem(STORAGE_KEYS.DIARY, ensureString(jsonData.diary));
-    if (jsonData.lectures) localStorage.setItem(STORAGE_KEYS.LECTURES, ensureString(jsonData.lectures));
+    if (jsonData.lectures) {
+      const parsedLecs = safeParse(ensureString(jsonData.lectures), []);
+      const normalizedLecs = Array.isArray(parsedLecs) ? parsedLecs.map(lec => ({
+        ...lec,
+        reviews: Array.isArray(lec.reviews) ? lec.reviews.map(rev => ({
+          ...rev,
+          isSkipped: Boolean(rev.isSkipped),
+          skippedAt: rev.skippedAt || null,
+          markedOnly: Boolean(rev.markedOnly)
+        })) : []
+      })) : [];
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(normalizedLecs));
+    }
     if (jsonData.vacations) localStorage.setItem(STORAGE_KEYS.VACATIONS, ensureString(jsonData.vacations));
     if (jsonData.studySessions) localStorage.setItem(STORAGE_KEYS.STUDY_SESSIONS, ensureString(jsonData.studySessions));
     if (jsonData.subjects) localStorage.setItem(STORAGE_KEYS.SUBJECTS, ensureString(jsonData.subjects));
@@ -1893,7 +1909,17 @@ export const storage = {
   // --- Phase 2: Ebbinghaus Lectures ---
   getLectures() {
     const raw = localStorage.getItem(STORAGE_KEYS.LECTURES);
-    return safeParse(raw, []);
+    const parsed = safeParse(raw, []);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(lec => ({
+      ...lec,
+      reviews: Array.isArray(lec.reviews) ? lec.reviews.map(rev => ({
+        ...rev,
+        isSkipped: Boolean(rev.isSkipped),
+        skippedAt: rev.skippedAt || null,
+        markedOnly: Boolean(rev.markedOnly)
+      })) : []
+    }));
   },
 
   isVacationDate(dateStr) {
@@ -1967,7 +1993,10 @@ export const storage = {
         dayOffset: offset,
         targetDate: targetDateStr,
         isCompleted: false,
-        completedAt: null
+        completedAt: null,
+        isSkipped: false,
+        skippedAt: null,
+        markedOnly: false
       };
     });
 
@@ -2014,6 +2043,9 @@ export const storage = {
         lec.reviews.forEach(rev => {
           if (rev.id === reviewId) {
             rev.isCompleted = true;
+            rev.isSkipped = false;
+            rev.skippedAt = null;
+            rev.markedOnly = false;
             rev.completedAt = now.toISOString();
             rev.completedDate = actualCompletedDate;
             rev.scheduledDate = rev.targetDate;
@@ -2156,6 +2188,95 @@ export const storage = {
     return lectures;
   },
 
+  // 2원칙(4·7·14·30일차) X(스킵) 처리 (dayOffset === 1은 스킵 불가)
+  skipReview(lectureId, reviewId, markedOnly = false) {
+    const lectures = this.getLectures();
+    let found = false;
+    let blocked = false;
+    let score14Result = null;
+    const now = new Date();
+
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId) {
+            if (Number(rev.dayOffset) === 1) {
+              blocked = true;
+              return;
+            }
+            rev.isCompleted = false;
+            rev.completedAt = null;
+            rev.isSkipped = true;
+            rev.skippedAt = now.toISOString();
+            rev.markedOnly = Boolean(markedOnly);
+            found = true;
+          }
+        });
+
+        if (found) {
+          const evalResult = calculateLecture14Score(lec);
+          if (evalResult) {
+            lec.score14 = evalResult.score14;
+            lec.verdict14 = evalResult.verdict;
+            lec.score14CalculatedAt = now.toISOString();
+            lec.score14Breakdown = evalResult.breakdown;
+            score14Result = {
+              lectureId: lec.id,
+              subject: lec.subject,
+              title: lec.title,
+              ...evalResult
+            };
+          }
+        }
+      }
+    });
+
+    if (found) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return { lectures, blocked, score14Result };
+  },
+
+  // 스킵 취소 (미완료로 복구)
+  unskipReview(lectureId, reviewId) {
+    const lectures = this.getLectures();
+    let found = false;
+
+    lectures.forEach(lec => {
+      if (lec.id === lectureId) {
+        lec.reviews.forEach(rev => {
+          if (rev.id === reviewId && rev.isSkipped) {
+            rev.isSkipped = false;
+            rev.skippedAt = null;
+            rev.markedOnly = false;
+            found = true;
+          }
+        });
+
+        if (found) {
+          const evalResult = calculateLecture14Score(lec);
+          if (evalResult) {
+            lec.score14 = evalResult.score14;
+            lec.verdict14 = evalResult.verdict;
+            lec.score14Breakdown = evalResult.breakdown;
+          } else {
+            delete lec.score14;
+            delete lec.verdict14;
+            delete lec.score14CalculatedAt;
+            delete lec.score14Breakdown;
+          }
+        }
+      }
+    });
+
+    if (found) {
+      localStorage.setItem(STORAGE_KEYS.LECTURES, JSON.stringify(lectures));
+      this._dispatchSync();
+    }
+    return lectures;
+  },
+
   // 4. [+ 재복습 등록] 원클릭 복제 기능
   registerReReviewLecture(lectureId) {
     const lectures = this.getLectures();
@@ -2261,7 +2382,7 @@ export const storage = {
     let count = 0;
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
-        if (!rev.isCompleted && rev.targetDate < todayStr) {
+        if (!rev.isCompleted && !rev.isSkipped && rev.targetDate < todayStr) {
           rev.targetDate = adjustedTodayStr;
           count++;
         }
@@ -2278,11 +2399,11 @@ export const storage = {
     const todayStr = this._dateToStr(new Date());
     const lectures = this.getLectures();
     
-    // Collect all uncompleted overdue reviews
+    // Collect all uncompleted (and non-skipped) overdue reviews
     const overdueList = [];
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
-        if (!rev.isCompleted && rev.targetDate < todayStr) {
+        if (!rev.isCompleted && !rev.isSkipped && rev.targetDate < todayStr) {
           overdueList.push(rev);
         }
       });
@@ -2378,7 +2499,7 @@ export const storage = {
     // ---- Step 1: Pull overdue reviews forward to today while STRICTLY PRESERVING relative 14714 offsets ----
     lectures.forEach(lec => {
       lec.reviews.sort((a, b) => a.dayOffset - b.dayOffset);
-      const uncompleted = lec.reviews.filter(r => !r.isCompleted);
+      const uncompleted = lec.reviews.filter(r => !r.isCompleted && !r.isSkipped);
       if (uncompleted.length === 0) return;
 
       const firstUncompleted = uncompleted[0];
@@ -2409,7 +2530,7 @@ export const storage = {
     const uncompletedReviews = [];
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
-        if (!rev.isCompleted) {
+        if (!rev.isCompleted && !rev.isSkipped) {
           uncompletedReviews.push({
             lecDateAdded: lec.dateAdded,
             lecId: lec.id,
@@ -2779,7 +2900,7 @@ export const storage = {
 
     lectures.forEach(lec => {
       lec.reviews.forEach(rev => {
-        if (!rev.isCompleted && rev.targetDate < todayStr) {
+        if (!rev.isCompleted && !rev.isSkipped && rev.targetDate < todayStr) {
           rev.targetDate = todayStr;
           resetCount++;
         }

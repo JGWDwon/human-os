@@ -52,6 +52,31 @@ export const getDayOffsetBadgeStyle = (dayOffset) => {
   }
 };
 
+// 같은 강의(lecture)에서 현재 회차의 직전 회차가 스킵(isSkipped === true)되었는지 판별
+const isPrevReviewSkipped = (lec, currentDayOffset) => {
+  if (!lec || !Array.isArray(lec.reviews)) return false;
+  const sorted = [...lec.reviews].sort((a, b) => Number(a.dayOffset) - Number(b.dayOffset));
+  const idx = sorted.findIndex(r => Number(r.dayOffset) === Number(currentDayOffset));
+  if (idx <= 0) return false;
+  return Boolean(sorted[idx - 1].isSkipped);
+};
+
+// 1471430 복습 우선순위 자동 정렬 비교 함수
+// 1순위(상단 고정): dayOffset === 1 (1원칙: 당일 복습)
+// 2순위: 직전 복습 회차가 스킵(X) 처리된 강의의 다음 회차 (2원칙 최우선 방어)
+// 3순위: 나머지 2원칙 복습을 dayOffset 오름차순(4 → 7 → 14 → 30)으로 정렬
+const compareReviewsByPriority = (a, b) => {
+  const aIsFirst = Number(a.dayOffset) === 1;
+  const bIsFirst = Number(b.dayOffset) === 1;
+  if (aIsFirst !== bIsFirst) return aIsFirst ? -1 : 1;
+
+  const aPrevSkipped = Boolean(a.isPrevSkipped);
+  const bPrevSkipped = Boolean(b.isPrevSkipped);
+  if (aPrevSkipped !== bPrevSkipped) return aPrevSkipped ? -1 : 1;
+
+  return (Number(a.dayOffset) || 0) - (Number(b.dayOffset) || 0);
+};
+
 export default function EbbinghausPlanner({ onClose }) {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const now = new Date();
@@ -88,6 +113,10 @@ export default function EbbinghausPlanner({ onClose }) {
 
   // 복습 카드 클릭 시 상/중/하 성취도 선택 알림박스 모달 상태
   const [achievementModalTarget, setAchievementModalTarget] = useState(null);
+
+  // 2원칙(4·7·14·30일차) X(스킵) 확인 모달 상태
+  const [skipModalTarget, setSkipModalTarget] = useState(null);
+  const [skipMarkedOnly, setSkipMarkedOnly] = useState(false);
 
   // 복습 플래너 보기 방식 (과목별 모아보기 vs 일차별 순) 및 과목 필터링
   const [reviewViewMode, setReviewViewMode] = useState('subject'); // 'subject' (과목별 모아보기) | 'cycle' (일차별 순)
@@ -180,6 +209,39 @@ export default function EbbinghausPlanner({ onClose }) {
     }
 
     window.dispatchEvent(new CustomEvent('xp-updated'));
+    refreshData();
+  };
+
+  // 2원칙(4·7·14·30일차) X(스킵) 요청 핸들러 (연속 2회 스킵 방지 안전장치 포함)
+  const handleRequestSkipReview = (e, rev) => {
+    if (e) e.stopPropagation();
+    if (Number(rev.dayOffset) === 1) return; // 1원칙은 스킵 불가
+
+    if (rev.isPrevSkipped) {
+      const confirmed = window.confirm(
+        '직전 회차를 건너뛰었습니다. 연속 스킵은 권장하지 않습니다. 정말 넘기시겠습니까?'
+      );
+      if (!confirmed) return;
+    }
+
+    setSkipMarkedOnly(false);
+    setSkipModalTarget(rev);
+  };
+
+  const handleConfirmSkipReview = () => {
+    if (!skipModalTarget) return;
+    const { score14Result } = storage.skipReview(skipModalTarget.lectureId, skipModalTarget.id, skipMarkedOnly);
+    setSkipModalTarget(null);
+    setSkipMarkedOnly(false);
+    if (score14Result) {
+      setScore14ModalTarget(score14Result);
+    }
+    refreshData();
+  };
+
+  const handleUnskipReview = (e, lectureId, reviewId) => {
+    if (e) e.stopPropagation();
+    storage.unskipReview(lectureId, reviewId);
     refreshData();
   };
 
@@ -366,7 +428,7 @@ export default function EbbinghausPlanner({ onClose }) {
     }
   };
 
-  // Today's due reviews
+  // Today's due reviews (1원칙 상단 고정 → 직전 스킵 2순위 → 4·7·14·30 오름차순)
   const todayReviews = useMemo(() => {
     const list = [];
     lectures.forEach(lec => {
@@ -379,16 +441,27 @@ export default function EbbinghausPlanner({ onClose }) {
             score14: lec.score14,
             verdict14: lec.verdict14,
             hasReReviewRegistered: lec.hasReReviewRegistered,
+            isPrevSkipped: isPrevReviewSkipped(lec, rev.dayOffset),
             ...rev
           });
         }
       });
     });
-    return list;
+    return list.sort(compareReviewsByPriority);
   }, [lectures, todayStr]);
 
+  const todayPrinciple1Reviews = useMemo(
+    () => todayReviews.filter(r => Number(r.dayOffset) === 1),
+    [todayReviews]
+  );
+  const todayPrinciple2Reviews = useMemo(
+    () => todayReviews.filter(r => Number(r.dayOffset) !== 1),
+    [todayReviews]
+  );
+
   const todayCompletedCount = todayReviews.filter(r => r.isCompleted).length;
-  const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && r.targetDate < todayStr).length;
+  const todaySkippedCount = todayReviews.filter(r => r.isSkipped).length;
+  const overdueCount = lectures.flatMap(l => l.reviews).filter(r => !r.isCompleted && !r.isSkipped && r.targetDate < todayStr).length;
 
   // Generate 7 days of current week
   const weekDays = Array.from({ length: 7 }).map((_, i) => {
@@ -408,6 +481,7 @@ export default function EbbinghausPlanner({ onClose }) {
             score14: lec.score14,
             verdict14: lec.verdict14,
             hasReReviewRegistered: lec.hasReReviewRegistered,
+            isPrevSkipped: isPrevReviewSkipped(lec, rev.dayOffset),
             ...rev
           });
         }
@@ -419,7 +493,7 @@ export default function EbbinghausPlanner({ onClose }) {
       dayReviews = dayReviews.filter(r => r.subject === subjectFilter);
     }
 
-    // 2. 정렬 방식: 과목별 모아보기 vs 일차별 순
+    // 2. 정렬 방식: 과목별 모아보기(과목 내 1원칙→직전스킵→오름차순) vs 우선순위 일차별 순
     if (reviewViewMode === 'subject') {
       dayReviews.sort((a, b) => {
         if (a.subject !== b.subject) {
@@ -430,11 +504,10 @@ export default function EbbinghausPlanner({ onClose }) {
           if (idxB !== -1) return 1;
           return a.subject.localeCompare(b.subject, 'ko');
         }
-        return (b.dayOffset || 0) - (a.dayOffset || 0);
+        return compareReviewsByPriority(a, b);
       });
     } else {
-      // 일차별 순 (30일차 -> 14일차 -> 7일차 -> 4일차 -> 1일차)
-      dayReviews.sort((a, b) => (b.dayOffset || 0) - (a.dayOffset || 0));
+      dayReviews.sort(compareReviewsByPriority);
     }
 
     const isVacation = storage.isVacationDate(dateStr);
@@ -510,19 +583,19 @@ export default function EbbinghausPlanner({ onClose }) {
             </h3>
             <span style={{
               fontSize: '0.72rem',
-              background: todayCompletedCount === todayReviews.length && todayReviews.length > 0 ? '#10b981' : '#8b5cf6',
+              background: (todayCompletedCount + todaySkippedCount) === todayReviews.length && todayReviews.length > 0 ? '#10b981' : '#8b5cf6',
               color: '#fff',
               padding: '0.12rem 0.5rem',
               borderRadius: '10px',
               fontWeight: 'bold'
             }}>
-              {todayCompletedCount} / {todayReviews.length} 완료
+              {todayCompletedCount} / {todayReviews.length} 완료{todaySkippedCount > 0 ? ` · ${todaySkippedCount} 스킵` : ''}
             </span>
           </div>
 
-          {todayReviews.length > 0 && todayCompletedCount === todayReviews.length && (
+          {todayReviews.length > 0 && (todayCompletedCount + todaySkippedCount) === todayReviews.length && (
             <span style={{ fontSize: '0.8rem', color: '#34d399', fontWeight: 'bold' }}>
-              ✨ 오늘 복습 미션 올클리어!
+              ✨ 오늘 복습 미션 처리 완료!
             </span>
           )}
 
@@ -541,341 +614,468 @@ export default function EbbinghausPlanner({ onClose }) {
             🎉 오늘 예정된 복습이 없습니다. 새로운 지식을 집중 사냥해보세요!
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.5rem' }}>
-            {todayReviews.map(rev => {
-              const badge = getDayOffsetBadgeStyle(rev.dayOffset);
-              return (
-                <div
-                  key={rev.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    background: rev.isCompleted ? 'rgba(16, 185, 129, 0.12)' : 'rgba(0, 0, 0, 0.3)',
-                    border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
-                    borderLeft: `3px solid ${rev.isCompleted ? '#10b981' : badge.color}`,
-                    borderRadius: '8px',
-                    padding: '0.55rem 0.8rem',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  <div 
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1, cursor: 'pointer' }}
-                    onClick={() => setAchievementModalTarget(rev)}
-                    title="클릭하여 복습 성취도(상/중/하) 평가 및 완료"
-                  >
-                    <div 
-                      style={{
-                        width: '20px',
-                        height: '20px',
-                        borderRadius: '5px',
-                        border: `2px solid ${rev.isCompleted ? '#10b981' : 'rgba(255,255,255,0.3)'}`,
-                        background: rev.isCompleted ? '#10b981' : 'transparent',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {rev.isCompleted && <Check size={13} color="#000" strokeWidth={3} />}
-                    </div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {(() => {
-                        const subColor = getSubjectColor(rev.subject, registeredSubjects);
-                        const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
-                        return (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.15rem', flexWrap: 'wrap' }}>
-                            <span style={{ 
-                              fontSize: '0.68rem', 
-                              color: subColor, 
-                              background: `${subColor}1e`, 
-                              border: `1px solid ${subColor}4d`,
-                              padding: '0.05rem 0.35rem', 
-                              borderRadius: '3px', 
-                              fontWeight: 'bold' 
-                            }}>
-                              {rev.subject}
-                            </span>
-                            <span style={{ 
-                              fontSize: '0.68rem', 
-                              color: badge.color, 
-                              background: badge.bg, 
-                              border: `1px solid ${badge.border}`, 
-                              padding: '0.05rem 0.35rem', 
-                              borderRadius: '3px', 
-                              fontWeight: 'bold',
-                              letterSpacing: '-0.2px'
-                            }}>
-                              {badge.label}
-                            </span>
-                            {rev.isCompleted && curAch === 'high' && (
-                              <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                                🟢 상
-                              </span>
-                            )}
-                            {rev.isCompleted && curAch === 'mid' && (
-                              <span style={{ fontSize: '0.65rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                                🟡 중
-                              </span>
-                            )}
-                            {rev.isCompleted && curAch === 'low' && (
-                              <span style={{ fontSize: '0.65rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                                🔴 하
-                              </span>
-                            )}
-                            {rev.score14 !== undefined && (
-                              <span style={{
-                                fontSize: '0.65rem',
-                                color: rev.score14 >= 80 ? '#34d399' : (rev.score14 >= 70 ? '#fbbf24' : '#f87171'),
-                                background: rev.score14 >= 80 ? 'rgba(16, 185, 129, 0.15)' : (rev.score14 >= 70 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
-                                border: `1px solid ${rev.score14 >= 80 ? 'rgba(16, 185, 129, 0.4)' : (rev.score14 >= 70 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)')}`,
-                                padding: '0.05rem 0.35rem',
-                                borderRadius: '3px',
-                                fontWeight: 'bold'
-                              }}>
-                                {rev.score14 >= 80 ? `🟢 14일차 통과 (${rev.score14}점)` : (rev.score14 >= 70 ? `🟡 재복습 권장 (${rev.score14}점)` : `🔴 재복습 필수 (${rev.score14}점)`)}
-                              </span>
-                            )}
-                            {rev.hasReReviewRegistered && (
-                              <span style={{ fontSize: '0.65rem', color: '#c084fc', background: 'rgba(192, 132, 252, 0.15)', border: '1px solid rgba(192, 132, 252, 0.35)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
-                                🔁 재복습 등록됨
-                              </span>
-                            )}
-                            {rev.isCompleted && rev.isDelayed && (
-                              <span style={{ fontSize: '0.65rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.18)', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }} title={rev.delayNote || `${rev.delayedDays}일 지연 완료`}>
-                                ⏰ {rev.delayedDays}일 지연 완료
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      <div style={{
-                        fontSize: '0.85rem',
-                        fontWeight: 'bold',
-                        color: rev.isCompleted ? 'var(--text-muted)' : '#fff',
-                        textDecoration: rev.isCompleted ? 'line-through' : 'none',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis'
-                      }}>
-                        {rev.title}
-                      </div>
-                    </div>
-                  </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {[
+              {
+                key: 'p1',
+                title: '📌 1원칙 · 당일 필수 복습 (1일차)',
+                badgeColor: '#22d3ee',
+                badgeBg: 'rgba(34, 211, 238, 0.14)',
+                items: todayPrinciple1Reviews
+              },
+              {
+                key: 'p2',
+                title: '📚 2원칙 · 누적 복습 (4 · 7 · 14 · 30일차)',
+                badgeColor: '#a78bfa',
+                badgeBg: 'rgba(167, 139, 250, 0.14)',
+                items: todayPrinciple2Reviews
+              }
+            ].filter(sec => sec.items.length > 0).map(sec => (
+              <div key={sec.key} style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <span style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 'bold',
+                    color: sec.badgeColor,
+                    background: sec.badgeBg,
+                    border: `1px solid ${sec.badgeColor}44`,
+                    padding: '0.12rem 0.55rem',
+                    borderRadius: '6px'
+                  }}>
+                    {sec.title} ({sec.items.length})
+                  </span>
+                </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
-                    {rev.isCompleted ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.stopPropagation()}>
-                        {(() => {
-                          const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
-                          return (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'high')}
-                                style={{
-                                  fontSize: '0.66rem',
-                                  padding: '0.15rem 0.4rem',
-                                  borderRadius: '3px',
-                                  border: curAch === 'high' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.08)',
-                                  background: curAch === 'high' ? 'rgba(16, 185, 129, 0.28)' : 'rgba(255,255,255,0.03)',
-                                  color: curAch === 'high' ? '#34d399' : 'var(--text-muted)',
-                                  cursor: 'pointer',
-                                  fontWeight: curAch === 'high' ? 'bold' : 'normal'
-                                }}
-                                title="성취도: 상 (완벽 이해)"
-                              >
-                                상
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'mid')}
-                                style={{
-                                  fontSize: '0.66rem',
-                                  padding: '0.15rem 0.4rem',
-                                  borderRadius: '3px',
-                                  border: curAch === 'mid' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
-                                  background: curAch === 'mid' ? 'rgba(59, 130, 246, 0.28)' : 'rgba(255,255,255,0.03)',
-                                  color: curAch === 'mid' ? '#93c5fd' : 'var(--text-muted)',
-                                  cursor: 'pointer',
-                                  fontWeight: curAch === 'mid' ? 'bold' : 'normal'
-                                }}
-                                title="성취도: 중 (적정 이해)"
-                              >
-                                중
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'low')}
-                                style={{
-                                  fontSize: '0.66rem',
-                                  padding: '0.15rem 0.4rem',
-                                  borderRadius: '3px',
-                                  border: curAch === 'low' ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.08)',
-                                  background: curAch === 'low' ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.03)',
-                                  color: curAch === 'low' ? '#fca5a5' : 'var(--text-muted)',
-                                  cursor: 'pointer',
-                                  fontWeight: curAch === 'low' ? 'bold' : 'normal'
-                                }}
-                                title="성취도: 하 (부족·취약)"
-                              >
-                                하
-                              </button>
-                            </>
-                          );
-                        })()}
-
-                        {/* 14일차 재복습 권장/필수이고 아직 미등록된 경우 원클릭 재복습 등록 버튼 */}
-                        {rev.score14 !== undefined && rev.score14 < 80 && !rev.hasReReviewRegistered && (
-                          <button
-                            type="button"
-                            onClick={() => handleRegisterReReview(rev.lectureId)}
-                            style={{
-                              fontSize: '0.68rem',
-                              padding: '0.15rem 0.45rem',
-                              borderRadius: '4px',
-                              border: '1px solid #f97316',
-                              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-                              color: '#fff',
-                              cursor: 'pointer',
-                              fontWeight: 'bold',
-                              marginLeft: '0.2rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '2px'
-                            }}
-                            title="새로운 1-4-7-14-30 복습 스케줄로 즉시 재복습 등록"
-                          >
-                            <Flame size={11} /> + 재복습
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleReview(rev.lectureId, rev.id, true)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            fontSize: '0.72rem',
-                            cursor: 'pointer',
-                            padding: '0.1rem 0.25rem',
-                            marginLeft: '2px'
-                          }}
-                          title="완료 취소 (미완료로 복구)"
-                        >
-                          ↩️
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }} onClick={(e) => e.stopPropagation()}>
-                        {/* 원클릭 성취도 완료 버튼 그룹 [상] [중] [하] */}
-                        <div style={{
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.5rem' }}>
+                  {sec.items.map(rev => {
+                    const badge = getDayOffsetBadgeStyle(rev.dayOffset);
+                    const isPrinciple1 = Number(rev.dayOffset) === 1;
+                    const isSkipped = Boolean(rev.isSkipped);
+                    return (
+                      <div
+                        key={rev.id}
+                        style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '2px',
-                          background: 'rgba(255, 255, 255, 0.04)',
-                          padding: '2px',
-                          borderRadius: '5px',
-                          border: '1px solid rgba(255, 255, 255, 0.1)'
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'high')}
+                          justifyContent: 'space-between',
+                          gap: '0.75rem',
+                          background: rev.isCompleted
+                            ? 'rgba(16, 185, 129, 0.12)'
+                            : (isSkipped ? 'rgba(100, 116, 139, 0.14)' : 'rgba(0, 0, 0, 0.3)'),
+                          border: `1px solid ${
+                            rev.isCompleted
+                              ? 'rgba(16, 185, 129, 0.35)'
+                              : (isSkipped ? 'rgba(148, 163, 184, 0.25)' : 'rgba(255, 255, 255, 0.08)')
+                          }`,
+                          borderLeft: `3px solid ${
+                            rev.isCompleted ? '#10b981' : (isSkipped ? '#64748b' : badge.color)
+                          }`,
+                          borderRadius: '8px',
+                          padding: '0.55rem 0.8rem',
+                          opacity: isSkipped ? 0.78 : 1,
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <div 
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1, cursor: 'pointer' }}
+                          onClick={() => setAchievementModalTarget(rev)}
+                          title="클릭하여 복습 성취도(상/중/하) 평가 및 완료"
+                        >
+                          <div 
                             style={{
-                              fontSize: '0.68rem',
-                              padding: '0.18rem 0.42rem',
-                              borderRadius: '3px',
-                              border: '1px solid rgba(16, 185, 129, 0.5)',
-                              background: 'rgba(16, 185, 129, 0.18)',
-                              color: '#34d399',
-                              cursor: 'pointer',
-                              fontWeight: 'bold',
-                              transition: 'all 0.15s ease'
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '5px',
+                              border: `2px solid ${rev.isCompleted ? '#10b981' : (isSkipped ? '#64748b' : 'rgba(255,255,255,0.3)')}`,
+                              background: rev.isCompleted ? '#10b981' : (isSkipped ? 'rgba(100, 116, 139, 0.35)' : 'transparent'),
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                              cursor: 'pointer'
                             }}
-                            title="상 (완벽 이해) - 원클릭 완료"
                           >
-                            상
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'mid')}
-                            style={{
-                              fontSize: '0.68rem',
-                              padding: '0.18rem 0.42rem',
-                              borderRadius: '3px',
-                              border: '1px solid rgba(59, 130, 246, 0.5)',
-                              background: 'rgba(59, 130, 246, 0.18)',
-                              color: '#93c5fd',
-                              cursor: 'pointer',
+                            {rev.isCompleted && <Check size={13} color="#000" strokeWidth={3} />}
+                            {isSkipped && !rev.isCompleted && <X size={12} color="#cbd5e1" strokeWidth={3} />}
+                          </div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            {(() => {
+                              const subColor = getSubjectColor(rev.subject, registeredSubjects);
+                              const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.15rem', flexWrap: 'wrap' }}>
+                                  <span style={{
+                                    fontSize: '0.62rem',
+                                    color: isPrinciple1 ? '#22d3ee' : '#c084fc',
+                                    background: isPrinciple1 ? 'rgba(34, 211, 238, 0.14)' : 'rgba(192, 132, 252, 0.14)',
+                                    border: `1px solid ${isPrinciple1 ? 'rgba(34, 211, 238, 0.35)' : 'rgba(192, 132, 252, 0.35)'}`,
+                                    padding: '0.03rem 0.3rem',
+                                    borderRadius: '3px',
+                                    fontWeight: 'bold'
+                                  }}>
+                                    {isPrinciple1 ? '1원칙' : '2원칙'}
+                                  </span>
+                                  <span style={{ 
+                                    fontSize: '0.68rem', 
+                                    color: subColor, 
+                                    background: `${subColor}1e`, 
+                                    border: `1px solid ${subColor}4d`,
+                                    padding: '0.05rem 0.35rem', 
+                                    borderRadius: '3px', 
+                                    fontWeight: 'bold' 
+                                  }}>
+                                    {rev.subject}
+                                  </span>
+                                  <span style={{ 
+                                    fontSize: '0.68rem', 
+                                    color: badge.color, 
+                                    background: badge.bg, 
+                                    border: `1px solid ${badge.border}`, 
+                                    padding: '0.05rem 0.35rem', 
+                                    borderRadius: '3px', 
+                                    fontWeight: 'bold',
+                                    letterSpacing: '-0.2px'
+                                  }}>
+                                    {badge.label}
+                                  </span>
+                                  {!rev.isCompleted && !isSkipped && rev.isPrevSkipped && (
+                                    <span style={{
+                                      fontSize: '0.65rem',
+                                      color: '#fbbf24',
+                                      background: 'rgba(245, 158, 11, 0.2)',
+                                      border: '1px solid rgba(245, 158, 11, 0.5)',
+                                      padding: '0.05rem 0.35rem',
+                                      borderRadius: '3px',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      ⚠️ 직전 스킵 - 우선 복습
+                                    </span>
+                                  )}
+                                  {isSkipped && (
+                                    <span style={{
+                                      fontSize: '0.65rem',
+                                      color: '#cbd5e1',
+                                      background: 'rgba(148, 163, 184, 0.2)',
+                                      border: '1px solid rgba(148, 163, 184, 0.4)',
+                                      padding: '0.05rem 0.35rem',
+                                      borderRadius: '3px',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      ⏭️ 스킵됨{rev.markedOnly ? ' (📘 단권화만)' : ''}
+                                    </span>
+                                  )}
+                                  {rev.isCompleted && curAch === 'high' && (
+                                    <span style={{ fontSize: '0.65rem', color: '#34d399', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                      🟢 상
+                                    </span>
+                                  )}
+                                  {rev.isCompleted && curAch === 'mid' && (
+                                    <span style={{ fontSize: '0.65rem', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                      🟡 중
+                                    </span>
+                                  )}
+                                  {rev.isCompleted && curAch === 'low' && (
+                                    <span style={{ fontSize: '0.65rem', color: '#f87171', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                      🔴 하
+                                    </span>
+                                  )}
+                                  {rev.score14 !== undefined && (
+                                    <span style={{
+                                      fontSize: '0.65rem',
+                                      color: rev.score14 >= 80 ? '#34d399' : (rev.score14 >= 70 ? '#fbbf24' : '#f87171'),
+                                      background: rev.score14 >= 80 ? 'rgba(16, 185, 129, 0.15)' : (rev.score14 >= 70 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)'),
+                                      border: `1px solid ${rev.score14 >= 80 ? 'rgba(16, 185, 129, 0.4)' : (rev.score14 >= 70 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(239, 68, 68, 0.4)')}`,
+                                      padding: '0.05rem 0.35rem',
+                                      borderRadius: '3px',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      {rev.score14 >= 80 ? `🟢 14일차 통과 (${rev.score14}점)` : (rev.score14 >= 70 ? `🟡 재복습 권장 (${rev.score14}점)` : `🔴 재복습 필수 (${rev.score14}점)`)}
+                                    </span>
+                                  )}
+                                  {rev.hasReReviewRegistered && (
+                                    <span style={{ fontSize: '0.65rem', color: '#c084fc', background: 'rgba(192, 132, 252, 0.15)', border: '1px solid rgba(192, 132, 252, 0.35)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }}>
+                                      🔁 재복습 등록됨
+                                    </span>
+                                  )}
+                                  {rev.isCompleted && rev.isDelayed && (
+                                    <span style={{ fontSize: '0.65rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.18)', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '0.05rem 0.3rem', borderRadius: '3px', fontWeight: 'bold' }} title={rev.delayNote || `${rev.delayedDays}일 지연 완료`}>
+                                      ⏰ {rev.delayedDays}일 지연 완료
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                            <div style={{
+                              fontSize: '0.85rem',
                               fontWeight: 'bold',
-                              transition: 'all 0.15s ease'
-                            }}
-                            title="중 (적정 이해) - 원클릭 완료"
-                          >
-                            중
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'low')}
-                            style={{
-                              fontSize: '0.68rem',
-                              padding: '0.18rem 0.42rem',
-                              borderRadius: '3px',
-                              border: '1px solid rgba(239, 68, 68, 0.5)',
-                              background: 'rgba(239, 68, 68, 0.18)',
-                              color: '#fca5a5',
-                              cursor: 'pointer',
-                              fontWeight: 'bold',
-                              transition: 'all 0.15s ease'
-                            }}
-                            title="하 (부족·취약) - 원클릭 완료"
-                          >
-                            하
-                          </button>
+                              color: (rev.isCompleted || isSkipped) ? 'var(--text-muted)' : '#fff',
+                              textDecoration: (rev.isCompleted || isSkipped) ? 'line-through' : 'none',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}>
+                              {rev.title}
+                            </div>
+                          </div>
                         </div>
 
-                        {/* 일정 조정 버튼 */}
-                        <button
-                          onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
-                          style={{
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.12)',
-                            color: 'var(--text-muted)',
-                            fontSize: '0.68rem',
-                            padding: '0.15rem 0.35rem',
-                            borderRadius: '3px',
-                            cursor: 'pointer'
-                          }}
-                          title="어제로 당기기 (-1일)"
-                        >
-                          -1일
-                        </button>
-                        <button
-                          onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
-                          style={{
-                            background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.12)',
-                            color: 'var(--text-muted)',
-                            fontSize: '0.68rem',
-                            padding: '0.15rem 0.35rem',
-                            borderRadius: '3px',
-                            cursor: 'pointer'
-                          }}
-                          title="내일로 미루기 (+1일)"
-                        >
-                          +1일
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                          {rev.isCompleted ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.stopPropagation()}>
+                              {(() => {
+                                const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
+                                return (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'high')}
+                                      style={{
+                                        fontSize: '0.66rem',
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '3px',
+                                        border: curAch === 'high' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.08)',
+                                        background: curAch === 'high' ? 'rgba(16, 185, 129, 0.28)' : 'rgba(255,255,255,0.03)',
+                                        color: curAch === 'high' ? '#34d399' : 'var(--text-muted)',
+                                        cursor: 'pointer',
+                                        fontWeight: curAch === 'high' ? 'bold' : 'normal'
+                                      }}
+                                      title="성취도: 상 (완벽 이해)"
+                                    >
+                                      상
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'mid')}
+                                      style={{
+                                        fontSize: '0.66rem',
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '3px',
+                                        border: curAch === 'mid' ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                                        background: curAch === 'mid' ? 'rgba(59, 130, 246, 0.28)' : 'rgba(255,255,255,0.03)',
+                                        color: curAch === 'mid' ? '#93c5fd' : 'var(--text-muted)',
+                                        cursor: 'pointer',
+                                        fontWeight: curAch === 'mid' ? 'bold' : 'normal'
+                                      }}
+                                      title="성취도: 중 (적정 이해)"
+                                    >
+                                      중
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSelectAchievement(rev.lectureId, rev.id, 'low')}
+                                      style={{
+                                        fontSize: '0.66rem',
+                                        padding: '0.15rem 0.4rem',
+                                        borderRadius: '3px',
+                                        border: curAch === 'low' ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.08)',
+                                        background: curAch === 'low' ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255,255,255,0.03)',
+                                        color: curAch === 'low' ? '#fca5a5' : 'var(--text-muted)',
+                                        cursor: 'pointer',
+                                        fontWeight: curAch === 'low' ? 'bold' : 'normal'
+                                      }}
+                                      title="성취도: 하 (부족·취약)"
+                                    >
+                                      하
+                                    </button>
+                                  </>
+                                );
+                              })()}
+
+                              {rev.score14 !== undefined && rev.score14 < 80 && !rev.hasReReviewRegistered && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRegisterReReview(rev.lectureId)}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.15rem 0.45rem',
+                                    borderRadius: '4px',
+                                    border: '1px solid #f97316',
+                                    background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                                    color: '#fff',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    marginLeft: '0.2rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px'
+                                  }}
+                                  title="새로운 1-4-7-14-30 복습 스케줄로 즉시 재복습 등록"
+                                >
+                                  <Flame size={11} /> + 재복습
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleReview(rev.lectureId, rev.id, true)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--text-muted)',
+                                  fontSize: '0.72rem',
+                                  cursor: 'pointer',
+                                  padding: '0.1rem 0.25rem',
+                                  marginLeft: '2px'
+                                }}
+                                title="완료 취소 (미완료로 복구)"
+                              >
+                                ↩️
+                              </button>
+                            </div>
+                          ) : isSkipped ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }} onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(e) => handleUnskipReview(e, rev.lectureId, rev.id)}
+                                style={{
+                                  fontSize: '0.7rem',
+                                  padding: '0.22rem 0.55rem',
+                                  borderRadius: '5px',
+                                  border: '1px solid rgba(148, 163, 184, 0.4)',
+                                  background: 'rgba(148, 163, 184, 0.16)',
+                                  color: '#e2e8f0',
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold'
+                                }}
+                                title="스킵 취소 (미완료로 복구)"
+                              >
+                                ↩️ 스킵 취소
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }} onClick={(e) => e.stopPropagation()}>
+                              {/* 원클릭 성취도 완료 버튼 그룹 [상] [중] [하] */}
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '2px',
+                                background: 'rgba(255, 255, 255, 0.04)',
+                                padding: '2px',
+                                borderRadius: '5px',
+                                border: '1px solid rgba(255, 255, 255, 0.1)'
+                              }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'high')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.18rem 0.42rem',
+                                    borderRadius: '3px',
+                                    border: '1px solid rgba(16, 185, 129, 0.5)',
+                                    background: 'rgba(16, 185, 129, 0.18)',
+                                    color: '#34d399',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="상 (완벽 이해) - 원클릭 완료"
+                                >
+                                  상
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'mid')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.18rem 0.42rem',
+                                    borderRadius: '3px',
+                                    border: '1px solid rgba(59, 130, 246, 0.5)',
+                                    background: 'rgba(59, 130, 246, 0.18)',
+                                    color: '#93c5fd',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="중 (적정 이해) - 원클릭 완료"
+                                >
+                                  중
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleReview(rev.lectureId, rev.id, false, 'low')}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.18rem 0.42rem',
+                                    borderRadius: '3px',
+                                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                                    background: 'rgba(239, 68, 68, 0.18)',
+                                    color: '#fca5a5',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="하 (부족·취약) - 원클릭 완료"
+                                >
+                                  하
+                                </button>
+                              </div>
+
+                              {/* 2원칙(4·7·14·30일차) 전용 X(스킵) 버튼 - 1일차(dayOffset === 1)에는 미표시 */}
+                              {!isPrinciple1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleRequestSkipReview(e, rev)}
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.2rem 0.45rem',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(148, 163, 184, 0.45)',
+                                    background: 'rgba(100, 116, 139, 0.22)',
+                                    color: '#cbd5e1',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                  title="2원칙 회차 스킵 (X) - 연체 해제 및 스킵 기록"
+                                >
+                                  X
+                                </button>
+                              )}
+
+                              {/* 일정 조정 버튼 */}
+                              <button
+                                onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
+                                style={{
+                                  background: 'rgba(255,255,255,0.06)',
+                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  color: 'var(--text-muted)',
+                                  fontSize: '0.68rem',
+                                  padding: '0.15rem 0.35rem',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer'
+                                }}
+                                title="어제로 당기기 (-1일)"
+                              >
+                                -1일
+                              </button>
+                              <button
+                                onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, 1)}
+                                style={{
+                                  background: 'rgba(255,255,255,0.06)',
+                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  color: 'var(--text-muted)',
+                                  fontSize: '0.68rem',
+                                  padding: '0.15rem 0.35rem',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer'
+                                }}
+                                title="내일로 미루기 (+1일)"
+                              >
+                                +1일
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
+        )}
         </div>
 
       {/* Add Form (Collapsible) */}
@@ -1194,33 +1394,86 @@ export default function EbbinghausPlanner({ onClose }) {
 
                       <div 
                         style={{ 
-                          background: rev.isCompleted ? 'rgba(16, 185, 129, 0.1)' : 'rgba(30, 41, 59, 0.8)',
-                          border: `1px solid ${rev.isCompleted ? 'rgba(16, 185, 129, 0.3)' : 'var(--panel-border)'}`,
-                          borderLeft: `3px solid ${rev.isCompleted ? '#10b981' : badge.color}`,
+                          background: rev.isCompleted
+                            ? 'rgba(16, 185, 129, 0.1)'
+                            : (rev.isSkipped ? 'rgba(100, 116, 139, 0.14)' : 'rgba(30, 41, 59, 0.8)'),
+                          border: `1px solid ${
+                            rev.isCompleted
+                              ? 'rgba(16, 185, 129, 0.3)'
+                              : (rev.isSkipped ? 'rgba(148, 163, 184, 0.25)' : 'var(--panel-border)')
+                          }`,
+                          borderLeft: `3px solid ${
+                            rev.isCompleted ? '#10b981' : (rev.isSkipped ? '#64748b' : badge.color)
+                          }`,
                           padding: '0.4rem 0.5rem',
                           borderRadius: '5px',
                           cursor: 'pointer',
                           transition: 'all 0.2s ease',
-                          opacity: (day.dateStr < todayStr && !rev.isCompleted) ? 0.7 : 1
+                          opacity: (day.dateStr < todayStr && !rev.isCompleted && !rev.isSkipped) || rev.isSkipped ? 0.72 : 1
                         }}
                         onClick={() => setAchievementModalTarget(rev)}
                         title="클릭하여 복습 성취도(상/중/하) 평가 및 완료"
                       >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.15rem' }}>
-                        <span style={{ 
-                          fontSize: '0.65rem', 
-                          padding: '0.05rem 0.3rem', 
-                          borderRadius: '3px',
-                          background: badge.bg,
-                          border: `1px solid ${badge.border}`,
-                          color: badge.color,
-                          fontWeight: 'bold'
-                        }}>
-                          {badge.label}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexWrap: 'wrap' }}>
+                          <span style={{ 
+                            fontSize: '0.65rem', 
+                            padding: '0.05rem 0.3rem', 
+                            borderRadius: '3px',
+                            background: badge.bg,
+                            border: `1px solid ${badge.border}`,
+                            color: badge.color,
+                            fontWeight: 'bold'
+                          }}>
+                            {badge.label}
+                          </span>
+                          {!rev.isCompleted && !rev.isSkipped && rev.isPrevSkipped && (
+                            <span style={{
+                              fontSize: '0.56rem',
+                              padding: '1px 3px',
+                              borderRadius: '2px',
+                              background: 'rgba(245, 158, 11, 0.22)',
+                              border: '1px solid rgba(245, 158, 11, 0.5)',
+                              color: '#fbbf24',
+                              fontWeight: 'bold'
+                            }} title="직전 회차 스킵 - 우선 복습">
+                              ⚠️우선
+                            </span>
+                          )}
+                          {rev.isSkipped && (
+                            <span style={{
+                              fontSize: '0.56rem',
+                              padding: '1px 3px',
+                              borderRadius: '2px',
+                              background: 'rgba(148, 163, 184, 0.2)',
+                              color: '#cbd5e1',
+                              fontWeight: 'bold'
+                            }}>
+                              ⏭️스킵{rev.markedOnly ? '·단권화' : ''}
+                            </span>
+                          )}
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                        {!rev.isCompleted && (
+                        {!rev.isCompleted && !rev.isSkipped && (
                           <>
+                            {Number(rev.dayOffset) !== 1 && (
+                              <button
+                                onClick={(e) => handleRequestSkipReview(e, rev)}
+                                style={{
+                                  background: 'rgba(100, 116, 139, 0.25)',
+                                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                                  color: '#cbd5e1',
+                                  fontSize: '0.58rem',
+                                  padding: '0.05rem 0.25rem',
+                                  borderRadius: '2px',
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold'
+                                }}
+                                title="2원칙 스킵 (X)"
+                              >
+                                X
+                              </button>
+                            )}
                             <button
                               onClick={(e) => handleShiftReview(e, rev.lectureId, rev.id, -1)}
                               style={{
@@ -1252,6 +1505,23 @@ export default function EbbinghausPlanner({ onClose }) {
                               +1
                             </button>
                           </>
+                        )}
+                        {rev.isSkipped && (
+                          <button
+                            onClick={(e) => handleUnskipReview(e, rev.lectureId, rev.id)}
+                            style={{
+                              background: 'rgba(148, 163, 184, 0.18)',
+                              border: 'none',
+                              color: '#cbd5e1',
+                              fontSize: '0.58rem',
+                              padding: '0.05rem 0.25rem',
+                              borderRadius: '2px',
+                              cursor: 'pointer'
+                            }}
+                            title="스킵 취소"
+                          >
+                            ↩️
+                          </button>
                         )}
                         {(() => {
                           const curAch = rev.achievement || (rev.difficulty === 'easy' ? 'high' : (rev.difficulty === 'normal' ? 'mid' : (rev.difficulty === 'hard' ? 'low' : null)));
@@ -2263,6 +2533,111 @@ export default function EbbinghausPlanner({ onClose }) {
                 }}
               >
                 {score14ModalTarget.score14 >= 80 ? '🎉 확인 (30일차 최종 인출 진행)' : '30일차 그대로 진행 (닫기)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2원칙(4·7·14·30일차) X(스킵) 확인 모달 (노트북LM 단권화 가공만 완료 옵션 포함) */}
+      {skipModalTarget && (
+        <div
+          onClick={() => setSkipModalTarget(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.72)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            zIndex: 10010,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '420px',
+              background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%)',
+              border: '1.5px solid rgba(148, 163, 184, 0.45)',
+              borderRadius: '14px',
+              padding: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.9rem'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.02rem', color: '#f1f5f9' }}>
+                ⏭️ {skipModalTarget.dayOffset}일차 복습 스킵 (X)
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSkipModalTarget(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: 1.45 }}>
+              <strong>[{skipModalTarget.subject}] {skipModalTarget.title}</strong> ({skipModalTarget.dayOffset}일차) 복습을 스킵하시겠습니까?
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.3rem' }}>
+                스킵 처리 시 밀린 복습(연체) 목록에서 즉시 해제되며, 다음 복습 회차에서 우선 방어 알림이 표시됩니다.
+              </div>
+            </div>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'rgba(59, 130, 246, 0.12)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '8px',
+                padding: '0.6rem 0.75rem',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                color: '#bfdbfe'
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={skipMarkedOnly}
+                onChange={(e) => setSkipMarkedOnly(e.target.checked)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span>📘 노트북LM 단권화 가공만 완료 (markedOnly)</span>
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.2rem' }}>
+              <button
+                type="button"
+                onClick={() => setSkipModalTarget(null)}
+                className="btn btn-secondary"
+                style={{ padding: '0.45rem 0.9rem', fontSize: '0.82rem' }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSkipReview}
+                style={{
+                  background: 'linear-gradient(135deg, #64748b, #475569)',
+                  border: '1px solid rgba(148, 163, 184, 0.4)',
+                  borderRadius: '7px',
+                  color: '#fff',
+                  fontSize: '0.82rem',
+                  fontWeight: 'bold',
+                  padding: '0.45rem 0.95rem',
+                  cursor: 'pointer'
+                }}
+              >
+                스킵 확정 (X)
               </button>
             </div>
           </div>
