@@ -10,7 +10,6 @@ import SubjectModal from './components/SubjectModal';
 import SupplementaryModal from './components/SupplementaryModal';
 import { storage } from './utils/storage';
 import TierBadge from './components/TierBadge';
-import DefenseBanner from './components/DefenseBanner';
 import ExamPrinciplesBanner from './components/ExamPrinciplesBanner';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -833,10 +832,6 @@ function App() {
           /* ========================================================================= */
           <>
             <ExamPrinciplesBanner />
-            <DefenseBanner 
-              selectedDate={selectedDate} 
-              onNavigateToReviews={() => setActiveView('ebbinghaus')} 
-            />
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
