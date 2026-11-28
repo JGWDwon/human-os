@@ -128,7 +128,7 @@ export default function InsightsDashboard({ onClose }) {
   };
 
   // Subject Balance Breakdown: Weekly & Selected Day
-  const { subjectBreakdown, subjectTotalMins } = useMemo(
+  const { breakdown: subjectBreakdown, totalMins: subjectTotalMins } = useMemo(
     () => computeSubjectBreakdown(weeklyTrend.map(d => d.dateStr)),
     [weeklyTrend, subjects]
   );
