@@ -89,19 +89,22 @@ export default function InsightsDashboard({ onClose }) {
     return { weekRangeLabel: rangeLabel, weeklyTrend: trend, totalWeeklyMinutes: totalMins };
   }, [todayObj, todayStr, weekOffset]);
 
-  // Subject Balance Breakdown for the current week (과목 편식 방지)
-  const { subjectBreakdown, subjectTotalMins } = useMemo(() => {
+  // Selected day for drilldown (used across balance cards and timetable/session details)
+  const activeDayForDetail = selectedDay || weeklyTrend.find(t => t.isToday) || weeklyTrend[weeklyTrend.length - 1];
+  const activeDayPomo = activeDayForDetail ? storage.getPomodoroByDate(activeDayForDetail.dateStr) : null;
+
+  // Helper: Compute subject balance breakdown for a list of dates
+  const computeSubjectBreakdown = (dateStrList) => {
     const pomoRaw = localStorage.getItem('human_os_pomodoro_v1');
     const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
     const subMap = {};
 
     const safeSubjects = Array.isArray(subjects) ? subjects : [];
-    // Initialize all registered subjects with 0 so the user sees all subjects
     safeSubjects.forEach(s => { subMap[s] = 0; });
 
     let total = 0;
-    weeklyTrend.forEach(day => {
-      const dayData = pomoData[day.dateStr];
+    dateStrList.forEach(dStr => {
+      const dayData = pomoData[dStr];
       if (dayData && Array.isArray(dayData.timestamps)) {
         dayData.timestamps.forEach(ts => {
           const sub = (typeof ts === 'object' && ts.subject) ? ts.subject : '기타/미지정';
@@ -121,8 +124,20 @@ export default function InsightsDashboard({ onClose }) {
       })
       .sort((a, b) => b.mins - a.mins);
 
-    return { subjectBreakdown: breakdown, subjectTotalMins: total };
-  }, [weeklyTrend, subjects]);
+    return { breakdown, totalMins: total };
+  };
+
+  // Subject Balance Breakdown: Weekly & Selected Day
+  const { subjectBreakdown, subjectTotalMins } = useMemo(
+    () => computeSubjectBreakdown(weeklyTrend.map(d => d.dateStr)),
+    [weeklyTrend, subjects]
+  );
+
+  const { daySubjectBreakdown, daySubjectTotalMins } = useMemo(() => {
+    if (!activeDayForDetail) return { daySubjectBreakdown: [], daySubjectTotalMins: 0 };
+    const res = computeSubjectBreakdown([activeDayForDetail.dateStr]);
+    return { daySubjectBreakdown: res.breakdown, daySubjectTotalMins: res.totalMins };
+  }, [activeDayForDetail, subjects]);
 
   const currentStats = stats || { activeDays: 0, totalFocusMins: 0 };
   const dailyAvgMins = Math.round(totalWeeklyMinutes / 7);
@@ -165,14 +180,14 @@ export default function InsightsDashboard({ onClose }) {
     return { weeklySleepTotalMins: sum, weeklySleepRecordedDays: daysWithSleep };
   }, [weeklyTrend, dailyLogTick]);
 
-  // Weekly Lecture vs Review Breakdown
-  const { weeklyLectureMins, weeklyReviewMins } = useMemo(() => {
+  // Helper: Compute Lecture vs Review mins for given dates
+  const computeInputOutput = (dateStrList) => {
     const pomoRaw = localStorage.getItem('human_os_pomodoro_v1');
     const pomoData = pomoRaw ? JSON.parse(pomoRaw) : {};
     let lectureMins = 0;
     let reviewMins = 0;
-    weeklyTrend.forEach(day => {
-      const dayData = pomoData[day.dateStr];
+    dateStrList.forEach(dStr => {
+      const dayData = pomoData[dStr];
       if (dayData && Array.isArray(dayData.timestamps)) {
         dayData.timestamps.forEach(ts => {
           const mins = (typeof ts === 'object' && ts.minutes) ? Number(ts.minutes) : 25;
@@ -185,8 +200,24 @@ export default function InsightsDashboard({ onClose }) {
         });
       }
     });
-    return { weeklyLectureMins: lectureMins, weeklyReviewMins: reviewMins };
+    return { lectureMins, reviewMins, totalMins: lectureMins + reviewMins };
+  };
+
+  // Weekly & Selected Day Lecture vs Review Breakdown
+  const { weeklyLectureMins, weeklyReviewMins } = useMemo(() => {
+    const res = computeInputOutput(weeklyTrend.map(d => d.dateStr));
+    return { weeklyLectureMins: res.lectureMins, weeklyReviewMins: res.reviewMins };
   }, [weeklyTrend]);
+
+  const { dayLectureMins, dayReviewMins, dayInputOutputTotalMins } = useMemo(() => {
+    if (!activeDayForDetail) return { dayLectureMins: 0, dayReviewMins: 0, dayInputOutputTotalMins: 0 };
+    const res = computeInputOutput([activeDayForDetail.dateStr]);
+    return {
+      dayLectureMins: res.lectureMins,
+      dayReviewMins: res.reviewMins,
+      dayInputOutputTotalMins: res.totalMins
+    };
+  }, [activeDayForDetail]);
 
   // Chart Y-axis max scale: comfortable headroom above max, milestone aligned
   const rawMax = Math.max(...weeklyTrend.map(t => t.minutes), 0);
@@ -203,10 +234,6 @@ export default function InsightsDashboard({ onClose }) {
   if (scaleMaxMins >= 660) {
     guidelines.unshift({ mins: 600, label: '10시간 🔥', color: 'rgba(249, 115, 22, 0.45)', textColor: '#f97316' });
   }
-
-  // Selected day pomodoro sessions for drilldown
-  const activeDayForDetail = selectedDay || weeklyTrend.find(t => t.isToday) || weeklyTrend[weeklyTrend.length - 1];
-  const activeDayPomo = activeDayForDetail ? storage.getPomodoroByDate(activeDayForDetail.dateStr) : null;
 
   return (
     <div className="glass-panel animate-fade-in" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '80vh', gap: '1.25rem' }}>
@@ -411,22 +438,58 @@ export default function InsightsDashboard({ onClose }) {
 
         {/* Tier 2: 밸런스 & 라이프 케어 지표 (3개 균등 배치, 빈 공간 0%) */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.65rem' }}>
-          {/* Input vs Output Balance Card */}
-          <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(129, 140, 248, 0.25)', borderRadius: '8px', padding: '0.65rem 0.85rem' }}>
-            <div style={{ fontSize: '0.72rem', color: '#a5b4fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>인풋 vs 아웃풋 밸런스</span>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>강의:복습</span>
+          {/* Input vs Output Balance Card (주간 + 해당 요일) */}
+          <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(129, 140, 248, 0.25)', borderRadius: '8px', padding: '0.65rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#a5b4fc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>인풋 vs 아웃풋 밸런스 (주간)</span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>강의:복습</span>
+              </div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#fff', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                <span style={{ color: '#818cf8' }}>🎧 {totalWeeklyMinutes > 0 ? Math.round((weeklyLectureMins / totalWeeklyMinutes) * 100) : 0}%</span>
+                <span style={{ color: 'var(--text-muted)' }}>:</span>
+                <span style={{ color: '#34d399' }}>📖 {totalWeeklyMinutes > 0 ? Math.round((weeklyReviewMins / totalWeeklyMinutes) * 100) : 0}%</span>
+              </div>
+              <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginTop: '0.3rem', overflow: 'hidden', display: 'flex' }}>
+                <div style={{ width: `${totalWeeklyMinutes > 0 ? Math.round((weeklyLectureMins / totalWeeklyMinutes) * 100) : 0}%`, background: '#818cf8', transition: 'width 0.3s' }} />
+                <div style={{ width: `${totalWeeklyMinutes > 0 ? Math.round((weeklyReviewMins / totalWeeklyMinutes) * 100) : 0}%`, background: '#34d399', transition: 'width 0.3s' }} />
+              </div>
             </div>
-            <div style={{ fontSize: '0.92rem', fontWeight: 'bold', color: '#fff', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ color: '#818cf8' }}>🎧 {totalWeeklyMinutes > 0 ? Math.round((weeklyLectureMins / totalWeeklyMinutes) * 100) : 0}%</span>
-              <span style={{ color: 'var(--text-muted)' }}>:</span>
-              <span style={{ color: '#34d399' }}>📖 {totalWeeklyMinutes > 0 ? Math.round((weeklyReviewMins / totalWeeklyMinutes) * 100) : 0}%</span>
-            </div>
-            {/* Visual ratio bar */}
-            <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginTop: '0.35rem', overflow: 'hidden', display: 'flex' }}>
-              <div style={{ width: `${totalWeeklyMinutes > 0 ? Math.round((weeklyLectureMins / totalWeeklyMinutes) * 100) : 0}%`, background: '#818cf8', transition: 'width 0.3s' }} />
-              <div style={{ width: `${totalWeeklyMinutes > 0 ? Math.round((weeklyReviewMins / totalWeeklyMinutes) * 100) : 0}%`, background: '#34d399', transition: 'width 0.3s' }} />
-            </div>
+
+            {/* Selected Day Input vs Output */}
+            {activeDayForDetail && (
+              <div style={{ borderTop: '1px dashed rgba(255,255,255,0.12)', paddingTop: '0.4rem' }}>
+                <div style={{ fontSize: '0.68rem', color: '#cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>
+                    📅 {activeDayForDetail.dayName}요일 ({activeDayForDetail.dateShort}){activeDayForDetail.isToday ? ' · 오늘' : ''}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {dayInputOutputTotalMins > 0 ? formatTime(dayInputOutputTotalMins) : '기록 없음'}
+                  </span>
+                </div>
+                {dayInputOutputTotalMins > 0 ? (
+                  <>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 'bold', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      <span style={{ color: '#a5b4fc' }}>
+                        🎧 {Math.round((dayLectureMins / dayInputOutputTotalMins) * 100)}% ({formatTime(dayLectureMins)})
+                      </span>
+                      <span style={{ color: 'var(--text-muted)' }}>:</span>
+                      <span style={{ color: '#6ee7b7' }}>
+                        📖 {Math.round((dayReviewMins / dayInputOutputTotalMins) * 100)}% ({formatTime(dayReviewMins)})
+                      </span>
+                    </div>
+                    <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginTop: '0.25rem', overflow: 'hidden', display: 'flex' }}>
+                      <div style={{ width: `${Math.round((dayLectureMins / dayInputOutputTotalMins) * 100)}%`, background: '#818cf8', transition: 'width 0.3s' }} />
+                      <div style={{ width: `${Math.round((dayReviewMins / dayInputOutputTotalMins) * 100)}%`, background: '#34d399', transition: 'width 0.3s' }} />
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                    🎧 0% : 📖 0%
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Weekly Meal Card */}
@@ -675,70 +738,148 @@ export default function InsightsDashboard({ onClose }) {
           </button>
         </div>
 
-        {/* Multi-Segment Stacked Balance Bar */}
-        <div style={{
-          height: '20px',
-          width: '100%',
-          background: 'rgba(255,255,255,0.05)',
-          borderRadius: '10px',
-          overflow: 'hidden',
-          display: 'flex',
-          border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)'
-        }}>
-          {subjectTotalMins > 0 ? (
-            subjectBreakdown.filter(s => s.mins > 0).map((s) => {
-              const widthPct = (s.mins / subjectTotalMins) * 100;
-              return (
-                <div
-                  key={s.name}
-                  style={{
-                    width: `${widthPct}%`,
-                    height: '100%',
-                    background: s.color,
-                    transition: 'width 0.4s ease',
-                    position: 'relative'
-                  }}
-                  title={`${s.name}: ${formatTime(s.mins)} (${s.pct}%)`}
-                />
-              );
-            })
-          ) : (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-              이번 주 기록된 과목별 집중 시간이 없습니다. 타이머 시작 시 과목을 선택해주세요.
-            </div>
-          )}
+        {/* 1) 주간 과목별 공부시간 밸런스 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#93c5fd' }}>
+              📊 주간 전체 밸런스 ({formatTime(subjectTotalMins)})
+            </span>
+          </div>
+          <div style={{
+            height: '20px',
+            width: '100%',
+            background: 'rgba(255,255,255,0.05)',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            display: 'flex',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.5)'
+          }}>
+            {subjectTotalMins > 0 ? (
+              subjectBreakdown.filter(s => s.mins > 0).map((s) => {
+                const widthPct = (s.mins / subjectTotalMins) * 100;
+                return (
+                  <div
+                    key={s.name}
+                    style={{
+                      width: `${widthPct}%`,
+                      height: '100%',
+                      background: s.color,
+                      transition: 'width 0.4s ease',
+                      position: 'relative'
+                    }}
+                    title={`${s.name}: ${formatTime(s.mins)} (${s.pct}%)`}
+                  />
+                );
+              })
+            ) : (
+              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                이번 주 기록된 과목별 집중 시간이 없습니다. 타이머 시작 시 과목을 선택해주세요.
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {subjectBreakdown.map((s) => (
+              <div
+                key={s.name}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  padding: '0.3rem 0.65rem',
+                  borderRadius: '8px',
+                  background: s.mins > 0 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${s.mins > 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)'}`,
+                  opacity: s.mins > 0 ? 1 : 0.6
+                }}
+              >
+                <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: s.color, display: 'inline-block' }} />
+                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fff' }}>{s.name}</span>
+                <span style={{ fontSize: '0.75rem', color: s.mins > 0 ? '#38bdf8' : 'var(--text-muted)' }}>
+                  {formatTime(s.mins)}
+                </span>
+                {s.mins > 0 && (
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '0.05rem 0.35rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                    {s.pct}%
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Subject Breakdown Badges */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {subjectBreakdown.map((s) => (
-            <div
-              key={s.name}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.45rem',
-                padding: '0.3rem 0.65rem',
-                borderRadius: '8px',
-                background: s.mins > 0 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${s.mins > 0 ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)'}`,
-                opacity: s.mins > 0 ? 1 : 0.6
-              }}
-            >
-              <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: s.color, display: 'inline-block' }} />
-              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#fff' }}>{s.name}</span>
-              <span style={{ fontSize: '0.75rem', color: s.mins > 0 ? '#38bdf8' : 'var(--text-muted)' }}>
-                {formatTime(s.mins)}
+        {/* 2) 해당 요일(선택된 날짜) 과목별 공부시간 밸런스 */}
+        {activeDayForDetail && (
+          <div style={{ borderTop: '1px dashed rgba(255,255,255,0.12)', paddingTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#6ee7b7' }}>
+                📅 {activeDayForDetail.dayName}요일 ({activeDayForDetail.dateShort}){activeDayForDetail.isToday ? ' · 오늘' : ''} 밸런스 ({daySubjectTotalMins > 0 ? formatTime(daySubjectTotalMins) : '0분'})
               </span>
-              {s.mins > 0 && (
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '0.05rem 0.35rem', borderRadius: '4px', fontWeight: 'bold' }}>
-                  {s.pct}%
-                </span>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                상단 그래프에서 다른 요일 클릭 시 즉시 전환
+              </span>
+            </div>
+
+            <div style={{
+              height: '16px',
+              width: '100%',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              display: 'flex',
+              border: '1px solid rgba(255,255,255,0.08)'
+            }}>
+              {daySubjectTotalMins > 0 ? (
+                daySubjectBreakdown.filter(s => s.mins > 0).map((s) => {
+                  const widthPct = (s.mins / daySubjectTotalMins) * 100;
+                  return (
+                    <div
+                      key={s.name}
+                      style={{
+                        width: `${widthPct}%`,
+                        height: '100%',
+                        background: s.color,
+                        transition: 'width 0.4s ease'
+                      }}
+                      title={`${s.name}: ${formatTime(s.mins)} (${s.pct}%)`}
+                    />
+                  );
+                })
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  해당 요일에 기록된 공부 시간이 없습니다.
+                </div>
               )}
             </div>
-          ))}
-        </div>
+
+            {daySubjectTotalMins > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+                {daySubjectBreakdown.filter(s => s.mins > 0).map((s) => (
+                  <div
+                    key={s.name}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      padding: '0.25rem 0.55rem',
+                      borderRadius: '7px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.1)'
+                    }}
+                  >
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color, display: 'inline-block' }} />
+                    <span style={{ fontSize: '0.76rem', fontWeight: 'bold', color: '#fff' }}>{s.name}</span>
+                    <span style={{ fontSize: '0.72rem', color: '#6ee7b7' }}>{formatTime(s.mins)}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.08)', padding: '0.03rem 0.3rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                      {s.pct}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}
